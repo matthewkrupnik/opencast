@@ -18,18 +18,18 @@ nonisolated struct NotificationBackendConfiguration: Sendable {
     nonisolated private static let development = Self(
         workerBaseURL: URL(string: "https://notifications.example.com/development")!,
         apnsEnvironment: "development",
-        keychainService: "com.connor.opencast.notification-security.development"
+        keychainService: "mk.lan.opencast.notification-security.development"
     )
 
     nonisolated private static let prodStaging = Self(
         workerBaseURL: URL(string: "https://notifications.example.com/prod-staging")!,
         apnsEnvironment: "production",
-        keychainService: "com.connor.opencast.notification-security.prod-staging"
+        keychainService: "mk.lan.opencast.notification-security.prod-staging"
     )
 
     nonisolated private static let production = Self(
         workerBaseURL: URL(string: "https://notifications.example.com")!,
         apnsEnvironment: "production",
-        keychainService: "com.connor.opencast.notification-security.production"
+        keychainService: "mk.lan.opencast.notification-security.production"
     )
 }

@@ -10,7 +10,7 @@ actor PlaybackEventLog {
     private let maximumByteCount: Int
     private var fileHandle: FileHandle?
     private var currentByteCount = 0
-    private let logger = Logger(subsystem: "com.connor.opencast", category: "PlaybackEventLog")
+    private let logger = Logger(subsystem: "mk.lan.opencast", category: "PlaybackEventLog")
 
     init(
         fileURL: URL = URL.applicationSupportDirectory.appending(path: "PlaybackDiagnostics/playback-events.log"),

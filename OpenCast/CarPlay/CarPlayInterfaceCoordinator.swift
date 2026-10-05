@@ -11,7 +11,7 @@ import SwiftUI
 /// fresh, row selection, and the artwork patch pipeline. Created on connect,
 /// torn down on disconnect.
 final class CarPlayInterfaceCoordinator {
-    private static let logger = Logger(subsystem: "com.connor.opencast", category: "CarPlay")
+    private static let logger = Logger(subsystem: "mk.lan.opencast", category: "CarPlay")
 
     private let appModel: OpenCastAppModel
     private let modelContext: ModelContext

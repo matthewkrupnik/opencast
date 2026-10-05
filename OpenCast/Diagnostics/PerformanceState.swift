@@ -3,7 +3,7 @@ import Foundation
 nonisolated struct PerformanceState: Codable, Equatable, Sendable {
     enum Domain: String, Codable, CaseIterable, Sendable {
         case scene, playback, nowPlaying, transcription, compute, feed
-        var identifier: String { "com.connor.opencast.\(rawValue)" }
+        var identifier: String { "mk.lan.opencast.\(rawValue)" }
         var labels: Set<String> {
             switch self {
             case .scene: ["foreground", "background"]

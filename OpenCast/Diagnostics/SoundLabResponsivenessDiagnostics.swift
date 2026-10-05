@@ -38,7 +38,7 @@ enum SoundLabResponsivenessDiagnostics {
 
     #if DEBUG
     private nonisolated static let signposter = OSSignposter(
-        subsystem: "com.connor.opencast.perf",
+        subsystem: "mk.lan.opencast.perf",
         category: "SoundLabResponsiveness"
     )
     #endif

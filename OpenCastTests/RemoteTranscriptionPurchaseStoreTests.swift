@@ -9,8 +9,8 @@ import Testing
 /// fail-closed, gating, and the consumption preview's overdraft arithmetic.
 @MainActor
 struct RemoteTranscriptionPurchaseStoreTests {
-    private static let hours20 = "com.connor.opencast.transcription.hours20.v1"
-    private static let hours100 = "com.connor.opencast.transcription.hours100.v1"
+    private static let hours20 = "mk.lan.opencast.transcription.hours20.v1"
+    private static let hours100 = "mk.lan.opencast.transcription.hours100.v1"
 
     @Test("Available: verified purchase redeems, then finishes, then updates balance")
     func verifiedPurchaseFinishesAfterAck() async {
@@ -220,7 +220,7 @@ struct RemoteTranscriptionPurchaseStoreTests {
             ),
             Self.transaction(
                 id: 54,
-                productID: "com.connor.opencast.unrelated",
+                productID: "mk.lan.opencast.unrelated",
                 purchaseDate: purchaseDate
             ),
         ]

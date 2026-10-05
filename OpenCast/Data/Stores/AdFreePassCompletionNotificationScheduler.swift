@@ -9,7 +9,7 @@ import UserNotifications
 struct AdFreePassCompletionNotificationScheduler {
     static let threadIdentifier = "opencast-ad-free-pass-completion"
 
-    private static let logger = Logger(subsystem: "com.connor.opencast", category: "AdFreePassBackground")
+    private static let logger = Logger(subsystem: "mk.lan.opencast", category: "AdFreePassBackground")
 
     var center: any AdFreePassNotificationCenter = UNUserNotificationCenter.current()
 

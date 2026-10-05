@@ -33,10 +33,10 @@
 			<key>UNNotificationExtensionOverridesDefaultTitle</key>
 			<false/>
 		</dict>
-		<key>NSExtensionPointIdentifier</key>
-		<string>com.apple.usernotifications.content-extension</string>
 		<key>NSExtensionMainStoryboard</key>
 		<string>MainInterface</string>
+		<key>NSExtensionPointIdentifier</key>
+		<string>com.apple.usernotifications.content-extension</string>
 	</dict>
 </dict>
 </plist>

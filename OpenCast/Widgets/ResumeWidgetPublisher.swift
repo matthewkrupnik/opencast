@@ -10,7 +10,7 @@ actor ResumeWidgetPublisher {
     private let directory: URL?
     private let loadArtwork: @Sendable (URL?) async -> Data?
     private let reload: @Sendable () -> Void
-    private let logger = Logger(subsystem: "com.connor.opencast", category: "ResumeWidget")
+    private let logger = Logger(subsystem: "mk.lan.opencast", category: "ResumeWidget")
 
     init(
         directory: URL? = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: ResumeWidgetSnapshot.appGroup),

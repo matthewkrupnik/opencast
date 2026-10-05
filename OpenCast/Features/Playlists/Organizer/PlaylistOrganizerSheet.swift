@@ -7,7 +7,7 @@ import SwiftUI
 /// show's episode list; the proposals are renamed, trimmed, reordered and
 /// sorted here, then saved as ordinary manual playlists.
 struct PlaylistOrganizerSheet: View {
-    private static let logger = Logger(subsystem: "com.connor.opencast", category: "playlist-organizer")
+    private static let logger = Logger(subsystem: "mk.lan.opencast", category: "playlist-organizer")
 
     @Environment(OpenCastAppModel.self) private var appModel
     @Environment(\.dismiss) private var dismiss

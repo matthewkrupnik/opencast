@@ -3,7 +3,7 @@ import os
 
 final class SiriMediaDiscovery {
     nonisolated private static let logger = Logger(
-        subsystem: "com.connor.opencast",
+        subsystem: "mk.lan.opencast",
         category: "SiriMedia"
     )
 

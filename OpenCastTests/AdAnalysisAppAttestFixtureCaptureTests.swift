@@ -41,7 +41,7 @@ final class AdAnalysisAppAttestFixtureCaptureTests: XCTestCase {
             ?? Self.defaultBaseURL
         let configuration = AppAttestClientConfiguration(
             baseURL: baseURL,
-            keychainService: "com.connor.opencast.ad-analysis-security.fixture-capture"
+            keychainService: "mk.lan.opencast.ad-analysis-security.fixture-capture"
         )
         let apiClient = AppAttestAPIClient(configuration: configuration)
         let installID = "fixture-\(UUID().uuidString)"

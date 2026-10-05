@@ -13,8 +13,8 @@ struct OpenCastRemoteTranscriptionPurchaseWireTests {
           "balance": { "available_seconds": 3600, "reserved_seconds": 0, "debt_seconds": 0 },
           "app_account_token": "3e6f9a2c-4a5f-4a86-9e51-1f0f74d3ab10",
           "catalog": [
-            { "product_id": "com.connor.opencast.transcription.hours20.v1", "grant_seconds": 72000 },
-            { "product_id": "com.connor.opencast.transcription.hours100.v1", "grant_seconds": 360000 }
+            { "product_id": "mk.lan.opencast.transcription.hours20.v1", "grant_seconds": 72000 },
+            { "product_id": "mk.lan.opencast.transcription.hours100.v1", "grant_seconds": 360000 }
           ],
           "catalog_sha256": "c2b007bc37825865aa679166a6fa7d1b0d74c141999f459c12e056f3c7134ec5",
           "purchases_enabled": true

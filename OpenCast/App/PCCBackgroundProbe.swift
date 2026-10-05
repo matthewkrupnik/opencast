@@ -16,7 +16,7 @@ enum PCCBackgroundProbe {
     nonisolated static let reasoningArgument = "--pcc-bg-probe-reasoning"
     nonisolated static let lockPauseArgument = "--pcc-bg-probe-lock-pause"
 
-    private static let logger = Logger(subsystem: "com.connor.opencast", category: "PCCBackgroundProbe")
+    private static let logger = Logger(subsystem: "mk.lan.opencast", category: "PCCBackgroundProbe")
     private static let backgroundWaitLimit: Duration = .seconds(180)
     private static let builtInRequest = ProbeRequest(
         label: "built-in-small",

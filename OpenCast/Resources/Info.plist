@@ -4,8 +4,8 @@
 <dict>
 	<key>BGTaskSchedulerPermittedIdentifiers</key>
 	<array>
-		<string>com.connor.opencast.ad-free-pass</string>
-		<string>com.connor.opencast.transcript-generation</string>
+		<string>mk.lan.opencast.ad-free-pass</string>
+		<string>mk.lan.opencast.transcript-generation</string>
 	</array>
 	<key>CFBundleDevelopmentRegion</key>
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
@@ -22,7 +22,7 @@
 			<string>Alternate</string>
 			<key>LSItemContentTypes</key>
 			<array>
-				<string>com.connor.opencast.opml</string>
+				<string>mk.lan.opencast.opml</string>
 			</array>
 		</dict>
 	</array>
@@ -44,7 +44,7 @@
 	<array>
 		<dict>
 			<key>CFBundleURLName</key>
-			<string>com.connor.opencast</string>
+			<string>mk.lan.opencast</string>
 			<key>CFBundleURLSchemes</key>
 			<array>
 				<string>opencast</string>
@@ -134,7 +134,7 @@
 			<key>UTTypeDescription</key>
 			<string>OPML Document</string>
 			<key>UTTypeIdentifier</key>
-			<string>com.connor.opencast.opml</string>
+			<string>mk.lan.opencast.opml</string>
 			<key>UTTypeTagSpecification</key>
 			<dict>
 				<key>public.filename-extension</key>

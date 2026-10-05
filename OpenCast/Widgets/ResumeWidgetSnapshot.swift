@@ -1,7 +1,7 @@
 import Foundation
 
 nonisolated struct ResumeWidgetSnapshot: Codable, Equatable, Sendable {
-    static let appGroup = "group.com.connor.opencast"
+    static let appGroup = "group.mk.lan.opencast"
     static let kind = "OpenCastResume"
     static let filename = "resume-widget.json"
     static let maximumBytes = 256 * 1024

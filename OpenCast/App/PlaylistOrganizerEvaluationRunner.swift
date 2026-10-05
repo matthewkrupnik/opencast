@@ -25,7 +25,7 @@ enum PlaylistOrganizerEvaluationRunner {
         outputDirectory.appending(path: "report.json")
     }
 
-    private static let logger = Logger(subsystem: "com.connor.opencast", category: "PlaylistOrganizerEvaluation")
+    private static let logger = Logger(subsystem: "mk.lan.opencast", category: "PlaylistOrganizerEvaluation")
     private static var hasStarted = false
 
     nonisolated static var isRequested: Bool {

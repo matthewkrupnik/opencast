@@ -12,7 +12,7 @@ struct EpisodeNotificationViewModel {
         .milliseconds(500),
     ]
     private static let artworkLogger = Logger(
-        subsystem: "com.connor.opencast",
+        subsystem: "mk.lan.opencast",
         category: "NotificationContentArtwork"
     )
 

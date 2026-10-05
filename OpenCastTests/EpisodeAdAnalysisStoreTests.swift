@@ -1332,7 +1332,7 @@ struct EpisodeAdAnalysisStoreTests {
     @Test("URLSession App Attest client envelopes request and rotates on recoverable key failure")
     func urlSessionAppAttestClientEnvelopesRequestAndRotatesOnRecoverableKeyFailure() async throws {
         let request = makeAPIRequest(requestID: "client-app-attest")
-        let keychainService = "com.connor.opencast.tests.ad-analysis-security.\(UUID().uuidString)"
+        let keychainService = "mk.lan.opencast.tests.ad-analysis-security.\(UUID().uuidString)"
         let keychain = AppAttestKeychain(service: keychainService)
         try? keychain.deleteAll()
         defer {
@@ -1400,7 +1400,7 @@ struct EpisodeAdAnalysisStoreTests {
 
     @Test("URLSession App Attest client binds accepted submit and dynamic poll path")
     func urlSessionAppAttestClientBindsAcceptedSubmitAndDynamicPollPath() async throws {
-        let keychainService = "com.connor.opencast.tests.ad-analysis-poll-security.\(UUID().uuidString)"
+        let keychainService = "mk.lan.opencast.tests.ad-analysis-poll-security.\(UUID().uuidString)"
         let keychain = AppAttestKeychain(service: keychainService)
         try? keychain.deleteAll()
         defer {

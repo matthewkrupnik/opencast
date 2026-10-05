@@ -4,7 +4,7 @@ import OSLog
 
 @Observable
 final class EpisodeAdFreePassBackgroundSession {
-    static let identifier = "com.connor.opencast.ad-free-pass"
+    static let identifier = "mk.lan.opencast.ad-free-pass"
 
     private enum State: Equatable {
         case idle
@@ -13,7 +13,7 @@ final class EpisodeAdFreePassBackgroundSession {
         case foregroundOnly
     }
 
-    private static let logger = Logger(subsystem: "com.connor.opencast", category: "AdFreePassBackground")
+    private static let logger = Logger(subsystem: "mk.lan.opencast", category: "AdFreePassBackground")
     private static let title = "Skip Promos & Ads"
     private static let consentSubtitle = "Needs your OK to download the speech model - open OpenCast."
     private static let capDeferredSubtitle = "Daily detection limit reached — continues tomorrow"

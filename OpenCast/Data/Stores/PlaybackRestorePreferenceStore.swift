@@ -6,7 +6,7 @@ import os
 /// playing from — the keys launch restore reads. Lives in
 /// `LocalPreferenceRecord` with the rest of the wipeable local state.
 final class PlaybackRestorePreferenceStore {
-    private static let logger = Logger(subsystem: "com.connor.opencast", category: "PlaybackRestoreState")
+    private static let logger = Logger(subsystem: "mk.lan.opencast", category: "PlaybackRestoreState")
     static let episodeIDKey = "playback.lastEpisodeID"
     static let sourcePlaylistIDKey = "playback.currentSourcePlaylistID"
     // The periodic flush calls remember every tick; the remembered pair makes

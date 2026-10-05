@@ -10,7 +10,7 @@ final class LibraryStore {
     /// `lastErrorMessage`, which the root presents as a modal alert and is
     /// reserved for user-initiated library operations.
     nonisolated static let backgroundFailureLogger = Logger(
-        subsystem: "com.connor.opencast",
+        subsystem: "mk.lan.opencast",
         category: "LibraryStore"
     )
 

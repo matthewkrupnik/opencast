@@ -17,24 +17,24 @@
 		A10000000000000000000034 /* OpenCastNotificationService.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = A10000000000000000000033 /* OpenCastNotificationService.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		A10000000000000000000044 /* OpenCastTranscription in Frameworks */ = {isa = PBXBuildFile; productRef = A10000000000000000000046 /* OpenCastTranscription */; };
 		A10000000000000000000045 /* OpenCastTranscription in Frameworks */ = {isa = PBXBuildFile; productRef = A10000000000000000000046 /* OpenCastTranscription */; };
-		B20000000000000000000013 /* ImageFormat.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20000000000000000000010 /* ImageFormat.swift */; };
-		B20000000000000000000014 /* NotificationAttachmentFactory.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20000000000000000000011 /* NotificationAttachmentFactory.swift */; };
-		B20000000000000000000015 /* NotificationPayload.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20000000000000000000012 /* NotificationPayload.swift */; };
+		B20000000000000000000013 /* OpenCastNotificationService/ImageFormat.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20000000000000000000010 /* OpenCastNotificationService/ImageFormat.swift */; };
+		B20000000000000000000014 /* OpenCastNotificationService/NotificationAttachmentFactory.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20000000000000000000011 /* OpenCastNotificationService/NotificationAttachmentFactory.swift */; };
+		B20000000000000000000015 /* OpenCastNotificationService/NotificationPayload.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20000000000000000000012 /* OpenCastNotificationService/NotificationPayload.swift */; };
 		B20000000000000000000016 /* OpenCastCore in Frameworks */ = {isa = PBXBuildFile; productRef = A10000000000000000000002 /* OpenCastCore */; };
 		B20000000000000000000017 /* OpenCastPlayback in Frameworks */ = {isa = PBXBuildFile; productRef = A10000000000000000000004 /* OpenCastPlayback */; };
-		B2000000000000000000002B /* NotificationService.swift in Sources */ = {isa = PBXBuildFile; fileRef = B2000000000000000000002A /* NotificationService.swift */; };
-		B2000000000000000000002D /* ArtworkDownloadByteCapDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = B2000000000000000000002C /* ArtworkDownloadByteCapDelegate.swift */; };
+		B2000000000000000000002B /* OpenCastNotificationService/NotificationService.swift in Sources */ = {isa = PBXBuildFile; fileRef = B2000000000000000000002A /* OpenCastNotificationService/NotificationService.swift */; };
+		B2000000000000000000002D /* OpenCastNotificationService/ArtworkDownloadByteCapDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = B2000000000000000000002C /* OpenCastNotificationService/ArtworkDownloadByteCapDelegate.swift */; };
 		C30000000000000000000001 /* OpenCastNotificationContent.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = C30000000000000000000004 /* OpenCastNotificationContent.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
-		C30000000000000000000002 /* EpisodeNotificationViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = C30000000000000000000005 /* EpisodeNotificationViewModel.swift */; };
+		C30000000000000000000002 /* OpenCastNotificationContent/EpisodeNotificationViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = C30000000000000000000005 /* OpenCastNotificationContent/EpisodeNotificationViewModel.swift */; };
 		C3000000000000000000001D /* UserNotificationsUI.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = C3000000000000000000001E /* UserNotificationsUI.framework */; };
-		C30000000000000000000020 /* EpisodeNotificationArtworkView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C30000000000000000000022 /* EpisodeNotificationArtworkView.swift */; };
-		C30000000000000000000021 /* EpisodeNotificationCardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C30000000000000000000023 /* EpisodeNotificationCardView.swift */; };
-		C30000000000000000000024 /* EpisodeNotificationViewModel+Preview.swift in Sources */ = {isa = PBXBuildFile; fileRef = C30000000000000000000025 /* EpisodeNotificationViewModel+Preview.swift */; };
-		D40000000000000000000001 /* NotificationArtworkAttachmentIdentifier.swift in Sources */ = {isa = PBXBuildFile; fileRef = D40000000000000000000004 /* NotificationArtworkAttachmentIdentifier.swift */; };
-		D40000000000000000000002 /* NotificationArtworkAttachmentIdentifier.swift in Sources */ = {isa = PBXBuildFile; fileRef = D40000000000000000000004 /* NotificationArtworkAttachmentIdentifier.swift */; };
-		D40000000000000000000003 /* NotificationArtworkAttachmentIdentifier.swift in Sources */ = {isa = PBXBuildFile; fileRef = D40000000000000000000004 /* NotificationArtworkAttachmentIdentifier.swift */; };
-		D40000000000000000000005 /* ArtworkDownloadAccumulator.swift in Sources */ = {isa = PBXBuildFile; fileRef = D40000000000000000000007 /* ArtworkDownloadAccumulator.swift */; };
-		D40000000000000000000006 /* ArtworkDownloadRequest.swift in Sources */ = {isa = PBXBuildFile; fileRef = D40000000000000000000008 /* ArtworkDownloadRequest.swift */; };
+		C30000000000000000000020 /* OpenCastNotificationContent/EpisodeNotificationArtworkView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C30000000000000000000022 /* OpenCastNotificationContent/EpisodeNotificationArtworkView.swift */; };
+		C30000000000000000000021 /* OpenCastNotificationContent/EpisodeNotificationCardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C30000000000000000000023 /* OpenCastNotificationContent/EpisodeNotificationCardView.swift */; };
+		C30000000000000000000024 /* OpenCastNotificationContent/EpisodeNotificationViewModel+Preview.swift in Sources */ = {isa = PBXBuildFile; fileRef = C30000000000000000000025 /* OpenCastNotificationContent/EpisodeNotificationViewModel+Preview.swift */; };
+		D40000000000000000000001 /* OpenCast/Notifications/NotificationArtworkAttachmentIdentifier.swift in Sources */ = {isa = PBXBuildFile; fileRef = D40000000000000000000004 /* OpenCast/Notifications/NotificationArtworkAttachmentIdentifier.swift */; };
+		D40000000000000000000002 /* OpenCast/Notifications/NotificationArtworkAttachmentIdentifier.swift in Sources */ = {isa = PBXBuildFile; fileRef = D40000000000000000000004 /* OpenCast/Notifications/NotificationArtworkAttachmentIdentifier.swift */; };
+		D40000000000000000000003 /* OpenCast/Notifications/NotificationArtworkAttachmentIdentifier.swift in Sources */ = {isa = PBXBuildFile; fileRef = D40000000000000000000004 /* OpenCast/Notifications/NotificationArtworkAttachmentIdentifier.swift */; };
+		D40000000000000000000005 /* OpenCastNotificationService/ArtworkDownloadAccumulator.swift in Sources */ = {isa = PBXBuildFile; fileRef = D40000000000000000000007 /* OpenCastNotificationService/ArtworkDownloadAccumulator.swift */; };
+		D40000000000000000000006 /* OpenCastNotificationService/ArtworkDownloadRequest.swift in Sources */ = {isa = PBXBuildFile; fileRef = D40000000000000000000008 /* OpenCastNotificationService/ArtworkDownloadRequest.swift */; };
 		DC491ADBB27ACC9D7C41E635 /* OpenCastWidgets.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 192CD3FA3C8CE63DAC9FCE45 /* OpenCastWidgets.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		EA933FBA0878F5C212123D6E /* OpenCastResumeWidget.swift in Sources */ = {isa = PBXBuildFile; fileRef = F2D8080B3436C189323BFF97 /* OpenCastResumeWidget.swift */; };
 /* End PBXBuildFile section */
@@ -119,21 +119,21 @@
 		A79CF2197DE30D17D4348C0D /* OpenCastWidgets.entitlements */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.plist.entitlements; path = OpenCastWidgets.entitlements; sourceTree = "<group>"; };
 		A7D7E9055599547D36CD6ABE /* SilenceMap.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = SilenceMap.swift; sourceTree = "<group>"; };
 		B20000000000000000000001 /* OpenCastNotificationServiceTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = OpenCastNotificationServiceTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
-		B20000000000000000000010 /* ImageFormat.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenCastNotificationService/ImageFormat.swift; sourceTree = "<group>"; };
-		B20000000000000000000011 /* NotificationAttachmentFactory.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenCastNotificationService/NotificationAttachmentFactory.swift; sourceTree = "<group>"; };
-		B20000000000000000000012 /* NotificationPayload.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenCastNotificationService/NotificationPayload.swift; sourceTree = "<group>"; };
-		B2000000000000000000002A /* NotificationService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenCastNotificationService/NotificationService.swift; sourceTree = "<group>"; };
-		B2000000000000000000002C /* ArtworkDownloadByteCapDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenCastNotificationService/ArtworkDownloadByteCapDelegate.swift; sourceTree = "<group>"; };
+		B20000000000000000000010 /* OpenCastNotificationService/ImageFormat.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenCastNotificationService/ImageFormat.swift; sourceTree = "<group>"; };
+		B20000000000000000000011 /* OpenCastNotificationService/NotificationAttachmentFactory.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenCastNotificationService/NotificationAttachmentFactory.swift; sourceTree = "<group>"; };
+		B20000000000000000000012 /* OpenCastNotificationService/NotificationPayload.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenCastNotificationService/NotificationPayload.swift; sourceTree = "<group>"; };
+		B2000000000000000000002A /* OpenCastNotificationService/NotificationService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenCastNotificationService/NotificationService.swift; sourceTree = "<group>"; };
+		B2000000000000000000002C /* OpenCastNotificationService/ArtworkDownloadByteCapDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenCastNotificationService/ArtworkDownloadByteCapDelegate.swift; sourceTree = "<group>"; };
 		C30000000000000000000004 /* OpenCastNotificationContent.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = OpenCastNotificationContent.appex; sourceTree = BUILT_PRODUCTS_DIR; };
-		C30000000000000000000005 /* EpisodeNotificationViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenCastNotificationContent/EpisodeNotificationViewModel.swift; sourceTree = "<group>"; };
+		C30000000000000000000005 /* OpenCastNotificationContent/EpisodeNotificationViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenCastNotificationContent/EpisodeNotificationViewModel.swift; sourceTree = "<group>"; };
 		C3000000000000000000001E /* UserNotificationsUI.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = UserNotificationsUI.framework; path = System/Library/Frameworks/UserNotificationsUI.framework; sourceTree = SDKROOT; };
-		C30000000000000000000022 /* EpisodeNotificationArtworkView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenCastNotificationContent/EpisodeNotificationArtworkView.swift; sourceTree = "<group>"; };
-		C30000000000000000000023 /* EpisodeNotificationCardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenCastNotificationContent/EpisodeNotificationCardView.swift; sourceTree = "<group>"; };
-		C30000000000000000000025 /* EpisodeNotificationViewModel+Preview.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "OpenCastNotificationContent/EpisodeNotificationViewModel+Preview.swift"; sourceTree = "<group>"; };
+		C30000000000000000000022 /* OpenCastNotificationContent/EpisodeNotificationArtworkView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenCastNotificationContent/EpisodeNotificationArtworkView.swift; sourceTree = "<group>"; };
+		C30000000000000000000023 /* OpenCastNotificationContent/EpisodeNotificationCardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenCastNotificationContent/EpisodeNotificationCardView.swift; sourceTree = "<group>"; };
+		C30000000000000000000025 /* OpenCastNotificationContent/EpisodeNotificationViewModel+Preview.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "OpenCastNotificationContent/EpisodeNotificationViewModel+Preview.swift"; sourceTree = "<group>"; };
 		CEFFA28C8D632E5CB95E3120 /* SilenceDetector.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = SilenceDetector.swift; sourceTree = "<group>"; };
-		D40000000000000000000004 /* NotificationArtworkAttachmentIdentifier.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenCast/Notifications/NotificationArtworkAttachmentIdentifier.swift; sourceTree = "<group>"; };
-		D40000000000000000000007 /* ArtworkDownloadAccumulator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenCastNotificationService/ArtworkDownloadAccumulator.swift; sourceTree = "<group>"; };
-		D40000000000000000000008 /* ArtworkDownloadRequest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenCastNotificationService/ArtworkDownloadRequest.swift; sourceTree = "<group>"; };
+		D40000000000000000000004 /* OpenCast/Notifications/NotificationArtworkAttachmentIdentifier.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenCast/Notifications/NotificationArtworkAttachmentIdentifier.swift; sourceTree = "<group>"; };
+		D40000000000000000000007 /* OpenCastNotificationService/ArtworkDownloadAccumulator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenCastNotificationService/ArtworkDownloadAccumulator.swift; sourceTree = "<group>"; };
+		D40000000000000000000008 /* OpenCastNotificationService/ArtworkDownloadRequest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenCastNotificationService/ArtworkDownloadRequest.swift; sourceTree = "<group>"; };
 		E2F0A99C05303FF6E87B150B /* RateController.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = RateController.swift; sourceTree = "<group>"; };
 		EE562EA9B50391FB2A7C2564 /* ResumeWidgetSnapshot.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = ResumeWidgetSnapshot.swift; path = OpenCast/Widgets/ResumeWidgetSnapshot.swift; sourceTree = "<group>"; };
 		EEEC57972BE60B1502C491A0 /* Foundation.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Foundation.framework; path = System/Library/Frameworks/Foundation.framework; sourceTree = SDKROOT; };
@@ -142,21 +142,21 @@
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
-		A1000000000000000000002D /* Exceptions for "OpenCast" folder in "OpenCast" target */ = {
+		A1000000000000000000002D /* PBXFileSystemSynchronizedBuildFileExceptionSet */ = {
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
 				Resources/Info.plist,
 			);
 			target = A10000000000000000000007 /* OpenCast */;
 		};
-		A10000000000000000000037 /* Exceptions for "OpenCastNotificationService" folder in "OpenCastNotificationService" target */ = {
+		A10000000000000000000037 /* PBXFileSystemSynchronizedBuildFileExceptionSet */ = {
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
 				Info.plist,
 			);
 			target = A1000000000000000000003C /* OpenCastNotificationService */;
 		};
-		C30000000000000000000006 /* Exceptions for "OpenCastNotificationContent" folder in "OpenCastNotificationContent" target */ = {
+		C30000000000000000000006 /* PBXFileSystemSynchronizedBuildFileExceptionSet */ = {
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
 				Info.plist,
@@ -166,75 +166,12 @@
 /* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
-		A1000000000000000000000C /* OpenCast */ = {
-			isa = PBXFileSystemSynchronizedRootGroup;
-			exceptions = (
-				A1000000000000000000002D /* Exceptions for "OpenCast" folder in "OpenCast" target */,
-			);
-			explicitFileTypes = {
-			};
-			explicitFolders = (
-			);
-			path = OpenCast;
-			sourceTree = "<group>";
-		};
-		A1000000000000000000000D /* OpenCastTests */ = {
-			isa = PBXFileSystemSynchronizedRootGroup;
-			exceptions = (
-			);
-			explicitFileTypes = {
-			};
-			explicitFolders = (
-			);
-			path = OpenCastTests;
-			sourceTree = "<group>";
-		};
-		A1000000000000000000000E /* OpenCastUITests */ = {
-			isa = PBXFileSystemSynchronizedRootGroup;
-			exceptions = (
-			);
-			explicitFileTypes = {
-			};
-			explicitFolders = (
-			);
-			path = OpenCastUITests;
-			sourceTree = "<group>";
-		};
-		A10000000000000000000038 /* OpenCastNotificationService */ = {
-			isa = PBXFileSystemSynchronizedRootGroup;
-			exceptions = (
-				A10000000000000000000037 /* Exceptions for "OpenCastNotificationService" folder in "OpenCastNotificationService" target */,
-			);
-			explicitFileTypes = {
-			};
-			explicitFolders = (
-			);
-			path = OpenCastNotificationService;
-			sourceTree = "<group>";
-		};
-		B20000000000000000000002 /* OpenCastNotificationServiceTests */ = {
-			isa = PBXFileSystemSynchronizedRootGroup;
-			exceptions = (
-			);
-			explicitFileTypes = {
-			};
-			explicitFolders = (
-			);
-			path = OpenCastNotificationServiceTests;
-			sourceTree = "<group>";
-		};
-		C30000000000000000000007 /* OpenCastNotificationContent */ = {
-			isa = PBXFileSystemSynchronizedRootGroup;
-			exceptions = (
-				C30000000000000000000006 /* Exceptions for "OpenCastNotificationContent" folder in "OpenCastNotificationContent" target */,
-			);
-			explicitFileTypes = {
-			};
-			explicitFolders = (
-			);
-			path = OpenCastNotificationContent;
-			sourceTree = "<group>";
-		};
+		A1000000000000000000000C /* OpenCast */ = {isa = PBXFileSystemSynchronizedRootGroup; exceptions = (A1000000000000000000002D /* PBXFileSystemSynchronizedBuildFileExceptionSet */, ); explicitFileTypes = {}; explicitFolders = (); path = OpenCast; sourceTree = "<group>"; };
+		A1000000000000000000000D /* OpenCastTests */ = {isa = PBXFileSystemSynchronizedRootGroup; explicitFileTypes = {}; explicitFolders = (); path = OpenCastTests; sourceTree = "<group>"; };
+		A1000000000000000000000E /* OpenCastUITests */ = {isa = PBXFileSystemSynchronizedRootGroup; explicitFileTypes = {}; explicitFolders = (); path = OpenCastUITests; sourceTree = "<group>"; };
+		A10000000000000000000038 /* OpenCastNotificationService */ = {isa = PBXFileSystemSynchronizedRootGroup; exceptions = (A10000000000000000000037 /* PBXFileSystemSynchronizedBuildFileExceptionSet */, ); explicitFileTypes = {}; explicitFolders = (); path = OpenCastNotificationService; sourceTree = "<group>"; };
+		B20000000000000000000002 /* OpenCastNotificationServiceTests */ = {isa = PBXFileSystemSynchronizedRootGroup; explicitFileTypes = {}; explicitFolders = (); path = OpenCastNotificationServiceTests; sourceTree = "<group>"; };
+		C30000000000000000000007 /* OpenCastNotificationContent */ = {isa = PBXFileSystemSynchronizedRootGroup; exceptions = (C30000000000000000000006 /* PBXFileSystemSynchronizedBuildFileExceptionSet */, ); explicitFileTypes = {}; explicitFolders = (); path = OpenCastNotificationContent; sourceTree = "<group>"; };
 /* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -387,19 +324,19 @@
 		B3DF43342FE8A1090089FE77 /* Recovered References */ = {
 			isa = PBXGroup;
 			children = (
-				B20000000000000000000010 /* ImageFormat.swift */,
-				B20000000000000000000011 /* NotificationAttachmentFactory.swift */,
-				B20000000000000000000012 /* NotificationPayload.swift */,
-				B2000000000000000000002A /* NotificationService.swift */,
-				B2000000000000000000002C /* ArtworkDownloadByteCapDelegate.swift */,
-				D40000000000000000000007 /* ArtworkDownloadAccumulator.swift */,
-				D40000000000000000000008 /* ArtworkDownloadRequest.swift */,
-				D40000000000000000000004 /* NotificationArtworkAttachmentIdentifier.swift */,
+				B20000000000000000000010 /* OpenCastNotificationService/ImageFormat.swift */,
+				B20000000000000000000011 /* OpenCastNotificationService/NotificationAttachmentFactory.swift */,
+				B20000000000000000000012 /* OpenCastNotificationService/NotificationPayload.swift */,
+				B2000000000000000000002A /* OpenCastNotificationService/NotificationService.swift */,
+				B2000000000000000000002C /* OpenCastNotificationService/ArtworkDownloadByteCapDelegate.swift */,
+				D40000000000000000000007 /* OpenCastNotificationService/ArtworkDownloadAccumulator.swift */,
+				D40000000000000000000008 /* OpenCastNotificationService/ArtworkDownloadRequest.swift */,
+				D40000000000000000000004 /* OpenCast/Notifications/NotificationArtworkAttachmentIdentifier.swift */,
 				C3000000000000000000001E /* UserNotificationsUI.framework */,
-				C30000000000000000000005 /* EpisodeNotificationViewModel.swift */,
-				C30000000000000000000022 /* EpisodeNotificationArtworkView.swift */,
-				C30000000000000000000023 /* EpisodeNotificationCardView.swift */,
-				C30000000000000000000025 /* EpisodeNotificationViewModel+Preview.swift */,
+				C30000000000000000000005 /* OpenCastNotificationContent/EpisodeNotificationViewModel.swift */,
+				C30000000000000000000022 /* OpenCastNotificationContent/EpisodeNotificationArtworkView.swift */,
+				C30000000000000000000023 /* OpenCastNotificationContent/EpisodeNotificationCardView.swift */,
+				C30000000000000000000025 /* OpenCastNotificationContent/EpisodeNotificationViewModel+Preview.swift */,
 			);
 			name = "Recovered References";
 			sourceTree = "<group>";
@@ -614,9 +551,9 @@
 			mainGroup = A10000000000000000000012;
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
-				A10000000000000000000023 /* XCLocalSwiftPackageReference "OpenCastCore" */,
-				A10000000000000000000024 /* XCLocalSwiftPackageReference "OpenCastPlayback" */,
-				A10000000000000000000043 /* XCLocalSwiftPackageReference "OpenCastTranscription" */,
+				A10000000000000000000023 /* XCLocalSwiftPackageReference "Packages/OpenCastCore" */,
+				A10000000000000000000024 /* XCLocalSwiftPackageReference "Packages/OpenCastPlayback" */,
+				A10000000000000000000043 /* XCLocalSwiftPackageReference "Packages/OpenCastTranscription" */,
 			);
 			productRefGroup = A10000000000000000000014 /* Products */;
 			projectDirPath = "";
@@ -759,7 +696,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				D40000000000000000000001 /* NotificationArtworkAttachmentIdentifier.swift in Sources */,
+				D40000000000000000000001 /* OpenCast/Notifications/NotificationArtworkAttachmentIdentifier.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -767,18 +704,18 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				D40000000000000000000003 /* NotificationArtworkAttachmentIdentifier.swift in Sources */,
-				D40000000000000000000005 /* ArtworkDownloadAccumulator.swift in Sources */,
-				D40000000000000000000006 /* ArtworkDownloadRequest.swift in Sources */,
-				B20000000000000000000013 /* ImageFormat.swift in Sources */,
-				B20000000000000000000014 /* NotificationAttachmentFactory.swift in Sources */,
-				B20000000000000000000015 /* NotificationPayload.swift in Sources */,
-				B2000000000000000000002B /* NotificationService.swift in Sources */,
-				B2000000000000000000002D /* ArtworkDownloadByteCapDelegate.swift in Sources */,
-				C30000000000000000000020 /* EpisodeNotificationArtworkView.swift in Sources */,
-				C30000000000000000000021 /* EpisodeNotificationCardView.swift in Sources */,
-				C30000000000000000000002 /* EpisodeNotificationViewModel.swift in Sources */,
-				C30000000000000000000024 /* EpisodeNotificationViewModel+Preview.swift in Sources */,
+				D40000000000000000000003 /* OpenCast/Notifications/NotificationArtworkAttachmentIdentifier.swift in Sources */,
+				D40000000000000000000005 /* OpenCastNotificationService/ArtworkDownloadAccumulator.swift in Sources */,
+				D40000000000000000000006 /* OpenCastNotificationService/ArtworkDownloadRequest.swift in Sources */,
+				B20000000000000000000013 /* OpenCastNotificationService/ImageFormat.swift in Sources */,
+				B20000000000000000000014 /* OpenCastNotificationService/NotificationAttachmentFactory.swift in Sources */,
+				B20000000000000000000015 /* OpenCastNotificationService/NotificationPayload.swift in Sources */,
+				B2000000000000000000002B /* OpenCastNotificationService/NotificationService.swift in Sources */,
+				B2000000000000000000002D /* OpenCastNotificationService/ArtworkDownloadByteCapDelegate.swift in Sources */,
+				C30000000000000000000020 /* OpenCastNotificationContent/EpisodeNotificationArtworkView.swift in Sources */,
+				C30000000000000000000021 /* OpenCastNotificationContent/EpisodeNotificationCardView.swift in Sources */,
+				C30000000000000000000002 /* OpenCastNotificationContent/EpisodeNotificationViewModel.swift in Sources */,
+				C30000000000000000000024 /* OpenCastNotificationContent/EpisodeNotificationViewModel+Preview.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -786,7 +723,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				D40000000000000000000002 /* NotificationArtworkAttachmentIdentifier.swift in Sources */,
+				D40000000000000000000002 /* OpenCast/Notifications/NotificationArtworkAttachmentIdentifier.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -853,7 +790,7 @@
 				INFOPLIST_KEY_CFBundleDisplayName = OpenCast;
 				IPHONEOS_DEPLOYMENT_TARGET = 27.0;
 				MARKETING_VERSION = 2026.10.1;
-				PRODUCT_BUNDLE_IDENTIFIER = com.connor.opencast.widgets;
+				PRODUCT_BUNDLE_IDENTIFIER = mk.lan.opencast.widgets;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = iphoneos;
 				SKIP_INSTALL = YES;
@@ -879,7 +816,7 @@
 				INFOPLIST_KEY_CFBundleDisplayName = OpenCast;
 				IPHONEOS_DEPLOYMENT_TARGET = 27.0;
 				MARKETING_VERSION = 2026.10.1;
-				PRODUCT_BUNDLE_IDENTIFIER = com.connor.opencast.widgets;
+				PRODUCT_BUNDLE_IDENTIFIER = mk.lan.opencast.widgets;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = iphoneos;
 				SKIP_INSTALL = YES;
@@ -1023,10 +960,11 @@
 				CODE_SIGN_ENTITLEMENTS = OpenCast/Resources/OpenCast.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 283;
-				DEVELOPMENT_TEAM = "";
+				DEVELOPMENT_TEAM = XF6X92W4W9;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = OpenCast/Resources/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = opencast;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
@@ -1034,7 +972,7 @@
 				MARKETING_VERSION = 2026.10.1;
 				OPENCAST_APP_STORE_SCREENSHOT_FIXTURE_OUTPUT_DIR = "$(DERIVED_FILE_DIR)/AppStoreScreenshotFixturesDisabled";
 				OPENCAST_INCLUDE_APP_STORE_SCREENSHOT_FIXTURES = NO;
-				PRODUCT_BUNDLE_IDENTIFIER = com.connor.opencast;
+				PRODUCT_BUNDLE_IDENTIFIER = mk.lan.opencast;
 				PRODUCT_NAME = OpenCast;
 				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
 				SWIFT_EMIT_LOC_STRINGS = YES;
@@ -1052,10 +990,11 @@
 				CODE_SIGN_ENTITLEMENTS = OpenCast/Resources/OpenCastProduction.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 283;
-				DEVELOPMENT_TEAM = "";
+				DEVELOPMENT_TEAM = XF6X92W4W9;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = OpenCast/Resources/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = opencast;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
@@ -1063,7 +1002,7 @@
 				MARKETING_VERSION = 2026.10.1;
 				OPENCAST_APP_STORE_SCREENSHOT_FIXTURE_OUTPUT_DIR = "$(DERIVED_FILE_DIR)/AppStoreScreenshotFixturesDisabled";
 				OPENCAST_INCLUDE_APP_STORE_SCREENSHOT_FIXTURES = NO;
-				PRODUCT_BUNDLE_IDENTIFIER = com.connor.opencast;
+				PRODUCT_BUNDLE_IDENTIFIER = mk.lan.opencast;
 				PRODUCT_NAME = OpenCast;
 				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
 				SWIFT_EMIT_LOC_STRINGS = YES;
@@ -1087,7 +1026,7 @@
 					"@loader_path/Frameworks",
 				);
 				MARKETING_VERSION = 2026.10.1;
-				PRODUCT_BUNDLE_IDENTIFIER = com.connor.opencast.tests;
+				PRODUCT_BUNDLE_IDENTIFIER = mk.lan.opencast.tests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_STRICT_CONCURRENCY = complete;
 				SWIFT_VERSION = 6.0;
@@ -1109,7 +1048,7 @@
 					"@loader_path/Frameworks",
 				);
 				MARKETING_VERSION = 2026.10.1;
-				PRODUCT_BUNDLE_IDENTIFIER = com.connor.opencast.tests;
+				PRODUCT_BUNDLE_IDENTIFIER = mk.lan.opencast.tests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_STRICT_CONCURRENCY = complete;
 				SWIFT_VERSION = 6.0;
@@ -1131,7 +1070,7 @@
 					"@loader_path/Frameworks",
 				);
 				MARKETING_VERSION = 2026.10.1;
-				PRODUCT_BUNDLE_IDENTIFIER = com.connor.opencast.uitests;
+				PRODUCT_BUNDLE_IDENTIFIER = mk.lan.opencast.uitests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_STRICT_CONCURRENCY = complete;
 				SWIFT_VERSION = 6.0;
@@ -1152,7 +1091,7 @@
 					"@loader_path/Frameworks",
 				);
 				MARKETING_VERSION = 2026.10.1;
-				PRODUCT_BUNDLE_IDENTIFIER = com.connor.opencast.uitests;
+				PRODUCT_BUNDLE_IDENTIFIER = mk.lan.opencast.uitests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_STRICT_CONCURRENCY = complete;
 				SWIFT_VERSION = 6.0;
@@ -1229,10 +1168,11 @@
 				CODE_SIGN_ENTITLEMENTS = OpenCast/Resources/OpenCastNotificationsInternal.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 283;
-				DEVELOPMENT_TEAM = "";
+				DEVELOPMENT_TEAM = XF6X92W4W9;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = OpenCast/Resources/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = opencast;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
@@ -1240,7 +1180,7 @@
 				MARKETING_VERSION = 2026.10.1;
 				OPENCAST_APP_STORE_SCREENSHOT_FIXTURE_OUTPUT_DIR = "$(DERIVED_FILE_DIR)/AppStoreScreenshotFixturesDisabled";
 				OPENCAST_INCLUDE_APP_STORE_SCREENSHOT_FIXTURES = NO;
-				PRODUCT_BUNDLE_IDENTIFIER = com.connor.opencast;
+				PRODUCT_BUNDLE_IDENTIFIER = mk.lan.opencast;
 				PRODUCT_NAME = OpenCast;
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "$(inherited)";
 				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
@@ -1265,7 +1205,7 @@
 					"@loader_path/Frameworks",
 				);
 				MARKETING_VERSION = 2026.10.1;
-				PRODUCT_BUNDLE_IDENTIFIER = com.connor.opencast.tests;
+				PRODUCT_BUNDLE_IDENTIFIER = mk.lan.opencast.tests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "$(inherited)";
 				SWIFT_STRICT_CONCURRENCY = complete;
@@ -1287,7 +1227,7 @@
 					"@loader_path/Frameworks",
 				);
 				MARKETING_VERSION = 2026.10.1;
-				PRODUCT_BUNDLE_IDENTIFIER = com.connor.opencast.uitests;
+				PRODUCT_BUNDLE_IDENTIFIER = mk.lan.opencast.uitests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "$(inherited)";
 				SWIFT_STRICT_CONCURRENCY = complete;
@@ -1312,7 +1252,7 @@
 					"@executable_path/../../Frameworks",
 				);
 				MARKETING_VERSION = 2026.10.1;
-				PRODUCT_BUNDLE_IDENTIFIER = com.connor.opencast.NotificationService;
+				PRODUCT_BUNDLE_IDENTIFIER = mk.lan.opencast.NotificationService;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SKIP_INSTALL = YES;
 				SWIFT_EMIT_LOC_STRINGS = YES;
@@ -1339,7 +1279,7 @@
 					"@executable_path/../../Frameworks",
 				);
 				MARKETING_VERSION = 2026.10.1;
-				PRODUCT_BUNDLE_IDENTIFIER = com.connor.opencast.NotificationService;
+				PRODUCT_BUNDLE_IDENTIFIER = mk.lan.opencast.NotificationService;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SKIP_INSTALL = YES;
 				SWIFT_EMIT_LOC_STRINGS = YES;
@@ -1365,7 +1305,7 @@
 					"@executable_path/../../Frameworks",
 				);
 				MARKETING_VERSION = 2026.10.1;
-				PRODUCT_BUNDLE_IDENTIFIER = com.connor.opencast.NotificationService;
+				PRODUCT_BUNDLE_IDENTIFIER = mk.lan.opencast.NotificationService;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SKIP_INSTALL = YES;
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "$(inherited)";
@@ -1390,7 +1330,7 @@
 					"@loader_path/Frameworks",
 				);
 				MARKETING_VERSION = 2026.10.1;
-				PRODUCT_BUNDLE_IDENTIFIER = com.connor.opencast.notificationservicetests;
+				PRODUCT_BUNDLE_IDENTIFIER = mk.lan.opencast.notificationservicetests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_STRICT_CONCURRENCY = complete;
 				SWIFT_VERSION = 6.0;
@@ -1410,7 +1350,7 @@
 					"@loader_path/Frameworks",
 				);
 				MARKETING_VERSION = 2026.10.1;
-				PRODUCT_BUNDLE_IDENTIFIER = com.connor.opencast.notificationservicetests;
+				PRODUCT_BUNDLE_IDENTIFIER = mk.lan.opencast.notificationservicetests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_STRICT_CONCURRENCY = complete;
 				SWIFT_VERSION = 6.0;
@@ -1430,7 +1370,7 @@
 					"@loader_path/Frameworks",
 				);
 				MARKETING_VERSION = 2026.10.1;
-				PRODUCT_BUNDLE_IDENTIFIER = com.connor.opencast.notificationservicetests;
+				PRODUCT_BUNDLE_IDENTIFIER = mk.lan.opencast.notificationservicetests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "$(inherited)";
 				SWIFT_STRICT_CONCURRENCY = complete;
@@ -1452,7 +1392,7 @@
 				INFOPLIST_KEY_CFBundleDisplayName = OpenCast;
 				IPHONEOS_DEPLOYMENT_TARGET = 27.0;
 				MARKETING_VERSION = 2026.10.1;
-				PRODUCT_BUNDLE_IDENTIFIER = com.connor.opencast.widgets;
+				PRODUCT_BUNDLE_IDENTIFIER = mk.lan.opencast.widgets;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = iphoneos;
 				SKIP_INSTALL = YES;
@@ -1481,7 +1421,7 @@
 					"@executable_path/../../Frameworks",
 				);
 				MARKETING_VERSION = 2026.10.1;
-				PRODUCT_BUNDLE_IDENTIFIER = com.connor.opencast.NotificationContent;
+				PRODUCT_BUNDLE_IDENTIFIER = mk.lan.opencast.NotificationContent;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SKIP_INSTALL = YES;
 				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
@@ -1509,7 +1449,7 @@
 					"@executable_path/../../Frameworks",
 				);
 				MARKETING_VERSION = 2026.10.1;
-				PRODUCT_BUNDLE_IDENTIFIER = com.connor.opencast.NotificationContent;
+				PRODUCT_BUNDLE_IDENTIFIER = mk.lan.opencast.NotificationContent;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SKIP_INSTALL = YES;
 				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
@@ -1536,7 +1476,7 @@
 					"@executable_path/../../Frameworks",
 				);
 				MARKETING_VERSION = 2026.10.1;
-				PRODUCT_BUNDLE_IDENTIFIER = com.connor.opencast.NotificationContent;
+				PRODUCT_BUNDLE_IDENTIFIER = mk.lan.opencast.NotificationContent;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SKIP_INSTALL = YES;
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "$(inherited)";
@@ -1635,15 +1575,15 @@
 /* End XCConfigurationList section */
 
 /* Begin XCLocalSwiftPackageReference section */
-		A10000000000000000000023 /* XCLocalSwiftPackageReference "OpenCastCore" */ = {
+		A10000000000000000000023 /* XCLocalSwiftPackageReference "Packages/OpenCastCore" */ = {
 			isa = XCLocalSwiftPackageReference;
 			relativePath = Packages/OpenCastCore;
 		};
-		A10000000000000000000024 /* XCLocalSwiftPackageReference "OpenCastPlayback" */ = {
+		A10000000000000000000024 /* XCLocalSwiftPackageReference "Packages/OpenCastPlayback" */ = {
 			isa = XCLocalSwiftPackageReference;
 			relativePath = Packages/OpenCastPlayback;
 		};
-		A10000000000000000000043 /* XCLocalSwiftPackageReference "OpenCastTranscription" */ = {
+		A10000000000000000000043 /* XCLocalSwiftPackageReference "Packages/OpenCastTranscription" */ = {
 			isa = XCLocalSwiftPackageReference;
 			relativePath = Packages/OpenCastTranscription;
 		};
@@ -1652,17 +1592,17 @@
 /* Begin XCSwiftPackageProductDependency section */
 		A10000000000000000000002 /* OpenCastCore */ = {
 			isa = XCSwiftPackageProductDependency;
-			package = A10000000000000000000023 /* XCLocalSwiftPackageReference "OpenCastCore" */;
+			package = A10000000000000000000023 /* XCLocalSwiftPackageReference "Packages/OpenCastCore" */;
 			productName = OpenCastCore;
 		};
 		A10000000000000000000004 /* OpenCastPlayback */ = {
 			isa = XCSwiftPackageProductDependency;
-			package = A10000000000000000000024 /* XCLocalSwiftPackageReference "OpenCastPlayback" */;
+			package = A10000000000000000000024 /* XCLocalSwiftPackageReference "Packages/OpenCastPlayback" */;
 			productName = OpenCastPlayback;
 		};
 		A10000000000000000000046 /* OpenCastTranscription */ = {
 			isa = XCSwiftPackageProductDependency;
-			package = A10000000000000000000043 /* XCLocalSwiftPackageReference "OpenCastTranscription" */;
+			package = A10000000000000000000043 /* XCLocalSwiftPackageReference "Packages/OpenCastTranscription" */;
 			productName = OpenCastTranscription;
 		};
 /* End XCSwiftPackageProductDependency section */

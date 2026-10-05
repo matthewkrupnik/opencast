@@ -10,7 +10,7 @@ import OSLog
 final class AppleSpeechAssetStore {
     private static let localeLastUsedDefaultsKey = "appleSpeech.localeLastUsedAt"
 
-    private static let logger = Logger(subsystem: "com.connor.opencast", category: "AppleSpeechAssets")
+    private static let logger = Logger(subsystem: "mk.lan.opencast", category: "AppleSpeechAssets")
 
     private(set) var state: AppleSpeechAssetState = .unknown
 

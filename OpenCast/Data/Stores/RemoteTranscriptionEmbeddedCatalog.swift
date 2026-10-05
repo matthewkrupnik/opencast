@@ -16,11 +16,11 @@ nonisolated enum RemoteTranscriptionEmbeddedCatalog {
 
     static let products: [OpenCastRemoteTranscriptionCatalogProduct] = [
         OpenCastRemoteTranscriptionCatalogProduct(
-            productID: "com.connor.opencast.transcription.hours20.v1",
+            productID: "mk.lan.opencast.transcription.hours20.v1",
             grantSeconds: 72_000
         ),
         OpenCastRemoteTranscriptionCatalogProduct(
-            productID: "com.connor.opencast.transcription.hours100.v1",
+            productID: "mk.lan.opencast.transcription.hours100.v1",
             grantSeconds: 360_000
         ),
     ]

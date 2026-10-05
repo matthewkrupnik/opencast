@@ -24,7 +24,7 @@ enum TranscriptIntelligenceEvaluationRunner {
         outputDirectory.appending(path: "report.json")
     }
 
-    private static let logger = Logger(subsystem: "com.connor.opencast", category: "TranscriptIntelligenceEvaluation")
+    private static let logger = Logger(subsystem: "mk.lan.opencast", category: "TranscriptIntelligenceEvaluation")
     private static var hasStarted = false
 
     nonisolated static var isRequested: Bool {

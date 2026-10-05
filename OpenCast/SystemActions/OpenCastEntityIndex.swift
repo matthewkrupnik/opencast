@@ -11,7 +11,7 @@ actor OpenCastEntityIndex {
     private var isUpdating = false
     private var lastUpdateError: (any Error)?
     private var waiters: [UUID: CheckedContinuation<Void, any Error>] = [:]
-    private let logger = Logger(subsystem: "com.connor.opencast", category: "SystemEntityIndex")
+    private let logger = Logger(subsystem: "mk.lan.opencast", category: "SystemEntityIndex")
 
     func update(_ catalog: OpenCastEntityCatalog, rebuild: Bool = false) async {
         pending = catalog

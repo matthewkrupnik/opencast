@@ -3,7 +3,7 @@ import Foundation
 import OSLog
 
 struct BGTaskSchedulerAdFreePassScheduler: AdFreePassContinuedTaskScheduling {
-    nonisolated private static let logger = Logger(subsystem: "com.connor.opencast", category: "AdFreePassBackgroundRaw")
+    nonisolated private static let logger = Logger(subsystem: "mk.lan.opencast", category: "AdFreePassBackgroundRaw")
 
     func registerLaunchHandler(
         identifier: String,

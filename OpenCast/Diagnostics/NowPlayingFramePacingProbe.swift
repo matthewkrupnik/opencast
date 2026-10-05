@@ -20,9 +20,9 @@ import os
 final class NowPlayingFramePacingProbe: NSObject {
     static let shared = NowPlayingFramePacingProbe()
 
-    private let logger = Logger(subsystem: "com.connor.opencast.perf", category: "framepacing")
+    private let logger = Logger(subsystem: "mk.lan.opencast.perf", category: "framepacing")
     private static let signposter = OSSignposter(
-        subsystem: "com.connor.opencast.perf",
+        subsystem: "mk.lan.opencast.perf",
         category: "NowPlaying"
     )
 

@@ -5,7 +5,7 @@ import UserNotifications
 struct TranscriptionInterruptedNotificationScheduler {
     static let threadIdentifier = "opencast-transcription-interrupted"
 
-    private static let logger = Logger(subsystem: "com.connor.opencast", category: "TranscriptGenerationBackground")
+    private static let logger = Logger(subsystem: "mk.lan.opencast", category: "TranscriptGenerationBackground")
 
     var center: any AdFreePassNotificationCenter = UNUserNotificationCenter.current()
 

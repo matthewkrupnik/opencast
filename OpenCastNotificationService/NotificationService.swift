@@ -7,7 +7,7 @@ import UserNotifications
 final class NotificationService: UNNotificationServiceExtension, @unchecked Sendable {
     private static let maxArtworkBytes = 10 * 1024 * 1024
     private static let artworkLogger = Logger(
-        subsystem: "com.connor.opencast",
+        subsystem: "mk.lan.opencast",
         category: "NotificationServiceArtwork"
     )
 

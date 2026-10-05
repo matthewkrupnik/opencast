@@ -12,7 +12,7 @@ enum TranscriptIntelligenceToolProbe {
     nonisolated static let requestArgument = "--transcript-intelligence-tool-probe"
     nonisolated static let requestEnvironmentKey = "OPENCAST_TRANSCRIPT_INTELLIGENCE_TOOL_PROBE"
 
-    private static let logger = Logger(subsystem: "com.connor.opencast", category: "TranscriptIntelligenceToolProbe")
+    private static let logger = Logger(subsystem: "mk.lan.opencast", category: "TranscriptIntelligenceToolProbe")
     private static let instructions = """
         You answer questions about one podcast episode using only passages returned by the searchTranscript tool. \
         Always call searchTranscript before answering. Answer in one or two sentences and cite the segment ids you relied on. \

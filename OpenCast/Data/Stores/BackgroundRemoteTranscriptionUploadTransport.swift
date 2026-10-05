@@ -9,7 +9,7 @@ import Foundation
 /// continuation registry is guarded by a lock and every continuation is
 /// resolved exactly once (registry removal is the claim).
 final class BackgroundRemoteTranscriptionUploadTransport: NSObject, RemoteTranscriptionUploadTransport, URLSessionDataDelegate, @unchecked Sendable {
-    private static let identifierPrefix = "com.connor.opencast.remote-transcription.upload."
+    private static let identifierPrefix = "mk.lan.opencast.remote-transcription.upload."
 
     /// A second waiter registered for the same part number; the displaced
     /// waiter fails visibly instead of hanging forever.

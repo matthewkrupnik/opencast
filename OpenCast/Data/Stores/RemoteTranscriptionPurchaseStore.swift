@@ -10,7 +10,7 @@ import OSLog
 @Observable
 final class RemoteTranscriptionPurchaseStore {
     private static let appTransactionLogger = Logger(
-        subsystem: "com.connor.opencast",
+        subsystem: "mk.lan.opencast",
         category: "RemoteTranscriptionAppTransaction"
     )
 
@@ -282,11 +282,11 @@ final class RemoteTranscriptionPurchaseStore {
     /// never contacts StoreKit/the backend, and cannot compile into Release.
     func applyReviewScreenshotFixture() {
         let presentationByProductID: [String: (displayName: String, displayPrice: String)] = [
-            "com.connor.opencast.transcription.hours20.v1": (
+            "mk.lan.opencast.transcription.hours20.v1": (
                 displayName: "20 Transcription Hours",
                 displayPrice: "$0.99"
             ),
-            "com.connor.opencast.transcription.hours100.v1": (
+            "mk.lan.opencast.transcription.hours100.v1": (
                 displayName: "100 Transcription Hours",
                 displayPrice: "$4.99"
             ),

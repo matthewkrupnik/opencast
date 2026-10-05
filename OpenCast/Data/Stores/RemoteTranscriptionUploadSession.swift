@@ -12,7 +12,7 @@ import OSLog
 /// terminal failure.
 final class RemoteTranscriptionUploadSession {
     nonisolated private static let logger = Logger(
-        subsystem: "com.connor.opencast",
+        subsystem: "mk.lan.opencast",
         category: "RemoteTranscriptionUpload"
     )
 

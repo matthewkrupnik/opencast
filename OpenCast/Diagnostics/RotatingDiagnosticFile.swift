@@ -23,7 +23,7 @@ nonisolated final class RotatingDiagnosticFile: @unchecked Sendable {
     init(fileURL: URL, maximumByteCount: Int = RotatingDiagnosticFile.defaultMaximumByteCount) {
         self.fileURL = fileURL
         self.maximumByteCount = maximumByteCount
-        queue = DispatchQueue(label: "com.connor.opencast.rotating-diagnostic-file", qos: .utility)
+        queue = DispatchQueue(label: "mk.lan.opencast.rotating-diagnostic-file", qos: .utility)
     }
 
     var previousFileURL: URL {

@@ -40,7 +40,7 @@ struct RemoteTranscriptionBackendConfigurationTests {
         #expect(Set(RemoteTranscriptionAppAttestKeychainServices.all).count == 3)
         #expect(
             RemoteTranscriptionAppAttestKeychainServices.prodStaging
-                == "com.connor.opencast.remote-transcription-security.production"
+                == "mk.lan.opencast.remote-transcription-security.production"
         )
         #expect(
             RemoteTranscriptionAppAttestKeychainServices.production

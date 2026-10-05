@@ -6,7 +6,7 @@ import SwiftData
 
 final class SiriPlayMediaHandler: NSObject, INPlayMediaIntentHandling {
     nonisolated private static let logger = Logger(
-        subsystem: "com.connor.opencast",
+        subsystem: "mk.lan.opencast",
         category: "SiriMedia"
     )
 

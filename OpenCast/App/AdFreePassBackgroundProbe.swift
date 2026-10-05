@@ -8,7 +8,7 @@ enum AdFreePassBackgroundProbe {
     nonisolated static let requestArgument = "--adfreepass-bg-probe"
     nonisolated static let requestEnvironmentKey = "OPENCAST_ADFREEPASS_BG_PROBE"
 
-    private static let logger = Logger(subsystem: "com.connor.opencast", category: "AdFreePassBackgroundProbe")
+    private static let logger = Logger(subsystem: "mk.lan.opencast", category: "AdFreePassBackgroundProbe")
     private static let tickCount: Int64 = 360
 
     @MainActor private static var hasRegistered = false

@@ -136,7 +136,7 @@ private final class FeedWorkspaceCleanup: @unchecked Sendable {
     }
 
     private let state = Mutex(State())
-    private let queue = DispatchQueue(label: "com.connor.opencast.feed-workspace-cleanup", qos: .utility)
+    private let queue = DispatchQueue(label: "mk.lan.opencast.feed-workspace-cleanup", qos: .utility)
 
     func enqueue(_ url: URL) {
         let shouldSchedule = state.withLock { state in

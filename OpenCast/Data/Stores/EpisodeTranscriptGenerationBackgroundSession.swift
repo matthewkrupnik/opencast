@@ -10,7 +10,7 @@ import OSLog
 /// stream only carries phase transitions, not fractions.
 @Observable
 final class EpisodeTranscriptGenerationBackgroundSession {
-    static let identifier = "com.connor.opencast.transcript-generation"
+    static let identifier = "mk.lan.opencast.transcript-generation"
 
     private enum State: Equatable {
         case idle
@@ -19,7 +19,7 @@ final class EpisodeTranscriptGenerationBackgroundSession {
         case foregroundOnly
     }
 
-    private static let logger = Logger(subsystem: "com.connor.opencast", category: "TranscriptGenerationBackground")
+    private static let logger = Logger(subsystem: "mk.lan.opencast", category: "TranscriptGenerationBackground")
     private static let title = "Generating Transcript"
     private static let pausedSubtitle = "Paused — open OpenCast to resume"
     private static let creepInterval: Duration = .seconds(2)

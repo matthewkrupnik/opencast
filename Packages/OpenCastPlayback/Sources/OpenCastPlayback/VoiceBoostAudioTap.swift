@@ -287,7 +287,7 @@ nonisolated private enum VoiceBoostAudioTapCallbacks {
 
 nonisolated private enum VoiceBoostAudioTapSignposts {
     static let signposter = OSSignposter(
-        subsystem: "com.connor.opencast",
+        subsystem: "mk.lan.opencast",
         category: "VoiceBoostAudioTap"
     )
 }

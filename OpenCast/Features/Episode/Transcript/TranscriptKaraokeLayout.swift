@@ -8,7 +8,7 @@ import os
 /// becomes active so per-sample rendering never searches the string.
 nonisolated struct TranscriptKaraokeLayout: Equatable, Sendable {
     #if DEBUG
-    private static let logger = Logger(subsystem: "com.connor.opencast", category: "karaoke")
+    private static let logger = Logger(subsystem: "mk.lan.opencast", category: "karaoke")
     #endif
 
     let segmentID: Int
