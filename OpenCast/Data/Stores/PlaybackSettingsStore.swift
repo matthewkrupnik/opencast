@@ -7,6 +7,7 @@ import SwiftData
 final class PlaybackSettingsStore {
     static let playbackRatePreferenceKey = "playback.rate"
     static let voiceBoostModePreferenceKey = "playback.voiceBoost.mode"
+    static let smartSpeedEnabledPreferenceKey = "playback.smartSpeedEnabled"
     static let autoSkipPromosAndAdsPreferenceKey = "playback.autoSkipPromosAndAds"
     private static let voiceBoostEpisodeKeyPrefix = "playback.voiceBoost.episode."
     private static let skipBackwardIntervalKey = "playback.skip.backward"
@@ -18,6 +19,7 @@ final class PlaybackSettingsStore {
     private(set) var currentPodcastID: String?
     private(set) var skipBackwardOption = PlaybackSkipIntervalOption.defaultBackward
     private(set) var skipForwardOption = PlaybackSkipIntervalOption.defaultForward
+    private(set) var isSmartSpeedEnabled = false
     private(set) var isAutoSkipPromosAndAdsEnabled = true
     private(set) var lastErrorMessage: String?
     @ObservationIgnored private let playbackRatePersistenceOverride: ((Float, ModelContext) throws -> Void)?
@@ -54,6 +56,10 @@ final class PlaybackSettingsStore {
                 defaultOption: .defaultForward,
                 modelContext: modelContext
             )
+            isSmartSpeedEnabled = try booleanPreference(
+                key: Self.smartSpeedEnabledPreferenceKey,
+                modelContext: modelContext
+            ) ?? false
             isAutoSkipPromosAndAdsEnabled = try booleanPreference(
                 key: Self.autoSkipPromosAndAdsPreferenceKey,
                 modelContext: modelContext
@@ -68,6 +74,7 @@ final class PlaybackSettingsStore {
             voiceBoostMode = .defaultMode
             skipBackwardOption = .defaultBackward
             skipForwardOption = .defaultForward
+            isSmartSpeedEnabled = false
             isAutoSkipPromosAndAdsEnabled = true
             isVoiceBoostEnabled = true
             playback.setRate(1)
@@ -189,6 +196,34 @@ final class PlaybackSettingsStore {
             isVoiceBoostEnabled = previousValue
             applyVoiceBoost(to: playback)
             lastErrorMessage = "Unable to update Voice Boost for this episode: \(error.localizedDescription)"
+            return false
+        }
+    }
+
+    @discardableResult
+    func setSmartSpeedEnabled(
+        _ isEnabled: Bool,
+        modelContext: ModelContext,
+        playback: any PlaybackSettingsControlling
+    ) -> Bool {
+        guard isSmartSpeedEnabled != isEnabled else { return true }
+        let previous = isSmartSpeedEnabled
+        isSmartSpeedEnabled = isEnabled
+        playback.setSmartSpeedEnabled(isEnabled)
+        
+        do {
+            try LocalPreferenceRecord.upsert(
+                key: Self.smartSpeedEnabledPreferenceKey,
+                value: isEnabled.description,
+                modelContext: modelContext
+            )
+            try modelContext.save()
+            lastErrorMessage = nil
+            return true
+        } catch {
+            isSmartSpeedEnabled = previous
+            playback.setSmartSpeedEnabled(previous)
+            lastErrorMessage = "Unable to update Smart Speed: \(error.localizedDescription)"
             return false
         }
     }
@@ -400,6 +435,7 @@ final class PlaybackSettingsStore {
         applyVoiceBoost(to: playback)
         applySkipIntervals(to: playback)
         applyAutoSkip(to: playback)
+        playback.setSmartSpeedEnabled(isSmartSpeedEnabled)
     }
 
     private func applyVoiceBoost(to playback: any PlaybackSettingsControlling) {

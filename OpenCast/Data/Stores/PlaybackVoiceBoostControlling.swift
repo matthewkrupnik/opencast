@@ -10,6 +10,7 @@ protocol PlaybackSettingsControlling: PlaybackVoiceBoostControlling {
 
     func setRate(_ rate: Float)
     func setSkipIntervals(backward: TimeInterval, forward: TimeInterval)
+    func setSmartSpeedEnabled(_ isEnabled: Bool)
     func setAutoSkipEnabled(_ isEnabled: Bool)
 }
 

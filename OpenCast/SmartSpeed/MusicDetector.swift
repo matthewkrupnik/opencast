@@ -1,7 +1,7 @@
 import AVFoundation
 import SoundAnalysis
 
-final class MusicDetector: NSObject, SNResultsObserving, @unchecked Sendable {
+nonisolated final class MusicDetector: NSObject, SNResultsObserving, @unchecked Sendable {
     private let analyzer: SNAudioStreamAnalyzer
     private let request: SNClassifySoundRequest?
     private let threshold: Double

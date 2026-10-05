@@ -11,7 +11,7 @@ struct OpenCastRootView: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(\.scenePhase) private var scenePhase
 
-    @State private var selectedTab = AppSection.inbox
+    @State private var selectedTab = AppSection.playlists
     @State private var navigationPaths = AppNavigationPaths()
     @State private var sheetDestination: SheetDestination?
     @State private var isInitialSetupComplete = false
@@ -730,8 +730,8 @@ struct OpenCastRootView: View {
     }
 
     private func routeToInbox() {
-        selectedTab = .inbox
-        navigationPaths[.inbox] = []
+        selectedTab = .playlists
+        navigationPaths[.playlists] = []
     }
 
     private func openExternalURL(_ url: URL) {
@@ -791,7 +791,7 @@ struct OpenCastRootView: View {
 
     private func resetAfterDataNuke() {
         appModel.importedSubscriptionsNotification = nil
-        selectedTab = .inbox
+        selectedTab = .playlists
         navigationPaths.removeAll()
         sheetDestination = nil
         presentOnboardingIfNeeded()

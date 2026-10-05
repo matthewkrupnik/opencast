@@ -3,7 +3,7 @@ import QuartzCore
 
 extension AVAudioPCMBuffer: @unchecked Sendable {}
 
-final class SmartSpeedEngine: @unchecked Sendable {
+nonisolated final class SmartSpeedEngine: @unchecked Sendable {
     let engine = AVAudioEngine()
     let player = AVAudioPlayerNode()
     let timePitch = AVAudioUnitTimePitch()
@@ -50,11 +50,15 @@ final class SmartSpeedEngine: @unchecked Sendable {
         engine.prepare()
         try engine.start()
 
-        rateController = RateController(settings: settings, timePitch: timePitch,
-                                        silenceMap: silenceMap, musicDetector: musicDetector)
+        rateController = RateController(settings: settings, silenceMap: silenceMap, musicDetector: musicDetector) { [weak self] rate in
+            self?.timePitch.rate = rate
+        }
         
-        rateController?.currentMediaFrame = { [weak self] in
-            self?.currentMediaFrame()
+        Task { @MainActor [weak self] in
+            guard let self = self else { return }
+            self.rateController?.currentMediaFrame = { [weak self] in
+                self?.currentMediaFrame()
+            }
         }
         
         startScheduling()

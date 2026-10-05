@@ -1,6 +1,6 @@
 import Foundation
 
-final class Speedometer: @unchecked Sendable {
+nonisolated final class Speedometer: @unchecked Sendable {
     private var lastReal: TimeInterval?
     private var lastMedia: Double?
     private(set) var secondsSaved: Double = 0

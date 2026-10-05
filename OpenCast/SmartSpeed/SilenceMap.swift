@@ -1,6 +1,6 @@
 import AVFoundation
 
-final class SilenceMap: @unchecked Sendable {
+nonisolated final class SilenceMap: @unchecked Sendable {
     private let lock = NSLock()
     private var regions: [SilenceRegion] = []
 

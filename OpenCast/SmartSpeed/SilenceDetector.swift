@@ -5,7 +5,7 @@ struct SilenceRegion: Sendable {
     let endFrame: AVAudioFramePosition
 }
 
-final class SilenceDetector: @unchecked Sendable {
+nonisolated final class SilenceDetector: @unchecked Sendable {
     private let thresholdLinear: Float
     private let minimumSilenceFrames: Int
     private let attackFrames: Int

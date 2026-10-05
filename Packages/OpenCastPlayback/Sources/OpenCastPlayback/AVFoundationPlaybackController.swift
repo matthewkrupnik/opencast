@@ -316,6 +316,10 @@ public final class AVFoundationPlaybackController {
         )
     }
 
+    public func setSmartSpeedEnabled(_ isEnabled: Bool) {
+        // Implementation handled externally by SmartSpeedManager
+    }
+
     public func setAutoSkipEnabled(_ isEnabled: Bool) {
         playbackAdSkipPolicy.setEnabled(isEnabled)
         guard isEnabled, snapshot.currentEpisode != nil else {
@@ -469,6 +473,12 @@ public final class AVFoundationPlaybackController {
 
     public func skip(by interval: TimeInterval) {
         seek(to: snapshot.position + interval, intent: .skipButton)
+    }
+
+    public func setInternalRate(_ rate: Float) {
+        if isPlaybackRequested, isAudioSessionActive {
+            player.rate = rate
+        }
     }
 
     public func setRate(_ rate: Float) {

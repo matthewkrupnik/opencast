@@ -1,25 +1,24 @@
 import AVFoundation
 
-final class RateController: @unchecked Sendable {
+nonisolated final class RateController: @unchecked Sendable {
     private let settings: SmartSpeedSettings
-    private let timePitch: AVAudioUnitTimePitch
+    private let onRateChanged: (Float) -> Void
     private let silenceMap: SilenceMap
     private let musicDetector: MusicDetector?
     private var currentRate: Double = 1.0
     
     // Closure to get current media frame dynamically
-    var currentMediaFrame: (() -> AVAudioFramePosition?)?
+    @MainActor var currentMediaFrame: (@MainActor () -> AVAudioFramePosition?)?
 
-    init(settings: SmartSpeedSettings, timePitch: AVAudioUnitTimePitch,
-         silenceMap: SilenceMap, musicDetector: MusicDetector?) {
+    init(settings: SmartSpeedSettings, silenceMap: SilenceMap, musicDetector: MusicDetector?, onRateChanged: @escaping (Float) -> Void) {
         self.settings = settings
-        self.timePitch = timePitch
         self.silenceMap = silenceMap
         self.musicDetector = musicDetector
+        self.onRateChanged = onRateChanged
         self.currentRate = settings.baselineSpeed
     }
 
-    func tick() {
+    @MainActor func tick() {
         let base = settings.baselineSpeed
         var target = base
 
@@ -37,6 +36,6 @@ final class RateController: @unchecked Sendable {
             currentRate = max(currentRate - step, target)
         }
         
-        timePitch.rate = Float(currentRate)
+        onRateChanged(Float(currentRate))
     }
 }

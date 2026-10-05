@@ -27,6 +27,14 @@ struct SettingsPlaybackView: View {
                 }
             }
 
+            Section {
+                Toggle("Enable Smart Speed", isOn: smartSpeedBinding)
+            } header: {
+                Text("Smart Speed")
+            } footer: {
+                Text("Dynamically shortens silences without distorting audio.")
+            }
+
             Section("Skipping") {
                 LabeledContent("Skip Back") {
                     Picker("Skip Back", selection: skipBackwardBinding) {
@@ -66,6 +74,14 @@ struct SettingsPlaybackView: View {
             appModel.playbackSettings.voiceBoostMode
         } set: { mode in
             _ = appModel.setVoiceBoostMode(mode, modelContext: modelContext)
+        }
+    }
+
+    private var smartSpeedBinding: Binding<Bool> {
+        Binding {
+            appModel.playbackSettings.isSmartSpeedEnabled
+        } set: { enabled in
+            _ = appModel.setSmartSpeedEnabled(enabled, modelContext: modelContext)
         }
     }
 

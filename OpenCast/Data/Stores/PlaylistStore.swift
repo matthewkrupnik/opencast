@@ -44,7 +44,18 @@ final class PlaylistStore {
     func load(modelContext: ModelContext) {
         stagedIdentityMigration = nil
         do {
-            let playlistRecords = try modelContext.fetch(FetchDescriptor<PlaylistRecord>())
+            var playlistRecords = try modelContext.fetch(FetchDescriptor<PlaylistRecord>())
+            if playlistRecords.isEmpty {
+                let defaultAll = PlaylistRecord(
+                    name: "All",
+                    kind: .smart,
+                    ruleJSON: PlaylistRule(version: PlaylistRule.currentVersion).encodedJSON(),
+                    origin: .user
+                )
+                modelContext.insert(defaultAll)
+                try saveModelContext(modelContext)
+                playlistRecords = [defaultAll]
+            }
             let itemRecords = try modelContext.fetch(
                 FetchDescriptor<PlaylistItemRecord>(sortBy: Self.itemSortDescriptors)
             )

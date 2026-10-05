@@ -2,10 +2,8 @@ import SwiftUI
 
 struct OpenCastTabRootView: View {
     @Environment(OpenCastAppModel.self) private var appModel
-    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
 
     @State private var isSearchPresented = false
-    @State private var showsPlaylistsTab = false
 
     @Binding var selectedTab: AppSection
     @Binding var navigationPaths: AppNavigationPaths
@@ -29,40 +27,20 @@ struct OpenCastTabRootView: View {
                 }
             }
 
-            // `defaultVisibility(.hidden, for: .tabBar)` never leaves the compact
-            // bar on iOS 27 (six tabs fold Settings and Search into More), so the
-            // tab exists only in regular width; `updatePlaylistsTab` explains
-            // why that switch is deferred.
-            if showsPlaylistsTab {
-                Tab(
-                    AppSection.playlists.title,
-                    systemImage: AppSection.playlists.systemImage,
-                    value: AppSection.playlists
-                ) {
-                    NavigationStack(path: $navigationPaths[.playlists]) {
-                        PlaylistsView(onOpenPlaylist: openPlaylist(on: .playlists))
-                            .withOpenCastDestinations(
-                                onOpenEpisode: openEpisode(on: .playlists),
-                                onOpenPlaylist: openPlaylist(on: .playlists)
-                            )
-                    }
+            Tab(
+                AppSection.playlists.title,
+                systemImage: AppSection.playlists.systemImage,
+                value: AppSection.playlists
+            ) {
+                NavigationStack(path: $navigationPaths[.playlists]) {
+                    PlaylistsView(onOpenPlaylist: openPlaylist(on: .playlists))
+                        .withOpenCastDestinations(
+                            onOpenEpisode: openEpisode(on: .playlists),
+                            onOpenPlaylist: openPlaylist(on: .playlists)
+                        )
                 }
             }
 
-            Tab(AppSection.inbox.title, systemImage: AppSection.inbox.systemImage, value: AppSection.inbox) {
-                NavigationStack(path: $navigationPaths[.inbox]) {
-                    InboxView(
-                        onAdd: onAdd,
-                        onOpenEpisode: openEpisode(on: .inbox),
-                        onOpenAdDetectionQueue: {
-                            navigationPaths[.inbox].append(.adDetectionQueue)
-                        }
-                    )
-                    .withOpenCastDestinations(
-                        onOpenEpisode: openEpisode(on: .inbox)
-                    )
-                }
-            }
 
             Tab(
                 AppSection.downloads.title,
@@ -118,34 +96,8 @@ struct OpenCastTabRootView: View {
         .sensoryFeedback(.success, trigger: appModel.library.refreshCompletedToken)
         .onChange(of: selectedTab, initial: true) { _, selectedTab in
             isSearchPresented = selectedTab == .search
-            leavePlaylistsTabIfCompact()
-        }
-        .onChange(of: horizontalSizeClass, initial: true) { _, sizeClass in
-            updatePlaylistsTab(isRegularWidth: sizeClass == .regular)
         }
         .focusedSceneValue(\.openCastCommandActions, commandActions)
-    }
-
-    /// A size-class change reaches SwiftUI inside UIKit's trait transition,
-    /// and rebuilding the tab set there aborts in UITabBarController; the
-    /// next update is safe.
-    private func updatePlaylistsTab(isRegularWidth: Bool) {
-        guard showsPlaylistsTab != isRegularWidth else {
-            return
-        }
-        Task { @MainActor in
-            showsPlaylistsTab = isRegularWidth
-            leavePlaylistsTabIfCompact()
-        }
-    }
-
-    /// The compact bar has no Playlists button; if the tab is selected when
-    /// the width turns compact, the Library, whose Playlists row reaches the
-    /// same screen, takes over.
-    private func leavePlaylistsTabIfCompact() {
-        if selectedTab == .playlists, horizontalSizeClass == .compact {
-            selectedTab = .library
-        }
     }
 
     private func openEpisode(on section: AppSection) -> (String) -> Void {

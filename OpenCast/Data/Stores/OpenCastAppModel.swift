@@ -48,9 +48,9 @@ final class OpenCastAppModel {
     let appIcon: AppIconStore
     let podcastEpisodeListSettings: PodcastEpisodeListSettingsStore
     let libraryDisplaySettings: LibraryDisplaySettingsStore
-    let inboxEpisodeListSettings: InboxEpisodeListSettingsStore
     let recentSearches: RecentSearchesStore
     let playbackSettings: PlaybackSettingsStore
+    @ObservationIgnored private var smartSpeedManager: Any?
     let notificationSettings: NotificationSettingsStore
     let onboardingState: OnboardingStateStore
     let voiceBoostDiagnostics: VoiceBoostAudioTapDiagnostics?
@@ -210,7 +210,6 @@ final class OpenCastAppModel {
         appIcon: AppIconStore = AppIconStore(),
         podcastEpisodeListSettings: PodcastEpisodeListSettingsStore = PodcastEpisodeListSettingsStore(),
         libraryDisplaySettings: LibraryDisplaySettingsStore = LibraryDisplaySettingsStore(),
-        inboxEpisodeListSettings: InboxEpisodeListSettingsStore = InboxEpisodeListSettingsStore(),
         recentSearches: RecentSearchesStore = RecentSearchesStore(),
         playbackSettings: PlaybackSettingsStore = PlaybackSettingsStore(),
         notificationSettings: NotificationSettingsStore = NotificationSettingsStore(),
@@ -346,6 +345,7 @@ final class OpenCastAppModel {
         self.playback.setEventLogHandler { message in
             Task { await PlaybackEventLog.shared.record(message) }
         }
+
         skipZones = PlaybackSkipZoneCoordinator(
             playback: self.playback,
             downloads: downloads,
@@ -363,9 +363,9 @@ final class OpenCastAppModel {
         self.appIcon = appIcon
         self.podcastEpisodeListSettings = podcastEpisodeListSettings
         self.libraryDisplaySettings = libraryDisplaySettings
-        self.inboxEpisodeListSettings = inboxEpisodeListSettings
         self.recentSearches = recentSearches
         self.playbackSettings = playbackSettings
+        self.smartSpeedManager = SmartSpeedManager(playback: self.playback, settingsStore: self.playbackSettings)
         self.notificationSettings = notificationSettings
         self.onboardingState = onboardingState
         self.voiceBoostDiagnostics = voiceBoostDiagnostics
@@ -509,7 +509,6 @@ final class OpenCastAppModel {
             // applies to the first render.
             libraryDisplaySettings.load(modelContext: modelContext)
             playlistDisplaySettings.load(modelContext: modelContext)
-            inboxEpisodeListSettings.load(modelContext: modelContext)
             let didLoadLibrary = await library.load(modelContext: modelContext)
             await downloads.load(modelContext: modelContext)
             playbackSettings.load(modelContext: modelContext, playback: playback)
@@ -2368,6 +2367,18 @@ final class OpenCastAppModel {
     }
 
     @discardableResult
+    func setSmartSpeedEnabled(
+        _ isEnabled: Bool,
+        modelContext: ModelContext
+    ) -> Bool {
+        playbackSettings.setSmartSpeedEnabled(
+            isEnabled,
+            modelContext: modelContext,
+            playback: playback
+        )
+    }
+
+    @discardableResult
     func setAutoSkipPromosAndAdsEnabled(
         _ isEnabled: Bool,
         modelContext: ModelContext
@@ -2463,7 +2474,6 @@ final class OpenCastAppModel {
         libraryDisplaySettings.load(modelContext: modelContext)
         playlistDisplaySettings.load(modelContext: modelContext)
         playlists.sortOrder = playlistDisplaySettings.sortOrder
-        inboxEpisodeListSettings.load(modelContext: modelContext)
         recentSearches.load(modelContext: modelContext)
         playbackSettings.load(modelContext: modelContext, playback: playback)
         notificationSettings.resetAfterDataNuke()

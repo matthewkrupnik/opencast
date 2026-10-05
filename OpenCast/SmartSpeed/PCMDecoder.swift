@@ -1,6 +1,6 @@
 import AVFoundation
 
-final class PCMDecoder: @unchecked Sendable {
+nonisolated final class PCMDecoder: @unchecked Sendable {
     let file: AVAudioFile
     let format: AVAudioFormat
     private let queue = DispatchQueue(label: "smart-speed.decoder", qos: .userInitiated)

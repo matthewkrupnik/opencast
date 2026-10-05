@@ -20,7 +20,7 @@ struct PlaylistsView: View {
     var onOpenPlaylist: (String) -> Void = { _ in }
 
     private var layout: LibraryLayout {
-        appModel.libraryDisplaySettings.layout == .list ? .list : .grid
+        appModel.playlistDisplaySettings.layout.resolved(isRegularWidth: horizontalSizeClass == .regular)
     }
 
     var body: some View {
@@ -133,7 +133,7 @@ struct PlaylistsView: View {
     }
 
     private var optionsMenu: some View {
-        Menu {
+        LayoutPickerMenu(layout: layoutBinding, resolvedLayout: layout, title: "Playlist Options") {
             Picker(selection: sortOrderBinding) {
                 ForEach(PlaylistSortOrder.allCases) { sortOrder in
                     Text(sortOrder.title)
@@ -143,13 +143,22 @@ struct PlaylistsView: View {
                 Label("Sort By", systemImage: "arrow.up.arrow.down")
             }
             .pickerStyle(.menu)
-        } label: {
-            Label("Playlist Options", systemImage: "ellipsis")
         }
         .accessibilityIdentifier("Playlist Options")
-        // Keyed to user picks, not the stored value, so loading the stored
-        // order at launch stays silent.
         .sensoryFeedback(.selection, trigger: selectionFeedbackTrigger)
+    }
+
+    private var layoutBinding: Binding<LibraryLayoutPreference> {
+        Binding {
+            appModel.playlistDisplaySettings.layout
+        } set: { layout in
+            guard layout != appModel.playlistDisplaySettings.layout,
+                  appModel.playlistDisplaySettings.setLayout(layout, modelContext: modelContext)
+            else {
+                return
+            }
+            selectionFeedbackTrigger += 1
+        }
     }
 
     private var sortOrderBinding: Binding<PlaylistSortOrder> {
