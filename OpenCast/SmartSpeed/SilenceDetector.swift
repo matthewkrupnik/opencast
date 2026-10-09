@@ -1,3 +1,4 @@
+import Accelerate
 import AVFoundation
 
 struct SilenceRegion: Sendable {
@@ -11,6 +12,7 @@ nonisolated final class SilenceDetector: @unchecked Sendable {
     private let attackFrames: Int
     private let releaseFrames: Int
     private let windowSize = 512
+    private let hopSize = 64
 
     init(settings: SmartSpeedSettings, sampleRate: Double) {
         thresholdLinear = Float(pow(10.0, settings.silenceThresholdDBFS / 20.0))
@@ -19,59 +21,68 @@ nonisolated final class SilenceDetector: @unchecked Sendable {
         releaseFrames = Int(settings.releaseDuration * sampleRate)
     }
 
+    // Silence still open at the end of the previous buffer, so pauses that
+    // straddle a chunk boundary are reported once, at full length.
+    private var openSilenceStart: AVAudioFramePosition?
+    private var openSilenceEnd: AVAudioFramePosition = 0
+
     /// Scan buffer and emit silence regions in absolute file-frame coordinates.
+    /// Buffers must be fed in file order; call `finish()` after the last one.
     func detect(in buffer: AVAudioPCMBuffer, frameOffset: AVAudioFramePosition) -> [SilenceRegion] {
         guard let data = buffer.floatChannelData else { return [] }
         let length = Int(buffer.frameLength)
         let channels = Int(buffer.format.channelCount)
-        var rms = [Float](repeating: 0, count: max(length / 64, 1))
-        var rmsCount = 0
+        var regions: [SilenceRegion] = []
+
+        // Energy per 64-frame hop, computed once; each 512-frame window is the
+        // sum of the hops it covers.
+        let hopCount = (length + hopSize - 1) / hopSize
+        var hopEnergy = [Float](repeating: 0, count: hopCount)
+        for h in 0..<hopCount {
+            let n = vDSP_Length(min(hopSize, length - h * hopSize))
+            for ch in 0..<channels {
+                var sumSq: Float = 0
+                vDSP_svesq(data[ch] + h * hopSize, 1, &sumSq, n)
+                hopEnergy[h] += sumSq
+            }
+        }
 
         // Windowed RMS (hop 64)
-        var i = 0
-        while i < length {
-            var sumSq: Float = 0
+        let hopsPerWindow = windowSize / hopSize
+        var windowEnergy = hopEnergy.prefix(hopsPerWindow).reduce(0, +)
+        for h in 0..<hopCount {
+            let i = h * hopSize
             let n = min(windowSize, length - i)
-            for ch in 0..<channels {
-                let p = data[ch]
-                for j in 0..<n { sumSq += p[i + j] * p[i + j] }
+            let rms = sqrt(max(windowEnergy, 0) / Float(n * channels))
+            let hopStart = frameOffset + AVAudioFramePosition(i)
+            let hopEnd = frameOffset + AVAudioFramePosition(min(i + hopSize, length))
+            windowEnergy -= hopEnergy[h]
+            if h + hopsPerWindow < hopCount {
+                windowEnergy += hopEnergy[h + hopsPerWindow]
             }
-            rms[rmsCount] = sqrt(sumSq / Float(n * channels))
-            rmsCount += 1
-            i += 64
-        }
 
-        var regions: [SilenceRegion] = []
-        var silentRun = 0
-        var inSilence = false
-        var silenceStart = 0
-
-        for idx in 0..<rmsCount {
-            let isSilent = rms[idx] < thresholdLinear
-            if isSilent {
-                if !inSilence {
-                    silentRun = 0
-                    silenceStart = idx * 64
-                    inSilence = true
+            if rms < thresholdLinear {
+                if openSilenceStart == nil {
+                    openSilenceStart = hopStart
                 }
-                silentRun += 64
-            } else {
-                if inSilence && silentRun >= minimumSilenceFrames {
-                    regions.append(SilenceRegion(
-                        startFrame: frameOffset + Int64(silenceStart),
-                        endFrame: frameOffset + Int64(silenceStart + silentRun)))
-                }
-                inSilence = false
-                silentRun = 0
+                openSilenceEnd = hopEnd
+            } else if let region = closeOpenSilence() {
+                regions.append(region)
             }
         }
-        
-        if inSilence && silentRun >= minimumSilenceFrames {
-            regions.append(SilenceRegion(
-                startFrame: frameOffset + Int64(silenceStart),
-                endFrame: frameOffset + Int64(silenceStart + silentRun)))
-        }
-        
+
         return regions
+    }
+
+    /// Emits the silence still open at end of file, if long enough.
+    func finish() -> [SilenceRegion] {
+        closeOpenSilence().map { [$0] } ?? []
+    }
+
+    private func closeOpenSilence() -> SilenceRegion? {
+        guard let start = openSilenceStart else { return nil }
+        openSilenceStart = nil
+        guard openSilenceEnd - start >= AVAudioFramePosition(minimumSilenceFrames) else { return nil }
+        return SilenceRegion(startFrame: start, endFrame: openSilenceEnd)
     }
 }

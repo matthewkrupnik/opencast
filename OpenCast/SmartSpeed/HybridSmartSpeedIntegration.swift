@@ -74,7 +74,10 @@ nonisolated final class HybridSmartSpeedIntegration: @unchecked Sendable {
                 self.silenceMap.append(regions)
                 self.musicDetector?.feed(buf, atAudioFramePosition: currentFrameOffset)
 
-                if !more { break }
+                if !more {
+                    self.silenceMap.append(self.detector.finish())
+                    break
+                }
                 try? await Task.sleep(nanoseconds: 10_000_000)
             }
         }
