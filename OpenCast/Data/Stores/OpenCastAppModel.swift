@@ -720,10 +720,16 @@ final class OpenCastAppModel {
         guard playback.currentEpisode?.id == episode.id else {
             return
         }
+        removeListenedEpisodesFromPlaylists(modelContext: modelContext) { $0.episodeID == episode.id.rawValue }
 
         switch policy {
         case .advanceIfQueued:
+            let finishedPlaylistID = currentPlaylistSource?.playlistID
             guard !advanceToNextQueuedEpisode(modelContext: modelContext) else {
+                return
+            }
+            if let finishedPlaylistID,
+               restartPlaylistFromBeginning(finishedPlaylistID, modelContext: modelContext) {
                 return
             }
         case .stop:
@@ -731,6 +737,49 @@ final class OpenCastAppModel {
         }
 
         unloadFinishedPlayback(retainingPresentationFor: episode, modelContext: modelContext)
+    }
+
+    /// A finished or marked-played episode leaves every manual playlist that
+    /// holds it, so a playlist empties as it is listened to and its loop ends.
+    private func removeListenedEpisodesFromPlaylists(
+        modelContext: ModelContext,
+        where isListened: (PlaylistItem) -> Bool
+    ) {
+        for (playlistID, items) in playlists.itemsByPlaylistID {
+            let itemIDs = Set(items.filter(isListened).map(\.itemID))
+            guard !itemIDs.isEmpty else {
+                continue
+            }
+            _ = performPlaylistMutation {
+                playlists.remove(itemIDs: itemIDs, from: playlistID, modelContext: modelContext)
+            }
+        }
+    }
+
+    /// Loops a playlist whose last queued episode just finished: starts its
+    /// first remaining episode again and queues the rest behind it in
+    /// playlist order. Finished episodes have already left the playlist, so
+    /// this replays only what was skipped or played elsewhere; a played
+    /// episode resumes from the start.
+    private func restartPlaylistFromBeginning(_ playlistID: String, modelContext: ModelContext) -> Bool {
+        let episodes: [EpisodeListItemSnapshot]
+        if let summary = playlist(playlistID), summary.kind == .smart {
+            episodes = Array(smartPlaylistEvaluation(for: summary).episodes.prefix(Self.smartPlaylistQueueLimit))
+        } else {
+            episodes = playlists.resolvedItems(in: playlistID) { episodeSnapshot(for: $0) }
+                .compactMap(\.snapshot)
+        }
+        guard let first = episodes.first else {
+            return false
+        }
+        return playPlaylistEpisodes(
+            first,
+            in: playlistID,
+            presentsNowPlaying: false,
+            modelContext: modelContext
+        ) {
+            episodes.dropFirst().filter { $0.episodeID != first.episodeID }
+        }
     }
 
     @discardableResult
@@ -2292,6 +2341,7 @@ final class OpenCastAppModel {
     ) -> Bool {
         let didSave = library.markEpisodePlayed(episode, modelContext: modelContext)
         _ = upNextQueue.remove(episodeID: episode.episodeID, modelContext: modelContext)
+        removeListenedEpisodesFromPlaylists(modelContext: modelContext) { $0.episodeID == episode.episodeID }
         if isCurrentEpisode(episode) {
             // Mark Played is a playback command too, so unload even when persistence was already complete.
             dismissNowPlayingAndDiscardFinishedPlayback()
@@ -2339,6 +2389,7 @@ final class OpenCastAppModel {
     ) -> Bool {
         let didSave = library.markAllPlayed(forPodcastID: podcastID, modelContext: modelContext)
         _ = upNextQueue.removeAll(forPodcastID: podcastID, modelContext: modelContext)
+        removeListenedEpisodesFromPlaylists(modelContext: modelContext) { $0.podcastID == podcastID }
         if playback.currentEpisode?.podcastID.rawValue == podcastID {
             dismissNowPlayingAndDiscardFinishedPlayback()
             playback.unload()

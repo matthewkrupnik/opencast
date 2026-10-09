@@ -1118,6 +1118,106 @@ struct OpenCastAppModelPlaylistTests {
         #expect(appModel.upNextQueue.items.map(\.sourcePlaylistID) == [Self.commuteID])
     }
 
+    @Test("Finished episodes leave the playlist, which loops over what remains until it is empty")
+    func finishingPlaylistLoopsUntilEmpty() async throws {
+        let fixture = try await makePlayableFixture()
+        let appModel = fixture.appModel
+        let context = fixture.context
+        func playlistEpisodeIDs() -> [String]? {
+            appModel.playlists.itemsByPlaylistID[Self.commuteID]?.map(\.episodeID)
+        }
+        func finishCurrent() throws {
+            let episode = try #require(appModel.playback.currentEpisode)
+            appModel.handlePlaybackEpisodeFinished(episode, policy: .advanceIfQueued, modelContext: context)
+        }
+        #expect(appModel.playPlaylist(Self.commuteID, modelContext: context))
+
+        try finishCurrent()
+        #expect(playlistEpisodeIDs() == ["second", "elsewhere", "third"])
+        #expect(appModel.playback.currentEpisode?.id.rawValue == "third")
+        #expect(appModel.upNextQueue.items.isEmpty)
+
+        // The queue ran out: loop to what is left. "second" was played
+        // before Play skipped it; the unresolvable row cannot play.
+        try finishCurrent()
+        #expect(playlistEpisodeIDs() == ["second", "elsewhere"])
+        #expect(appModel.playback.currentEpisode?.id.rawValue == "second")
+        #expect(appModel.playback.position == 0)
+        #expect(appModel.currentPlaylistSourceID == Self.commuteID)
+        #expect(appModel.upNextQueue.items.isEmpty)
+
+        // Nothing playable remains, so playback stops instead of looping.
+        try finishCurrent()
+        #expect(playlistEpisodeIDs() == ["elsewhere"])
+        #expect(appModel.playback.currentEpisode == nil)
+        #expect(appModel.upNextQueue.items.isEmpty)
+        #expect(appModel.lastPlaybackError == nil)
+        #expect(appModel.lastUpNextError == nil)
+        #expect(appModel.lastPlaylistError == nil)
+    }
+
+    @Test("Mark Played removes the episode from playlists, and Mark All Played removes the show's episodes")
+    func markPlayedRemovesFromPlaylists() async throws {
+        let fixture = try await makePlayableFixture()
+        let appModel = fixture.appModel
+        let context = fixture.context
+        func playlistEpisodeIDs() -> [String]? {
+            appModel.playlists.itemsByPlaylistID[Self.commuteID]?.map(\.episodeID)
+        }
+        let first = try #require(appModel.episodeSnapshot(for: "first"))
+
+        #expect(appModel.markEpisodePlayed(first, modelContext: context))
+        #expect(playlistEpisodeIDs() == ["second", "elsewhere", "third"])
+
+        #expect(appModel.markAllEpisodesPlayed(forPodcastID: Self.podcastID, modelContext: context))
+        // "elsewhere" belongs to another show.
+        #expect(playlistEpisodeIDs() == ["elsewhere"])
+        #expect(appModel.lastPlaylistError == nil)
+    }
+
+    @Test("A finished episode leaves every manual playlist that holds it, however it was started")
+    func finishedEpisodeLeavesEveryPlaylist() async throws {
+        let fixture = try await makePlayableFixture()
+        let appModel = fixture.appModel
+        let context = fixture.context
+        let third = try #require(appModel.episodeSnapshot(for: "third"))
+        let otherID = try #require(appModel.playlists.create(name: "Other", kind: .manual, modelContext: context)).playlistID
+        #expect(appModel.performPlaylistMutation {
+            appModel.playlists.add([third], to: otherID, modelContext: context)
+        } == 1)
+        try appModel.playEpisode(third, presentsNowPlaying: false, modelContext: context)
+
+        let playing = try #require(appModel.playback.currentEpisode)
+        appModel.handlePlaybackEpisodeFinished(playing, policy: .advanceIfQueued, modelContext: context)
+
+        #expect(appModel.playlists.itemsByPlaylistID[Self.commuteID]?.map(\.episodeID) == ["first", "second", "elsewhere"])
+        #expect(appModel.playlists.itemsByPlaylistID[otherID]?.isEmpty != false)
+        #expect(appModel.playback.currentEpisode == nil)
+    }
+
+    @Test("The end-of-episode sleep timer and untagged episodes stop at the end instead of looping")
+    func stopPolicyAndUntaggedEpisodesDoNotLoop() async throws {
+        let fixture = try await makePlayableFixture()
+        let appModel = fixture.appModel
+        let context = fixture.context
+        #expect(appModel.playPlaylist(Self.commuteID, modelContext: context))
+        #expect(appModel.upNextQueue.clear(modelContext: context))
+
+        let first = try #require(appModel.playback.currentEpisode)
+        appModel.handlePlaybackEpisodeFinished(first, policy: .stop, modelContext: context)
+        #expect(appModel.playback.currentEpisode == nil)
+        // Finished under the sleep timer still counts as listened to.
+        #expect(appModel.playlists.itemsByPlaylistID[Self.commuteID]?.map(\.episodeID) == ["second", "elsewhere", "third"])
+
+        let fourth = try #require(appModel.episodeSnapshot(for: "fourth"))
+        try appModel.playEpisode(fourth, presentsNowPlaying: false, modelContext: context)
+        let untagged = try #require(appModel.playback.currentEpisode)
+        appModel.handlePlaybackEpisodeFinished(untagged, policy: .advanceIfQueued, modelContext: context)
+
+        #expect(appModel.playback.currentEpisode == nil)
+        #expect(appModel.upNextQueue.items.isEmpty)
+    }
+
     @Test("Playing a tagged row straight from Up Next derives the source from its tag")
     func directPlayOfTaggedQueueRowDerivesSource() async throws {
         let fixture = try await makePlayableFixture()
@@ -1526,7 +1626,9 @@ struct OpenCastAppModelPlaylistTests {
         }
         #expect(addedCount == 1)
         let second = try #require(appModel.episodeSnapshot(for: "second"))
-        let markedPlayed = appModel.markEpisodePlayed(second, modelContext: context)
+        // Played before it joined the playlist, so it stays listed; the app
+        // model's Mark Played would remove it.
+        let markedPlayed = appModel.library.markEpisodePlayed(second, modelContext: context)
         #expect(markedPlayed)
         #expect(appModel.library.progressRecord(for: "second")?.isPlayed == true)
         #expect(
