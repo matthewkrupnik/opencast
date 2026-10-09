@@ -26,6 +26,7 @@ final class OpenCastAppModel {
     let transcriptionModels: TranscriptionModelStore
     let transcriptionEngineSettings: TranscriptionEngineSettingsStore
     let adDetectionSettings: AdDetectionSettingsStore
+    let autoDownloadSettings = AutoDownloadSettingsStore()
     let appleSpeechAssets: AppleSpeechAssetStore
     let transcriptions: EpisodeTranscriptionStore
     let transcriptionRequests: EpisodeTranscriptionRequestCoordinator
@@ -357,7 +358,8 @@ final class OpenCastAppModel {
             transcriptions: transcriptions,
             library: resolvedLibrary,
             playback: self.playback,
-            adFreePass: adFreePass
+            adFreePass: adFreePass,
+            autoDownloadSettings: autoDownloadSettings
         )
         self.appearanceSettings = appearanceSettings
         self.appIcon = appIcon
@@ -475,6 +477,18 @@ final class OpenCastAppModel {
     }
 
     func ensureCoreStoresLoaded(modelContext: ModelContext) async {
+        library.onLibraryPublished = { [weak self, weak modelContext] in
+            guard let self, let modelContext else {
+                return
+            }
+            autoDownloadLatestEpisodes(modelContext: modelContext)
+        }
+        downloads.onDownloadCompleted = { [weak self, weak modelContext] record in
+            guard let self, let modelContext else {
+                return
+            }
+            autoDetectAdsOnDownloadIfQualified(record, modelContext: modelContext)
+        }
         playback.setRemotePlaybackRateChangeHandler { [weak self, weak modelContext] rate in
             guard let self, let modelContext else {
                 return
@@ -511,6 +525,7 @@ final class OpenCastAppModel {
             playlistDisplaySettings.load(modelContext: modelContext)
             let didLoadLibrary = await library.load(modelContext: modelContext)
             await downloads.load(modelContext: modelContext)
+            autoDownloadSettings.load(modelContext: modelContext)
             playbackSettings.load(modelContext: modelContext, playback: playback)
             podcastEpisodeListSettings.load(modelContext: modelContext)
             upNextQueue.load(
@@ -529,6 +544,7 @@ final class OpenCastAppModel {
                 lastPlaylistError = message
             }
             coreStoresHydrated = true
+            autoDownloadLatestEpisodes(modelContext: modelContext)
         }
         coreStoresLoadTask = task
         await task.value
@@ -1119,6 +1135,61 @@ final class OpenCastAppModel {
         return false
     }
 
+    @discardableResult
+    func setAutoDownloadEnabled(
+        _ isEnabled: Bool,
+        forPodcastID podcastID: String,
+        modelContext: ModelContext
+    ) -> Bool {
+        guard autoDownloadSettings.setEnabled(isEnabled, forPodcastID: podcastID, modelContext: modelContext) else {
+            return false
+        }
+        if isEnabled {
+            autoDownloadLatestEpisodes(modelContext: modelContext)
+        }
+        return true
+    }
+
+    /// Downloads each Auto-Download show's newest released episode once.
+    /// Runs on every library publication, so feed refreshes from any
+    /// entry point (and episodes synced in) are covered; it is a no-op
+    /// until downloads and settings have loaded.
+    func autoDownloadLatestEpisodes(modelContext: ModelContext) {
+        guard coreStoresHydrated else {
+            return
+        }
+
+        for podcastID in autoDownloadSettings.enabledPodcastIDs {
+            guard library.isActivelySubscribed(to: podcastID),
+                  let episode = library.latestReleasedEpisode(forPodcastID: podcastID)
+            else {
+                continue
+            }
+            let policy = AutoDownloadPolicy(
+                latestEpisodeID: episode.episodeID,
+                handledEpisodeID: autoDownloadSettings.handledEpisodeID(forPodcastID: podcastID),
+                isPlayed: library.progressRecord(for: episode.episodeID)?.isPlayed == true,
+                hasDownloadRecord: downloads.record(for: episode.episodeID) != nil
+            )
+            switch policy.decision {
+            case .none:
+                continue
+            case .download:
+                // A failed start stays unhandled, so the next publication retries it.
+                guard downloads.startDownload(for: episode, modelContext: modelContext) else {
+                    continue
+                }
+            case .markHandled:
+                break
+            }
+            autoDownloadSettings.markHandled(
+                episodeID: episode.episodeID,
+                forPodcastID: podcastID,
+                modelContext: modelContext
+            )
+        }
+    }
+
     static func downloadAllFailureMessage(failureCount: Int, candidateCount: Int, reason: String?) -> String {
         // Grammar agreement resolves only on the attributed localization path.
         let subject = failureCount == candidateCount
@@ -1366,6 +1437,9 @@ final class OpenCastAppModel {
                 modelContext: modelContext
             ) {
                 sidecarErrorMessage = sidecarErrorMessage ?? playbackSettings.lastErrorMessage
+            }
+            if !autoDownloadSettings.removePreference(forPodcastID: feedURL, modelContext: modelContext) {
+                sidecarErrorMessage = sidecarErrorMessage ?? autoDownloadSettings.lastErrorMessage
             }
         }
         let warning = sidecarErrorMessage.map {
@@ -2455,6 +2529,7 @@ final class OpenCastAppModel {
         currentPlaylistSourceID = nil
         library.resetAfterDataNuke()
         await downloads.load(modelContext: modelContext)
+        autoDownloadSettings.load(modelContext: modelContext)
         transcriptions.load(modelContext: modelContext)
         adAnalyses.load(modelContext: modelContext)
         transcriptAnalysisQueue.resetAfterDataNuke()
@@ -2568,15 +2643,43 @@ final class OpenCastAppModel {
         }
 
         Task { [weak self] in
-            await self?.enqueueAutoDetectAdsOnPlayIfQualified(
+            await self?.enqueueAutoDetectAdsIfQualified(
                 episode,
+                mode: self?.adDetectionSettings.mode ?? .onDevice,
                 modelContext: modelContext
             )
         }
     }
 
-    private func enqueueAutoDetectAdsOnPlayIfQualified(
+    /// A finished download of an auto-detect show queues its pass right
+    /// away, always on-device: auto-downloads arrive unattended, and the
+    /// cloud mode would spend transcription credits on every new episode.
+    private func autoDetectAdsOnDownloadIfQualified(
+        _ record: EpisodeDownloadRecord,
+        modelContext: ModelContext
+    ) {
+        guard library.isAdAutoDetectEnabled(forPodcastID: record.podcastID),
+              adFreePass.queueStatus(for: record.episodeID) == .notQueued,
+              let episode = episodeSnapshot(for: record.episodeID)
+        else {
+            return
+        }
+
+        Task { [weak self] in
+            // A download can finish before anything has loaded the
+            // transcripts and analyses the qualification reads.
+            await self?.ensurePlaybackDependenciesLoaded(modelContext: modelContext)
+            await self?.enqueueAutoDetectAdsIfQualified(
+                episode,
+                mode: .onDevice,
+                modelContext: modelContext
+            )
+        }
+    }
+
+    private func enqueueAutoDetectAdsIfQualified(
         _ episode: EpisodeListItemSnapshot,
+        mode: AdDetectionMode,
         modelContext: ModelContext
     ) async {
         let hasCurrentCompletedAnalysis = await adFreePass.currentCompletedAnalysisVerdict(
@@ -2600,17 +2703,17 @@ final class OpenCastAppModel {
         }
 
         // Auto passes never arm the background session;
-        // continuation requires an explicit tap. They follow the stored
-        // detection mode: cloud mode enqueues a cloud job on
-        // play with no per-episode confirmation; the authoritative credits
-        // check lives inside the cloud pass itself.
+        // continuation requires an explicit tap. Play-triggered passes
+        // follow the stored detection mode: cloud mode enqueues a cloud job
+        // on play with no per-episode confirmation; the authoritative
+        // credits check lives inside the cloud pass itself.
         adFreePass.enqueue(
             episode: episode,
             origin: .auto,
             context: adFreePassEnqueueContext,
             modelContext: modelContext,
             podcastLanguageCode: podcastLanguageCode(forPodcastID: episode.podcastID),
-            mode: adDetectionSettings.mode ?? .onDevice,
+            mode: mode,
             refreshSkipZones: { [weak self] in
                 await self?.skipZones.zoneCountAfterPass(for: episode) ?? 0
             }

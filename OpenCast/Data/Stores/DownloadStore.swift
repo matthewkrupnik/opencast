@@ -52,6 +52,9 @@ final class DownloadStore {
     @ObservationIgnored private var pauseRequestedEpisodeIDs: Set<String> = []
     @ObservationIgnored private let stateChanges = StoreChangeNotifier()
     @ObservationIgnored var onEpisodeStateChanged: (@MainActor (String) -> Void)?
+    /// A download that just finished; the app model queues automatic ad
+    /// detection from it.
+    @ObservationIgnored var onDownloadCompleted: (@MainActor (EpisodeDownloadRecord) -> Void)?
 
     private static let minimumProgressPublicationInterval: TimeInterval = 0.25
 
@@ -1188,6 +1191,7 @@ final class DownloadStore {
             try commit(episodeID: episodeID, modelContext: modelContext, resort: true)
             lastErrorMessage = nil
             lastErrorEpisodeID = nil
+            onDownloadCompleted?(record)
         }
     }
 

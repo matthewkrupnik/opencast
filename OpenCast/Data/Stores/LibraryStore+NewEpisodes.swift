@@ -53,4 +53,20 @@ extension LibraryStore {
             .compactMap { episodes[$0].publishedAt }
             .first { $0 <= asOf }
     }
+
+    /// The episode `latestReleasedEpisodeDate` dates; Auto-Download's
+    /// one candidate per show.
+    func latestReleasedEpisode(forPodcastID podcastID: String) -> EpisodeListItemSnapshot? {
+        let episodes = episodes
+        let asOf = newEpisodeReferenceDate
+        return episodeReleaseOrderByPodcastID[podcastID]?
+            .lazy
+            .map { episodes[$0] }
+            .first { episode in
+                guard let publishedAt = episode.publishedAt else {
+                    return false
+                }
+                return publishedAt <= asOf
+            }
+    }
 }

@@ -1952,7 +1952,7 @@ final class OpenCastUITests: XCTestCase {
         let confirmButton = app.sheets.buttons["Turn On"].firstMatch
         assertExists(confirmButton, named: "auto-detect confirmation action")
         assertExists(
-            elementContaining(label: "analyzed for ads when you play them", in: app),
+            elementContaining(label: "analyzed for ads when you play or download them", in: app),
             named: "auto-detect confirmation contract copy"
         )
         attachSmokeScreenshot(named: "podcast_auto_detect_confirmation")

@@ -11,6 +11,7 @@ final class DownloadCleanupCoordinator {
     private let library: LibraryStore
     private let playback: AVFoundationPlaybackController
     private let adFreePass: EpisodeAdFreePassCoordinator
+    private let autoDownloadSettings: AutoDownloadSettingsStore
     private var deferredPlayedSweepTask: Task<Void, Never>?
 
     init(
@@ -18,13 +19,15 @@ final class DownloadCleanupCoordinator {
         transcriptions: EpisodeTranscriptionStore,
         library: LibraryStore,
         playback: AVFoundationPlaybackController,
-        adFreePass: EpisodeAdFreePassCoordinator
+        adFreePass: EpisodeAdFreePassCoordinator,
+        autoDownloadSettings: AutoDownloadSettingsStore
     ) {
         self.downloads = downloads
         self.transcriptions = transcriptions
         self.library = library
         self.playback = playback
         self.adFreePass = adFreePass
+        self.autoDownloadSettings = autoDownloadSettings
     }
 
     func deleteDownload(_ record: EpisodeDownloadRecord, modelContext: ModelContext) {
@@ -96,8 +99,12 @@ final class DownloadCleanupCoordinator {
             // A download whose bytes a transcript describes is that
             // transcript's karaoke asset; sweeping it would strand the
             // transcript on a mismatch no re-download can repair (dynamic
-            // enclosures return different assemblies).
-            if TranscriptSourceAlignment.downloadMatchesTranscript(
+            // enclosures return different assemblies). Auto-Download shows
+            // opt out: their on-device ad pass always transcribes the
+            // download, so honoring this would keep every one forever, and a
+            // played episode no longer needs its karaoke audio.
+            if !autoDownloadSettings.isEnabled(forPodcastID: record.podcastID),
+               TranscriptSourceAlignment.downloadMatchesTranscript(
                 trustedDownloadSHA256: record.sourceFileSHA256,
                 documentSHA256: transcriptions.record(for: record.episodeID)?.sourceFileSHA256 ?? ""
             ) {

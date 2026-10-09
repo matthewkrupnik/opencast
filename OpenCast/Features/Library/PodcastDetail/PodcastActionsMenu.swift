@@ -59,6 +59,12 @@ struct PodcastActionsMenu: View {
                 Button("Skip Intro & Outro…", systemImage: "scissors", action: onPlaybackSettings)
 
                 Toggle(
+                    "Automatically Download",
+                    systemImage: "arrow.down.circle",
+                    isOn: autoDownloadBinding
+                )
+
+                Toggle(
                     "Automatically Detect Ads",
                     systemImage: "megaphone",
                     isOn: adAutoDetectBinding
@@ -101,7 +107,7 @@ struct PodcastActionsMenu: View {
             Button("Turn On", action: enableAdAutoDetect)
             Button("Cancel", role: .cancel) {}
         } message: {
-            Text("Episodes of this show will be analyzed for ads when you play them.")
+            Text("Episodes of this show will be analyzed for ads when you play or download them.")
         }
         .confirmationDialog(
             "Mark every episode as played?",
@@ -152,6 +158,19 @@ struct PodcastActionsMenu: View {
         } message: { message in
             Text(message)
         }
+    }
+
+    private var autoDownloadBinding: Binding<Bool> {
+        Binding(
+            get: { appModel.autoDownloadSettings.isEnabled(forPodcastID: subscription.feedURL) },
+            set: { isEnabled in
+                appModel.setAutoDownloadEnabled(
+                    isEnabled,
+                    forPodcastID: subscription.feedURL,
+                    modelContext: modelContext
+                )
+            }
+        )
     }
 
     private func refresh() {
