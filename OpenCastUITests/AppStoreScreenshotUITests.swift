@@ -261,7 +261,7 @@ final class AppStoreScreenshotUITests: XCTestCase {
         // The permission alert is SpringBoard's; a tap into the app to trigger
         // the interruption monitor would land on a playlist instead.
         let allowButton = springboard.buttons["Allow"]
-        if allowButton.waitForExistence(timeout: 3) {
+        if allowButton.existsOrWait(timeout: 3) {
             allowButton.tap()
         }
         openLibrary(in: app)
@@ -270,7 +270,7 @@ final class AppStoreScreenshotUITests: XCTestCase {
         let banner = springboard.descendants(matching: .any)
             .matching(identifier: "NotificationShortLookView")
             .firstMatch
-        XCTAssertTrue(banner.waitForExistence(timeout: 20), "New-episode banner should appear over the app")
+        XCTAssertTrue(banner.existsOrWait(timeout: 20), "New-episode banner should appear over the app")
         assertExists(
             springboard.staticTexts["What the New Telescope Saw First"],
             named: "banner episode title",
@@ -284,7 +284,7 @@ final class AppStoreScreenshotUITests: XCTestCase {
 
         banner.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).press(forDuration: 1.2)
         // "49 MIN" is rendered only by the content extension's expanded card.
-        if springboard.staticTexts["49 MIN"].waitForExistence(timeout: 5) {
+        if springboard.staticTexts["49 MIN"].existsOrWait(timeout: 5) {
             Thread.sleep(forTimeInterval: 1)
             snapshot("app_store_07_notification", timeWaitingForIdle: 0)
         }
@@ -309,14 +309,14 @@ final class AppStoreScreenshotUITests: XCTestCase {
     private func dismissSystemNotificationBanners() {
         let springboard = XCUIApplication(bundleIdentifier: "com.apple.springboard")
         let appleIntelligenceBanner = springboard.staticTexts["Ready for Apple Intelligence"]
-        guard appleIntelligenceBanner.waitForExistence(timeout: 0.25) else {
+        guard appleIntelligenceBanner.existsOrWait(timeout: 0.25) else {
             return
         }
 
         let start = appleIntelligenceBanner.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
         let end = appleIntelligenceBanner.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: -4))
         start.press(forDuration: 0.05, thenDragTo: end)
-        _ = appleIntelligenceBanner.waitForNonExistence(timeout: 1)
+        _ = appleIntelligenceBanner.absentOrWait(timeout: 1)
     }
 
     // MARK: - Playback
@@ -328,7 +328,7 @@ final class AppStoreScreenshotUITests: XCTestCase {
     private func startPrimaryEpisodePlayback(in app: XCUIApplication) {
         openAllEpisodes(in: app)
         let primaryEpisode = episodeRow(Self.primaryEpisodeID, in: app)
-        for _ in 0..<6 where !primaryEpisode.waitForExistence(timeout: 1) {
+        for _ in 0..<6 where !primaryEpisode.existsOrWait(timeout: 1) {
             app.swipeDown()
             Thread.sleep(forTimeInterval: 0.8)
         }
@@ -381,7 +381,7 @@ final class AppStoreScreenshotUITests: XCTestCase {
                 return
             }
             tapTransportButton("Skip Back 30 Seconds", in: app)
-            if pill.waitForExistence(timeout: 1.5) {
+            if pill.existsOrWait(timeout: 1.5) {
                 pill.tap()
                 Thread.sleep(forTimeInterval: 1)
             }
@@ -402,7 +402,7 @@ final class AppStoreScreenshotUITests: XCTestCase {
     private func elapsedSeconds(in app: XCUIApplication) -> TimeInterval? {
         let predicate = NSPredicate(format: "label MATCHES %@", "^[0-9]{1,2}:[0-9]{2}(:[0-9]{2})?$")
         let label = nowPlayingOverlay(in: app).staticTexts.matching(predicate).firstMatch
-        guard label.waitForExistence(timeout: 2) else {
+        guard label.existsOrWait(timeout: 2) else {
             return nil
         }
         let parts = label.label.split(separator: ":").compactMap { Double($0) }
@@ -419,11 +419,11 @@ final class AppStoreScreenshotUITests: XCTestCase {
     @MainActor
     private func pausePlayback(in app: XCUIApplication) {
         let pauseButton = app.buttons["Pause"].firstMatch
-        guard pauseButton.waitForExistence(timeout: 3) else {
+        guard pauseButton.existsOrWait(timeout: 3) else {
             return
         }
         pauseButton.tap()
-        _ = app.buttons["Play"].firstMatch.waitForExistence(timeout: 3)
+        _ = app.buttons["Play"].firstMatch.existsOrWait(timeout: 3)
     }
 
     @MainActor
@@ -456,7 +456,7 @@ final class AppStoreScreenshotUITests: XCTestCase {
             let playLast = app.buttons["Play Last"].firstMatch
             assertExists(playLast, named: "Play Last context action for \(episodeID)")
             playLast.tap()
-            _ = playLast.waitForNonExistence(timeout: 2)
+            _ = playLast.absentOrWait(timeout: 2)
         }
     }
 
@@ -490,7 +490,7 @@ final class AppStoreScreenshotUITests: XCTestCase {
         let detailsAction = app.buttons["View Episode Details"].firstMatch
         for attempt in 0..<2 {
             row.press(forDuration: 1.3)
-            if detailsAction.waitForExistence(timeout: 4) {
+            if detailsAction.existsOrWait(timeout: 4) {
                 break
             }
             XCTAssertEqual(attempt, 0, "View Episode Details context action should exist")
@@ -521,8 +521,8 @@ final class AppStoreScreenshotUITests: XCTestCase {
         for episodeID in Self.searchResultEpisodeIDs {
             assertExists(episodeRow(episodeID, in: app), named: "search result \(episodeID)", timeout: 20)
         }
-        _ = element(withIdentifier: "Search Index Updating", in: app).waitForNonExistence(timeout: 10)
-        _ = app.keyboards.firstMatch.waitForNonExistence(timeout: 3)
+        _ = element(withIdentifier: "Search Index Updating", in: app).absentOrWait(timeout: 10)
+        _ = app.keyboards.firstMatch.absentOrWait(timeout: 3)
     }
 
     @MainActor
@@ -542,7 +542,7 @@ final class AppStoreScreenshotUITests: XCTestCase {
         file: StaticString = #filePath,
         line: UInt = #line
     ) {
-        if element.waitForExistence(timeout: 1), isClearOfMiniPlayer(element, in: app) {
+        if element.existsOrWait(timeout: 1), isClearOfMiniPlayer(element, in: app) {
             return
         }
 
@@ -555,7 +555,7 @@ final class AppStoreScreenshotUITests: XCTestCase {
             }
             app.swipeUp()
             Thread.sleep(forTimeInterval: 0.8)
-            if element.waitForExistence(timeout: 1), isClearOfMiniPlayer(element, in: app) {
+            if element.existsOrWait(timeout: 1), isClearOfMiniPlayer(element, in: app) {
                 return
             }
         }
@@ -703,7 +703,7 @@ final class AppStoreScreenshotUITests: XCTestCase {
     private func openSectionRoot(_ title: String, in app: XCUIApplication) {
         openSection(title, in: app)
         for _ in 0..<4 {
-            if app.navigationBars[title].waitForExistence(timeout: 1) {
+            if app.navigationBars[title].existsOrWait(timeout: 1) {
                 return
             }
             let backButton = app.navigationBars.firstMatch.buttons.element(boundBy: 0)

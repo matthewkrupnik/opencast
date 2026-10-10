@@ -23,18 +23,18 @@ final class LargeFeedDeviceUITests: XCTestCase {
         app.launch()
         openSection("Library", in: app)
         let add = app.buttons["Add"].firstMatch
-        XCTAssertTrue(add.waitForExistence(timeout: 15))
+        XCTAssertTrue(add.existsOrWait(timeout: 15))
         add.tap()
         tapAddPodcastMenuItemIfPresented(in: app)
         let subscribe = app.buttons["Subscribe"]
-        XCTAssertTrue(subscribe.waitForExistence(timeout: 10))
+        XCTAssertTrue(subscribe.existsOrWait(timeout: 10))
         subscribe.tap()
-        XCTAssertTrue(app.activityIndicators["Subscribing"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.activityIndicators["Subscribing"].existsOrWait(timeout: 10))
         let herd = app.staticTexts["The Herd with Colin Cowherd"].firstMatch
-        XCTAssertTrue(herd.waitForExistence(timeout: 360))
+        XCTAssertTrue(herd.existsOrWait(timeout: 360))
         herd.tap()
         let count = app.staticTexts.matching(NSPredicate(format: "label MATCHES %@", "[0-9,]+ episodes.*")).firstMatch
-        XCTAssertTrue(count.waitForExistence(timeout: 20))
+        XCTAssertTrue(count.existsOrWait(timeout: 20))
         let value = count.label.components(separatedBy: " episodes")[0].replacingOccurrences(of: ",", with: "")
         XCTAssertGreaterThanOrEqual(try XCTUnwrap(Int(value)), 13_753,
                                     "The live catalog must include at least the pinned capture's history")
@@ -46,21 +46,21 @@ final class LargeFeedDeviceUITests: XCTestCase {
     func testHerdCompleteHistoryNotesPlaybackAndResume() throws {
         let app = XCUIApplication()
         app.launch()
-        if app.staticTexts["Welcome to opencast!"].waitForExistence(timeout: 8) {
+        if app.staticTexts["Welcome to opencast!"].existsOrWait(timeout: 8) {
             for title in ["Continue", "Skip", "Continue", "Skip", "Done"] {
                 let button = app.buttons[title].firstMatch
-                XCTAssertTrue(button.waitForExistence(timeout: 10))
+                XCTAssertTrue(button.existsOrWait(timeout: 10))
                 button.tap()
             }
         }
         openSection("Library", in: app)
         let herd = app.staticTexts["The Herd with Colin Cowherd"].firstMatch
-        XCTAssertTrue(herd.waitForExistence(timeout: 30))
+        XCTAssertTrue(herd.existsOrWait(timeout: 30))
         herd.tap()
         let count = app.staticTexts.matching(
             NSPredicate(format: "label MATCHES %@", "[0-9,]+ episodes.*")
         ).firstMatch
-        XCTAssertTrue(count.waitForExistence(timeout: 15), "The full catalog count must be visible")
+        XCTAssertTrue(count.existsOrWait(timeout: 15), "The full catalog count must be visible")
         XCTAssertGreaterThanOrEqual(
             try episodeCount(from: count),
             13_753,
@@ -71,23 +71,23 @@ final class LargeFeedDeviceUITests: XCTestCase {
         app.buttons["Podcast Actions"].tap()
         app.buttons["Search"].firstMatch.tap()
         let search = app.searchFields.firstMatch
-        XCTAssertTrue(search.waitForExistence(timeout: 10))
+        XCTAssertTrue(search.existsOrWait(timeout: 10))
         search.tap()
         search.typeText("Todd Gurley, Le'Veon Bell & Dumpster Fire-Archy\n")
         let oldest = app.buttons["episode-row-dc4e701da76eb30533952f9b4c90ceb1859cc84676c45f1ba4b70540082655e0"]
-        XCTAssertTrue(oldest.waitForExistence(timeout: 30), "Database search must find the oldest supplied episode")
+        XCTAssertTrue(oldest.existsOrWait(timeout: 30), "Database search must find the oldest supplied episode")
         oldest.tap()
         let overlay = app.descendants(matching: .any)["Now Playing"].firstMatch
-        XCTAssertTrue(overlay.waitForExistence(timeout: 20))
+        XCTAssertTrue(overlay.existsOrWait(timeout: 20))
         let pause = overlay.buttons["Pause"].firstMatch
-        XCTAssertTrue(pause.waitForExistence(timeout: 45), "The old MP3 must actually enter playback")
+        XCTAssertTrue(pause.existsOrWait(timeout: 45), "The old MP3 must actually enter playback")
         let progress = app.descendants(matching: .any)["Playback Progress"].firstMatch
-        XCTAssertTrue(progress.waitForExistence(timeout: 15))
+        XCTAssertTrue(progress.existsOrWait(timeout: 15))
         let before = progress.value as? String
         RunLoop.current.run(until: Date.now.addingTimeInterval(3))
         XCTAssertNotEqual(progress.value as? String, before, "Audio position must advance")
         pause.tap()
-        XCTAssertTrue(overlay.buttons["Play"].firstMatch.waitForExistence(timeout: 10))
+        XCTAssertTrue(overlay.buttons["Play"].firstMatch.existsOrWait(timeout: 10))
         progress.coordinate(withNormalizedOffset: CGVector(dx: 0.1, dy: 0.5))
             .press(forDuration: 0.1, thenDragTo: progress.coordinate(withNormalizedOffset: CGVector(dx: 0.3, dy: 0.5)))
         let savedProgress = try XCTUnwrap(progress.value as? String)
@@ -97,15 +97,15 @@ final class LargeFeedDeviceUITests: XCTestCase {
         overlay.buttons["Now Playing Episode Title"].firstMatch.tap()
         let fullNotes = app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "David Spade")).firstMatch
         for _ in 0..<5 where !fullNotes.isHittable { app.swipeUp() }
-        XCTAssertTrue(fullNotes.waitForExistence(timeout: 15), "Complete publisher notes must load on demand")
+        XCTAssertTrue(fullNotes.existsOrWait(timeout: 15), "Complete publisher notes must load on demand")
         attach(app, "Herd-old-episode-notes")
 
         app.terminate()
         app.launch()
         let miniPlayer = app.buttons["Open Now Playing"]
-        XCTAssertTrue(miniPlayer.waitForExistence(timeout: 30))
+        XCTAssertTrue(miniPlayer.existsOrWait(timeout: 30))
         miniPlayer.tap()
-        XCTAssertTrue(progress.waitForExistence(timeout: 20))
+        XCTAssertTrue(progress.existsOrWait(timeout: 20))
         let restoredProgress = try XCTUnwrap(progress.value as? String)
         let savedSeconds = try elapsedSeconds(savedProgress)
         let restoredSeconds = try elapsedSeconds(restoredProgress)
@@ -113,16 +113,16 @@ final class LargeFeedDeviceUITests: XCTestCase {
         // hour. Publisher-inserted ads may also change the remaining duration.
         XCTAssertEqual(restoredSeconds, savedSeconds - 3, accuracy: 2, "Saved position must survive relaunch with smart resume")
         overlay.buttons["Play"].firstMatch.tap()
-        XCTAssertTrue(pause.waitForExistence(timeout: 30))
+        XCTAssertTrue(pause.existsOrWait(timeout: 30))
         overlay.buttons["Now Playing Podcast Title"].firstMatch.tap()
-        XCTAssertTrue(app.buttons["Podcast Actions"].waitForExistence(timeout: 15))
+        XCTAssertTrue(app.buttons["Podcast Actions"].existsOrWait(timeout: 15))
         app.buttons["Podcast Actions"].tap()
         app.buttons["Refresh"].firstMatch.tap()
-        XCTAssertTrue(miniPlayer.waitForExistence(timeout: 10))
+        XCTAssertTrue(miniPlayer.existsOrWait(timeout: 10))
         miniPlayer.tap()
-        XCTAssertTrue(pause.waitForExistence(timeout: 15), "Feed refresh must leave playback usable")
+        XCTAssertTrue(pause.existsOrWait(timeout: 15), "Feed refresh must leave playback usable")
         pause.tap()
-        XCTAssertTrue(overlay.buttons["Play"].firstMatch.waitForExistence(timeout: 10))
+        XCTAssertTrue(overlay.buttons["Play"].firstMatch.existsOrWait(timeout: 10))
         attach(app, "Herd-refresh-playback-controls")
     }
 
@@ -146,28 +146,28 @@ final class LargeFeedDeviceUITests: XCTestCase {
         app.launch()
         openSection("Library", in: app)
         let herd = app.staticTexts["The Herd with Colin Cowherd"].firstMatch
-        XCTAssertTrue(herd.waitForExistence(timeout: 30))
+        XCTAssertTrue(herd.existsOrWait(timeout: 30))
         herd.tap()
         let text = app.staticTexts["Some episodes couldn’t be loaded. Available episodes are ready to play."]
         // Fixture publication can outlast navigation in a large existing
         // library. Wait while the header is still rendered before scrolling
         // past the location where the notice will appear.
-        XCTAssertTrue(text.waitForExistence(timeout: 60))
+        XCTAssertTrue(text.existsOrWait(timeout: 60))
         revealPartialNotice(text, in: app)
-        XCTAssertTrue(text.waitForExistence(timeout: 30))
+        XCTAssertTrue(text.existsOrWait(timeout: 30))
         attach(app, "Herd-partial-notice")
         // Reopen without importing again to prove that the notice is persistent.
         app.terminate()
         app.launchArguments = []
         app.launch()
         openSection("Library", in: app)
-        XCTAssertTrue(herd.waitForExistence(timeout: 30))
+        XCTAssertTrue(herd.existsOrWait(timeout: 30))
         herd.tap()
         revealPartialNotice(text, in: app)
-        XCTAssertTrue(text.waitForExistence(timeout: 20))
+        XCTAssertTrue(text.existsOrWait(timeout: 20))
         app.buttons["Retry"].firstMatch.tap()
         XCTAssertTrue(
-            app.activityIndicators["Loading feed"].waitForExistence(timeout: 10),
+            app.activityIndicators["Loading feed"].existsOrWait(timeout: 10),
             "The large live retry must be active before exercising row recycling"
         )
 
@@ -188,25 +188,25 @@ final class LargeFeedDeviceUITests: XCTestCase {
         let episodeRow = try XCTUnwrap(episodeRows.allElementsBoundByIndex.first(where: \.isHittable))
         episodeRow.press(forDuration: 1.2)
         let viewDetails = app.buttons["View Episode Details"].firstMatch
-        XCTAssertTrue(viewDetails.waitForExistence(timeout: 5))
+        XCTAssertTrue(viewDetails.existsOrWait(timeout: 5))
         viewDetails.tap()
-        XCTAssertTrue(app.buttons["Episode Actions"].waitForExistence(timeout: 15))
+        XCTAssertTrue(app.buttons["Episode Actions"].existsOrWait(timeout: 15))
         app.navigationBars.buttons.element(boundBy: 0).tap()
 
         // Bring the lazy header back into consideration before waiting. A
         // nonexistence check while it remains recycled would pass even if the
         // incomplete state were still persisted.
         revealPodcastHeader(in: app)
-        XCTAssertTrue(text.waitForNonExistence(timeout: 180), "A complete live retry must clear the persistent notice")
+        XCTAssertTrue(text.absentOrWait(timeout: 180), "A complete live retry must clear the persistent notice")
         app.terminate()
         app.launch()
         openSection("Library", in: app)
-        XCTAssertTrue(herd.waitForExistence(timeout: 30))
+        XCTAssertTrue(herd.existsOrWait(timeout: 30))
         herd.tap()
         let count = app.staticTexts.matching(
             NSPredicate(format: "label MATCHES %@", "[0-9,]+ episodes.*")
         ).firstMatch
-        XCTAssertTrue(count.waitForExistence(timeout: 10), "Partial import and retry must preserve the complete catalog")
+        XCTAssertTrue(count.existsOrWait(timeout: 10), "Partial import and retry must preserve the complete catalog")
         XCTAssertGreaterThanOrEqual(try episodeCount(from: count), 13_753)
         revealPodcastHeader(in: app)
         XCTAssertFalse(text.exists, "The cleared incomplete state must stay cleared after relaunch")
@@ -240,7 +240,7 @@ final class LargeFeedDeviceUITests: XCTestCase {
                 dragPodcast(in: app, towardHeader: true)
             }
         }
-        XCTAssertTrue(header.waitForExistence(timeout: 10), "The header must be rendered before checking its notice")
+        XCTAssertTrue(header.existsOrWait(timeout: 10), "The header must be rendered before checking its notice")
     }
 
     @MainActor

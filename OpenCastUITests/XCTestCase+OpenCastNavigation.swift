@@ -1,5 +1,18 @@
 import XCTest
 
+extension XCUIElement {
+    /// `waitForExistence` makes its first check only after about a second,
+    /// even when the element is already there; this returns at once then.
+    func existsOrWait(timeout: TimeInterval) -> Bool {
+        exists || waitForExistence(timeout: timeout)
+    }
+
+    /// The same shortcut for `waitForNonExistence`.
+    func absentOrWait(timeout: TimeInterval) -> Bool {
+        !exists || waitForNonExistence(timeout: timeout)
+    }
+}
+
 extension XCTestCase {
     /// Opens a Settings hub row and waits for its sub-screen. A second tap on
     /// the Settings tab pops any pushed stack back to the hub first.
@@ -12,7 +25,7 @@ extension XCTestCase {
         line: UInt = #line
     ) {
         openSection("Settings", in: app, file: file, line: line)
-        if !app.navigationBars["Settings"].waitForExistence(timeout: 2) {
+        if !app.navigationBars["Settings"].existsOrWait(timeout: 2) {
             openSection("Settings", in: app, file: file, line: line)
         }
 
@@ -20,12 +33,12 @@ extension XCTestCase {
         // top before scrolling down for rows below the fold.
         let row = app.buttons["Settings Row \(rowTitle)"].firstMatch
         var swipes = 0
-        while !(row.waitForExistence(timeout: 1) && row.isHittable), swipes < 3 {
+        while !(row.existsOrWait(timeout: 1) && row.isHittable), swipes < 3 {
             app.swipeDown()
             swipes += 1
         }
         swipes = 0
-        while !(row.waitForExistence(timeout: 1) && row.isHittable), swipes < 4 {
+        while !(row.existsOrWait(timeout: 1) && row.isHittable), swipes < 4 {
             app.swipeUp()
             swipes += 1
         }
@@ -34,7 +47,7 @@ extension XCTestCase {
 
         let title = screenTitle ?? rowTitle
         XCTAssertTrue(
-            app.navigationBars[title].waitForExistence(timeout: 10),
+            app.navigationBars[title].existsOrWait(timeout: 10),
             "\(title) screen should push from the Settings hub",
             file: file,
             line: line
@@ -71,13 +84,27 @@ extension XCTestCase {
             return
         }
         openSection("Playlists", in: app, file: file, line: line)
+        // Switching back to the tab keeps its stack, which may already show
+        // All; anything else pushed is popped by tapping the tab again.
+        // Polls both outcomes briefly instead of waiting out either one.
+        let allBar = app.navigationBars["All"]
         let allPlaylist = app.descendants(matching: .any)
             .matching(NSPredicate(format: "identifier BEGINSWITH %@ AND label BEGINSWITH %@", "playlist-row-", "All"))
             .firstMatch
-        XCTAssertTrue(allPlaylist.waitForExistence(timeout: 10), "All playlist should exist", file: file, line: line)
+        let deadline = Date().addingTimeInterval(2)
+        while !allBar.exists, !allPlaylist.exists, Date() < deadline {
+            RunLoop.current.run(until: Date().addingTimeInterval(0.1))
+        }
+        if allBar.exists {
+            return
+        }
+        if !allPlaylist.exists {
+            openSection("Playlists", in: app, file: file, line: line)
+        }
+        XCTAssertTrue(allPlaylist.existsOrWait(timeout: 10), "All playlist should exist", file: file, line: line)
         allPlaylist.tap()
         XCTAssertTrue(
-            app.navigationBars["All"].waitForExistence(timeout: 10),
+            app.navigationBars["All"].existsOrWait(timeout: 10),
             "All playlist should open",
             file: file,
             line: line
@@ -100,7 +127,7 @@ extension XCTestCase {
         in app: XCUIApplication
     ) -> XCUIElement? {
         let tabButton = app.tabBars.buttons[title]
-        if tabButton.waitForExistence(timeout: 1), tabButton.isHittable {
+        if tabButton.existsOrWait(timeout: 1), tabButton.isHittable {
             return tabButton
         }
 
@@ -109,7 +136,7 @@ extension XCTestCase {
         }
 
         app.swipeDown()
-        if tabButton.waitForExistence(timeout: 1), tabButton.isHittable {
+        if tabButton.existsOrWait(timeout: 1), tabButton.isHittable {
             return tabButton
         }
 
@@ -124,7 +151,7 @@ extension XCTestCase {
     ) -> XCUIElement? {
         let predicate = NSPredicate(format: "label == %@", title)
         let buttons = app.buttons.matching(predicate)
-        guard buttons.firstMatch.waitForExistence(timeout: timeout) else {
+        guard buttons.firstMatch.existsOrWait(timeout: timeout) else {
             return nil
         }
 

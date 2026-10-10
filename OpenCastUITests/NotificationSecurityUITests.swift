@@ -111,30 +111,30 @@ final class NotificationSecurityUITests: XCTestCase {
         app.launchEnvironment["OPENCAST_FORCE_LIGHT_MODE"] = "1"
         app.launch()
 
-        XCTAssertTrue(app.staticTexts["Welcome to opencast!"].waitForExistence(timeout: 20))
+        XCTAssertTrue(app.staticTexts["Welcome to opencast!"].existsOrWait(timeout: 20))
         app.buttons["Continue"].tap()
-        XCTAssertTrue(app.buttons["Skip"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.buttons["Skip"].existsOrWait(timeout: 10))
         app.buttons["Skip"].tap()
-        XCTAssertTrue(app.staticTexts["Find Podcasts"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.staticTexts["Find Podcasts"].existsOrWait(timeout: 10))
         app.buttons["Continue"].tap()
         // The transcription step is conditional: Apple-capable
         // devices show the Apple setup page or no page at all; only
         // Apple-unavailable devices show the Tiny Whisper page.
         let notificationsPage = app.staticTexts["New Episode Alerts"]
-        if !notificationsPage.waitForExistence(timeout: 5) {
-            let transcriptionStepShown = app.staticTexts["On-Device Transcription"].waitForExistence(timeout: 5)
-                || app.staticTexts["Tiny Whisper Model"].waitForExistence(timeout: 5)
+        if !notificationsPage.existsOrWait(timeout: 5) {
+            let transcriptionStepShown = app.staticTexts["On-Device Transcription"].existsOrWait(timeout: 5)
+                || app.staticTexts["Tiny Whisper Model"].existsOrWait(timeout: 5)
             XCTAssertTrue(transcriptionStepShown, "Expected a transcription setup step before notifications")
             app.buttons["Skip"].tap()
         }
-        XCTAssertTrue(notificationsPage.waitForExistence(timeout: 10))
+        XCTAssertTrue(notificationsPage.existsOrWait(timeout: 10))
 
         app.buttons["Enable Notifications"].tap()
         app.tap()
 
         XCTAssertTrue(
-            staticText(containing: "Notifications are on", in: app).waitForExistence(timeout: 120)
-                || staticText(containing: "synced", in: app).waitForExistence(timeout: 1),
+            staticText(containing: "Notifications are on", in: app).existsOrWait(timeout: 120)
+                || staticText(containing: "synced", in: app).existsOrWait(timeout: 1),
             "Notification onboarding should complete production App Attest/APNs registration without surfacing the DeviceCheck stale-key error."
         )
         XCTAssertFalse(staticText(containing: "com.apple.devicecheck.error", in: app).exists)
@@ -214,7 +214,7 @@ final class NotificationSecurityUITests: XCTestCase {
 
         let springboard = XCUIApplication(bundleIdentifier: "com.apple.springboard")
         let allowButton = springboard.buttons["Allow"]
-        if allowButton.waitForExistence(timeout: 5) {
+        if allowButton.existsOrWait(timeout: 5) {
             allowButton.tap()
         }
 
@@ -233,7 +233,7 @@ final class NotificationSecurityUITests: XCTestCase {
         notification.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).press(forDuration: 1.2)
         Thread.sleep(forTimeInterval: 2)
         XCTAssertTrue(
-            staticText(containing: "couldn't be analyzed", in: springboard).waitForExistence(timeout: 5),
+            staticText(containing: "couldn't be analyzed", in: springboard).existsOrWait(timeout: 5),
             "Expanded ad-free-pass notification should render the failures body line."
         )
         XCTAssertNotEqual(app.state, .runningForeground)
@@ -279,7 +279,7 @@ final class NotificationSecurityUITests: XCTestCase {
         tapAddPodcastButton(in: app)
         scrollUntilHittable(app.buttons["Subscribe"], in: app).tap()
 
-        XCTAssertTrue(app.staticTexts[title].waitForExistence(timeout: timeout))
+        XCTAssertTrue(app.staticTexts[title].existsOrWait(timeout: timeout))
     }
 
     @MainActor
@@ -309,7 +309,7 @@ final class NotificationSecurityUITests: XCTestCase {
         }
 
         let diagnosticsRow = app.buttons["Settings Row Diagnostics"].firstMatch
-        if diagnosticsRow.waitForExistence(timeout: 2) {
+        if diagnosticsRow.existsOrWait(timeout: 2) {
             var swipes = 0
             while !diagnosticsRow.isHittable, swipes < 4 {
                 swipeUpInDetailColumn(in: app)
@@ -352,7 +352,7 @@ final class NotificationSecurityUITests: XCTestCase {
     @MainActor
     private func tapDiagnosticsButtonIfHittable(in app: XCUIApplication) -> Bool {
         let diagnosticsButton = app.buttons["Diagnostics"]
-        guard diagnosticsButton.waitForExistence(timeout: 1), diagnosticsButton.isHittable else {
+        guard diagnosticsButton.existsOrWait(timeout: 1), diagnosticsButton.isHittable else {
             return false
         }
 
@@ -372,7 +372,7 @@ final class NotificationSecurityUITests: XCTestCase {
             app.navigationBars["opencast"].buttons["Add"],
             app.buttons["Add"].firstMatch
         ]
-        guard let addButton = addButtons.first(where: { $0.waitForExistence(timeout: 2) }) else {
+        guard let addButton = addButtons.first(where: { $0.existsOrWait(timeout: 2) }) else {
             XCTFail("Add Podcast button should exist")
             return
         }
@@ -386,13 +386,13 @@ final class NotificationSecurityUITests: XCTestCase {
         in app: XCUIApplication,
         maxSwipes: Int = 8
     ) -> XCUIElement {
-        if element.waitForExistence(timeout: 5), element.isHittable {
+        if element.existsOrWait(timeout: 5), element.isHittable {
             return element
         }
 
         for _ in 0..<maxSwipes {
             swipeUpInDetailColumn(in: app)
-            if element.waitForExistence(timeout: 1), element.isHittable {
+            if element.existsOrWait(timeout: 1), element.isHittable {
                 return element
             }
         }
@@ -429,19 +429,19 @@ final class NotificationSecurityUITests: XCTestCase {
     ) -> Bool {
         let deadline = Date().addingTimeInterval(timeout)
         while Date() < deadline {
-            if staticText(containing: label, in: app).waitForExistence(timeout: 1) {
+            if staticText(containing: label, in: app).existsOrWait(timeout: 1) {
                 return true
             }
 
             swipeUpInDetailColumn(in: app)
-            if staticText(containing: label, in: app).waitForExistence(timeout: 1) {
+            if staticText(containing: label, in: app).existsOrWait(timeout: 1) {
                 return true
             }
 
             Thread.sleep(forTimeInterval: 1)
         }
 
-        return staticText(containing: label, in: app).waitForExistence(timeout: 1)
+        return staticText(containing: label, in: app).existsOrWait(timeout: 1)
     }
 
 }

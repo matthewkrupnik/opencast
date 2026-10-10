@@ -34,7 +34,7 @@ final class ScrollJankDeviceProbeUITests: XCTestCase {
         sleep(2)
 
         XCTAssertTrue(
-            app.buttons["Probe Mark"].waitForExistence(timeout: 10),
+            app.buttons["Probe Mark"].existsOrWait(timeout: 10),
             "Probe Mark button must be reachable — frame probe not enabled or button occluded"
         )
 
@@ -114,7 +114,7 @@ final class ScrollJankDeviceProbeUITests: XCTestCase {
     @MainActor
     private func frameSummaryValue(in app: XCUIApplication) -> String {
         let element = app.descendants(matching: .any)["Frame Pacing Summary"]
-        guard element.waitForExistence(timeout: 10) else {
+        guard element.existsOrWait(timeout: 10) else {
             return "frame probe element missing"
         }
         return (element.value as? String) ?? ""
@@ -157,7 +157,7 @@ final class ScrollJankDeviceProbeUITests: XCTestCase {
         }
 
         let onDevice = app.buttons["Detect On This Device"]
-        if onDevice.waitForExistence(timeout: 4) {
+        if onDevice.existsOrWait(timeout: 4) {
             onDevice.tap()
         }
         return true
@@ -187,12 +187,12 @@ final class ScrollJankDeviceProbeUITests: XCTestCase {
 
         for _ in 0..<2 {
             row.press(forDuration: 1.2)
-            if app.buttons["View Episode Details"].waitForExistence(timeout: 4) {
+            if app.buttons["View Episode Details"].existsOrWait(timeout: 4) {
                 break
             }
         }
         let actionButton = app.buttons[action]
-        if actionButton.waitForExistence(timeout: 2), actionButton.isEnabled {
+        if actionButton.existsOrWait(timeout: 2), actionButton.isEnabled {
             actionButton.tap()
             return true
         }

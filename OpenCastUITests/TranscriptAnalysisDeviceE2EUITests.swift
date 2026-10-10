@@ -175,7 +175,7 @@ final class TranscriptAnalysisDeviceE2EUITests: XCTestCase {
         // disclosure dialog; a rerun against the existing store has already
         // acknowledged it, so the dialog is asserted only when it appears.
         let disclosureTitle = staticText(containing: "Generate Chapters & Summary?", in: app)
-        if disclosureTitle.waitForExistence(timeout: 8) {
+        if disclosureTitle.existsOrWait(timeout: 8) {
             assertExists(
                 staticText(containing: "Your audio is never sent.", in: app),
                 named: "disclosure dialog body",
@@ -279,7 +279,7 @@ final class TranscriptAnalysisDeviceE2EUITests: XCTestCase {
             if tab.exists, tab.isHittable {
                 tab.tap()
             }
-            if app.navigationBars["Downloads"].waitForExistence(timeout: 5) {
+            if app.navigationBars["Downloads"].existsOrWait(timeout: 5) {
                 break
             }
         }
@@ -359,7 +359,7 @@ final class TranscriptAnalysisDeviceE2EUITests: XCTestCase {
     private func dismissBlockingAlertsIfPresent(waiting timeout: TimeInterval = 0) {
         let springboard = XCUIApplication(bundleIdentifier: "com.apple.springboard")
         let deny = springboard.buttons["Don't Allow Paste"].firstMatch
-        if timeout > 0 ? deny.waitForExistence(timeout: timeout) : deny.exists {
+        if timeout > 0 ? deny.existsOrWait(timeout: timeout) : deny.exists {
             if deny.isHittable {
                 deny.tap()
             } else {
@@ -387,7 +387,7 @@ final class TranscriptAnalysisDeviceE2EUITests: XCTestCase {
                 return
             }
             let tabButton = app.tabBars.buttons["Library"].firstMatch
-            if tabButton.waitForExistence(timeout: 5), tabButton.isHittable {
+            if tabButton.existsOrWait(timeout: 5), tabButton.isHittable {
                 tabButton.tap()
             } else {
                 let fallback = app.buttons["Library"].firstMatch
@@ -413,7 +413,7 @@ final class TranscriptAnalysisDeviceE2EUITests: XCTestCase {
     private func libraryRow(matching predicate: NSPredicate, in app: XCUIApplication) -> XCUIElement? {
         openLibrary(in: app)
         let row = app.buttons.matching(predicate).firstMatch
-        if row.waitForExistence(timeout: 8) {
+        if row.existsOrWait(timeout: 8) {
             return row
         }
 
@@ -463,7 +463,7 @@ final class TranscriptAnalysisDeviceE2EUITests: XCTestCase {
         }
         row.tap()
         XCTAssertTrue(
-            episodeRows(in: app).firstMatch.waitForExistence(timeout: 20),
+            episodeRows(in: app).firstMatch.existsOrWait(timeout: 20),
             "show page should open from the library row"
         )
     }
@@ -480,7 +480,7 @@ final class TranscriptAnalysisDeviceE2EUITests: XCTestCase {
             // app-side query while the prompt is up never returns.
             dismissBlockingAlertsIfPresent(waiting: 4)
             for _ in 0..<3 {
-                if app.staticTexts["Add Podcast"].waitForExistence(timeout: 3) {
+                if app.staticTexts["Add Podcast"].existsOrWait(timeout: 3) {
                     sheetShown = true
                     break outer
                 }
@@ -489,21 +489,21 @@ final class TranscriptAnalysisDeviceE2EUITests: XCTestCase {
         }
         XCTAssertTrue(sheetShown, "Add Podcast sheet should present")
         dismissBlockingAlertsIfPresent()
-        if !app.textFields["RSS Feed URL"].waitForExistence(timeout: 3) {
+        if !app.textFields["RSS Feed URL"].existsOrWait(timeout: 3) {
             let rssMode = app.segmentedControls["Add Podcast Mode"].buttons["RSS"]
-            if rssMode.waitForExistence(timeout: 3) {
+            if rssMode.existsOrWait(timeout: 3) {
                 rssMode.tap()
             } else {
                 app.buttons["RSS"].firstMatch.tap()
             }
         }
         let field = app.textFields["RSS Feed URL"]
-        XCTAssertTrue(field.waitForExistence(timeout: 10), "RSS Feed URL field should exist")
+        XCTAssertTrue(field.existsOrWait(timeout: 10), "RSS Feed URL field should exist")
         field.tap()
         dismissBlockingAlertsIfPresent(waiting: 2)
         field.typeText(feedURL)
         let subscribeButton = app.buttons["Subscribe"].firstMatch
-        XCTAssertTrue(subscribeButton.waitForExistence(timeout: 5), "Subscribe button should exist")
+        XCTAssertTrue(subscribeButton.existsOrWait(timeout: 5), "Subscribe button should exist")
         subscribeButton.tap()
         // Let the post-subscribe reload/hydration settle.
         sleep(8)
@@ -518,7 +518,7 @@ final class TranscriptAnalysisDeviceE2EUITests: XCTestCase {
             app.buttons["Add"].firstMatch
         ]
         for candidate in candidates {
-            if candidate.waitForExistence(timeout: 3), candidate.isHittable {
+            if candidate.existsOrWait(timeout: 3), candidate.isHittable {
                 candidate.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
                 tapAddPodcastMenuItemIfPresented(in: app)
                 return
@@ -538,12 +538,12 @@ final class TranscriptAnalysisDeviceE2EUITests: XCTestCase {
             }
             row.swipeLeft()
             let removeAction = app.buttons["Remove"].firstMatch
-            guard removeAction.waitForExistence(timeout: 6) else {
+            guard removeAction.existsOrWait(timeout: 6) else {
                 continue
             }
             removeAction.tap()
             let confirm = app.buttons["Remove & Clear History"].firstMatch
-            if confirm.waitForExistence(timeout: 8) {
+            if confirm.existsOrWait(timeout: 8) {
                 confirm.tap()
                 sleep(2)
             }
@@ -564,7 +564,7 @@ final class TranscriptAnalysisDeviceE2EUITests: XCTestCase {
     @discardableResult
     private func openEpisodeDetail(at index: Int, in app: XCUIApplication) -> String {
         let rows = episodeRows(in: app)
-        if !rows.firstMatch.waitForExistence(timeout: 10) {
+        if !rows.firstMatch.existsOrWait(timeout: 10) {
             app.swipeUp()
         }
         assertExists(rows.firstMatch, named: "episode rows on the show page", timeout: 20)
@@ -599,7 +599,7 @@ final class TranscriptAnalysisDeviceE2EUITests: XCTestCase {
         for _ in 0..<3 {
             row.press(forDuration: 1.2)
             let detailsButton = app.buttons["View Episode Details"]
-            if detailsButton.waitForExistence(timeout: 4) {
+            if detailsButton.existsOrWait(timeout: 4) {
                 detailsButton.tap()
                 break
             }
@@ -630,9 +630,9 @@ final class TranscriptAnalysisDeviceE2EUITests: XCTestCase {
     private func resetTranscriptIfPresent(in app: XCUIApplication) {
         openEpisodeActionsMenu(in: app)
         let deleteButton = app.buttons["Delete Transcript"]
-        if deleteButton.waitForExistence(timeout: 4), deleteButton.isHittable {
+        if deleteButton.existsOrWait(timeout: 4), deleteButton.isHittable {
             deleteButton.tap()
-            _ = deleteButton.waitForNonExistence(timeout: 5)
+            _ = deleteButton.absentOrWait(timeout: 5)
         } else {
             dismissMenu(in: app)
         }
@@ -652,7 +652,7 @@ final class TranscriptAnalysisDeviceE2EUITests: XCTestCase {
         while Date() < deadline {
             openEpisodeActionsMenu(in: app)
             let generate = app.buttons["Generate Transcript"]
-            if generate.waitForExistence(timeout: 3), generate.isHittable {
+            if generate.existsOrWait(timeout: 3), generate.isHittable {
                 generate.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
                 return
             }
@@ -697,7 +697,7 @@ final class TranscriptAnalysisDeviceE2EUITests: XCTestCase {
         var lastScreenshotAt = Date.distantPast
         while Date() < deadline {
             openEpisodeActionsMenu(in: app)
-            let completed = app.buttons["Delete Transcript"].waitForExistence(timeout: 3)
+            let completed = app.buttons["Delete Transcript"].existsOrWait(timeout: 3)
             dismissMenu(in: app)
             if completed {
                 return true
@@ -796,7 +796,7 @@ final class TranscriptAnalysisDeviceE2EUITests: XCTestCase {
     @MainActor
     private func readNowPlayingElapsed(in app: XCUIApplication) throws -> TimeInterval {
         let overlay = app.descendants(matching: .any)["Now Playing"]
-        if !overlay.waitForExistence(timeout: 8) {
+        if !overlay.existsOrWait(timeout: 8) {
             let miniPlayer = app.buttons["Open Now Playing"]
             assertExists(miniPlayer, named: "mini player after chapter tap", timeout: 20)
             miniPlayer.tap()
@@ -820,7 +820,7 @@ final class TranscriptAnalysisDeviceE2EUITests: XCTestCase {
     @MainActor
     private func pausePlaybackIfPossible(in app: XCUIApplication) {
         let pause = app.buttons["Pause"].firstMatch
-        if pause.waitForExistence(timeout: 5), pause.isHittable {
+        if pause.existsOrWait(timeout: 5), pause.isHittable {
             pause.tap()
         }
     }

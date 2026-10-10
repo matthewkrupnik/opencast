@@ -359,7 +359,7 @@ final class SyncBehaviorsDeviceE2EUITests: XCTestCase {
             swipes += 1
         }
         XCTAssertTrue(
-            syncButton.waitForExistence(timeout: 10),
+            syncButton.existsOrWait(timeout: 10),
             "notification sync diagnostic should exist"
         )
         syncButton.tap()
@@ -368,7 +368,7 @@ final class SyncBehaviorsDeviceE2EUITests: XCTestCase {
             NSPredicate(format: "label BEGINSWITH %@", "Sync, ")
         ).firstMatch
         XCTAssertTrue(
-            syncRow.waitForExistence(timeout: 90),
+            syncRow.existsOrWait(timeout: 90),
             "notification sync should report a status"
         )
         let acceptedRow = app.descendants(matching: .any).matching(
@@ -541,7 +541,7 @@ final class SyncBehaviorsDeviceE2EUITests: XCTestCase {
     private func dismissPasteAlertIfPresent(waiting timeout: TimeInterval = 0) {
         let springboard = XCUIApplication(bundleIdentifier: "com.apple.springboard")
         let deny = springboard.buttons["Don't Allow Paste"].firstMatch
-        if timeout > 0 ? deny.waitForExistence(timeout: timeout) : deny.exists {
+        if timeout > 0 ? deny.existsOrWait(timeout: timeout) : deny.exists {
             if deny.isHittable {
                 deny.tap()
                 usleep(500_000)
@@ -599,7 +599,7 @@ final class SyncBehaviorsDeviceE2EUITests: XCTestCase {
             // scroll-minimized bar only un-minimizes it, so arrival must be
             // verified — a pushed detail similarly needs a second tap to pop.
             let tabButton = app.tabBars.buttons[title].firstMatch
-            if tabButton.waitForExistence(timeout: 5), tabButton.isHittable {
+            if tabButton.existsOrWait(timeout: 5), tabButton.isHittable {
                 tabButton.tap()
             } else {
                 let fallback = app.buttons[title].firstMatch
@@ -676,7 +676,7 @@ final class SyncBehaviorsDeviceE2EUITests: XCTestCase {
     private func libraryHasExercisePodcast(in app: XCUIApplication) -> Bool {
         openTab("Library", in: app)
         let row = exercisePodcastRow(in: app)
-        if row.waitForExistence(timeout: 8) {
+        if row.existsOrWait(timeout: 8) {
             return true
         }
 
@@ -720,27 +720,27 @@ final class SyncBehaviorsDeviceE2EUITests: XCTestCase {
         var sheetShown = false
         for _ in 0..<3 {
             tapAddButton(in: app)
-            if app.staticTexts["Add Podcast"].waitForExistence(timeout: 8) {
+            if app.staticTexts["Add Podcast"].existsOrWait(timeout: 8) {
                 sheetShown = true
                 break
             }
         }
         XCTAssertTrue(sheetShown, "Add Podcast sheet should present")
         dismissPasteAlertIfPresent(waiting: 3)
-        if !app.textFields["RSS Feed URL"].waitForExistence(timeout: 3) {
+        if !app.textFields["RSS Feed URL"].existsOrWait(timeout: 3) {
             let rssMode = app.segmentedControls["Add Podcast Mode"].buttons["RSS"]
-            if rssMode.waitForExistence(timeout: 3) {
+            if rssMode.existsOrWait(timeout: 3) {
                 rssMode.tap()
             } else {
                 app.buttons["RSS"].firstMatch.tap()
             }
         }
         let field = app.textFields["RSS Feed URL"]
-        XCTAssertTrue(field.waitForExistence(timeout: 10), "RSS Feed URL field should exist")
+        XCTAssertTrue(field.existsOrWait(timeout: 10), "RSS Feed URL field should exist")
         field.tap()
         field.typeText(feed.urlString)
         let subscribeButton = app.buttons["Subscribe"].firstMatch
-        XCTAssertTrue(subscribeButton.waitForExistence(timeout: 5), "Subscribe button should exist")
+        XCTAssertTrue(subscribeButton.existsOrWait(timeout: 5), "Subscribe button should exist")
         subscribeButton.tap()
 
         var subscribed = false
@@ -767,7 +767,7 @@ final class SyncBehaviorsDeviceE2EUITests: XCTestCase {
             app.buttons["Add"].firstMatch
         ]
         for candidate in candidates {
-            if candidate.waitForExistence(timeout: 3), candidate.isHittable {
+            if candidate.existsOrWait(timeout: 3), candidate.isHittable {
                 candidate.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
                 tapAddPodcastMenuItemIfPresented(in: app)
                 return
@@ -792,12 +792,12 @@ final class SyncBehaviorsDeviceE2EUITests: XCTestCase {
             }
             row.swipeLeft()
             let removeAction = app.buttons["Remove"].firstMatch
-            guard removeAction.waitForExistence(timeout: 6) else {
+            guard removeAction.existsOrWait(timeout: 6) else {
                 continue
             }
             removeAction.tap()
             let confirm = app.buttons[confirmTitle].firstMatch
-            if confirm.waitForExistence(timeout: 8) {
+            if confirm.existsOrWait(timeout: 8) {
                 confirm.tap()
                 sleep(2)
                 return
@@ -831,12 +831,12 @@ final class SyncBehaviorsDeviceE2EUITests: XCTestCase {
             }
             row.swipeLeft()
             let removeAction = app.buttons["Remove"].firstMatch
-            guard removeAction.waitForExistence(timeout: 6) else {
+            guard removeAction.existsOrWait(timeout: 6) else {
                 continue
             }
             removeAction.tap()
             let confirm = app.buttons["Remove & Clear History"].firstMatch
-            if confirm.waitForExistence(timeout: 8) {
+            if confirm.existsOrWait(timeout: 8) {
                 confirm.tap()
                 sleep(2)
             }
@@ -853,7 +853,7 @@ final class SyncBehaviorsDeviceE2EUITests: XCTestCase {
                 ExerciseFeed.seed.rowIdentifier
             )
         )
-        if variantQuery.firstMatch.waitForExistence(timeout: 5) {
+        if variantQuery.firstMatch.existsOrWait(timeout: 5) {
             return variantQuery.firstMatch
         }
         var lastBottomIdentifier = ""
@@ -940,7 +940,7 @@ final class SyncBehaviorsDeviceE2EUITests: XCTestCase {
                 } else {
                     field.coordinate(withNormalizedOffset: CGVector(dx: 0.15, dy: 0.5)).tap()
                 }
-                guard app.keyboards.firstMatch.waitForExistence(timeout: 4) else {
+                guard app.keyboards.firstMatch.existsOrWait(timeout: 4) else {
                     // Focus did not land (an overlay ate the tap) — clear
                     // whatever came up and retry.
                     app.swipeDown()
@@ -963,12 +963,12 @@ final class SyncBehaviorsDeviceE2EUITests: XCTestCase {
             let navSearchButton = app.navigationBars.buttons["Search"].firstMatch
             if navSearchButton.exists, navSearchButton.isHittable {
                 navSearchButton.tap()
-                _ = app.searchFields.firstMatch.waitForExistence(timeout: 4)
+                _ = app.searchFields.firstMatch.existsOrWait(timeout: 4)
                 continue
             }
 
             openTab("Search", in: app)
-            _ = app.searchFields.firstMatch.waitForExistence(timeout: 4)
+            _ = app.searchFields.firstMatch.existsOrWait(timeout: 4)
         }
         if !didType {
             attachDiagnostics(named: "search-field-failure", notes: attemptNotes, app: app)
@@ -976,7 +976,7 @@ final class SyncBehaviorsDeviceE2EUITests: XCTestCase {
         XCTAssertTrue(didType, "search field should accept the query")
 
         let row = app.buttons.matching(episodeRowPredicate(containing: episodeTitle)).firstMatch
-        if !row.waitForExistence(timeout: 20) {
+        if !row.existsOrWait(timeout: 20) {
             let visibleRows = app.descendants(matching: .any).matching(
                 NSPredicate(format: "identifier BEGINSWITH 'episode-row-'")
             ).allElementsBoundByIndex.prefix(6).map(\.identifier)
@@ -994,7 +994,7 @@ final class SyncBehaviorsDeviceE2EUITests: XCTestCase {
     @MainActor
     private func assertSingleEpisodeSearchRow(for episodeTitle: String, in app: XCUIApplication) {
         let row = searchEpisodeRow(for: episodeTitle, in: app)
-        XCTAssertTrue(row.waitForExistence(timeout: 20), "the '\(episodeTitle)' row should exist")
+        XCTAssertTrue(row.existsOrWait(timeout: 20), "the '\(episodeTitle)' row should exist")
         sleep(2)
         let matches = app.buttons.matching(episodeRowPredicate(containing: episodeTitle)).count
         XCTAssertEqual(
@@ -1072,7 +1072,7 @@ final class SyncBehaviorsDeviceE2EUITests: XCTestCase {
             row.press(forDuration: 1.2)
 
             let action = app.buttons[actionTitle].firstMatch
-            if action.waitForExistence(timeout: 5) {
+            if action.existsOrWait(timeout: 5) {
                 action.tap()
                 return
             }
@@ -1108,7 +1108,7 @@ final class SyncBehaviorsDeviceE2EUITests: XCTestCase {
             // Playing card — there is no pushed detail on this path.
             row.tap()
             let overlay = app.descendants(matching: .any)["Now Playing"]
-            guard overlay.waitForExistence(timeout: 15) else {
+            guard overlay.existsOrWait(timeout: 15) else {
                 continue
             }
             sleep(2)
@@ -1120,7 +1120,7 @@ final class SyncBehaviorsDeviceE2EUITests: XCTestCase {
             let start = app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.24))
             let end = app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.74))
             start.press(forDuration: 0.05, thenDragTo: end)
-            _ = app.buttons["Open Now Playing"].waitForExistence(timeout: 8)
+            _ = app.buttons["Open Now Playing"].existsOrWait(timeout: 8)
             didPlay = true
             break
         }
@@ -1138,17 +1138,17 @@ final class SyncBehaviorsDeviceE2EUITests: XCTestCase {
             app.swipeUp()
             swipes += 1
         }
-        XCTAssertTrue(deleteDataRow.waitForExistence(timeout: 10), "Delete Data row should exist")
+        XCTAssertTrue(deleteDataRow.existsOrWait(timeout: 10), "Delete Data row should exist")
         walkClearOfBottomAccessories(deleteDataRow, in: app)
         deleteDataRow.tap()
-        XCTAssertTrue(app.navigationBars["Delete Data"].waitForExistence(timeout: 10), "Delete Data screen should push")
+        XCTAssertTrue(app.navigationBars["Delete Data"].existsOrWait(timeout: 10), "Delete Data screen should push")
 
         let clearButton = app.buttons["Clear History for Unfollowed Shows"].firstMatch
-        XCTAssertTrue(clearButton.waitForExistence(timeout: 10), "manual clear action should exist")
+        XCTAssertTrue(clearButton.existsOrWait(timeout: 10), "manual clear action should exist")
         clearButton.tap()
 
         let confirm = app.buttons["Clear History"].firstMatch
-        XCTAssertTrue(confirm.waitForExistence(timeout: 10), "Clear History confirmation should exist")
+        XCTAssertTrue(confirm.existsOrWait(timeout: 10), "Clear History confirmation should exist")
         confirm.tap()
         sleep(2)
     }
@@ -1168,7 +1168,7 @@ final class SyncBehaviorsDeviceE2EUITests: XCTestCase {
         let start = app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.24))
         let end = app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.74))
         start.press(forDuration: 0.05, thenDragTo: end)
-        _ = app.buttons["Open Now Playing"].waitForExistence(timeout: 8)
+        _ = app.buttons["Open Now Playing"].existsOrWait(timeout: 8)
     }
 
     /// Short drags until the element's frame sits in the middle band of the
@@ -1197,7 +1197,7 @@ final class SyncBehaviorsDeviceE2EUITests: XCTestCase {
     @MainActor
     private func openSettingsHub(in app: XCUIApplication) {
         openTab("Settings", in: app)
-        if !app.navigationBars["Settings"].waitForExistence(timeout: 2) {
+        if !app.navigationBars["Settings"].existsOrWait(timeout: 2) {
             let settingsTab = app.tabBars.buttons["Settings"].firstMatch
             if settingsTab.exists, settingsTab.isHittable {
                 settingsTab.tap()
@@ -1215,11 +1215,11 @@ final class SyncBehaviorsDeviceE2EUITests: XCTestCase {
             app.swipeUp()
             swipes += 1
         }
-        XCTAssertTrue(diagnosticsLink.waitForExistence(timeout: 10), "Diagnostics row should exist")
+        XCTAssertTrue(diagnosticsLink.existsOrWait(timeout: 10), "Diagnostics row should exist")
         walkClearOfBottomAccessories(diagnosticsLink, in: app)
         diagnosticsLink.tap()
         XCTAssertTrue(
-            app.navigationBars["Diagnostics"].waitForExistence(timeout: 10),
+            app.navigationBars["Diagnostics"].existsOrWait(timeout: 10),
             "Diagnostics screen should push"
         )
     }
@@ -1249,7 +1249,7 @@ final class SyncBehaviorsDeviceE2EUITests: XCTestCase {
                 app.swipeUp()
                 swipes += 1
             }
-            XCTAssertTrue(mergeButton.waitForExistence(timeout: 10), "merge action should exist")
+            XCTAssertTrue(mergeButton.existsOrWait(timeout: 10), "merge action should exist")
             walkClearOfBottomAccessories(mergeButton, in: app)
             guard mergeButton.exists, mergeButton.isHittable else {
                 continue

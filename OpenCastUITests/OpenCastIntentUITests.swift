@@ -7,14 +7,14 @@ final class OpenCastIntentUITests: XCTestCase {
         let app = XCUIApplication()
         app.launchArguments = ["--opencast-ui-testing", "--opencast-seed-ui-library", "--opencast-seed-episode-progress"]
         app.launch()
-        XCTAssertTrue(app.tabBars.buttons["Library"].waitForExistence(timeout: 20))
+        XCTAssertTrue(app.tabBars.buttons["Library"].existsOrWait(timeout: 20))
         let definitions = IntentDefinitions(bundleIdentifier: "mk.lan.opencast")
         let episodes = try await definitions.entities["OpenCastEpisodeEntity"].suggestedEntities()
         XCTAssertFalse(episodes.isEmpty)
         let episode = try XCTUnwrap(episodes.first)
         try await definitions.intents["AddOpenCastEpisodeToUpNextIntent"].makeIntent(episode: episode).run()
         try await definitions.intents["SearchOpenCastIntent"].makeIntent(query: "OpenCast").run()
-        XCTAssertTrue(app.searchFields.firstMatch.waitForExistence(timeout: 10))
+        XCTAssertTrue(app.searchFields.firstMatch.existsOrWait(timeout: 10))
         XCTAssertEqual(app.searchFields.firstMatch.value as? String, "OpenCast")
         let missing = try await definitions.entities["OpenCastEpisodeEntity"].entities(identifiers: ["removed-episode"])
         XCTAssertTrue(missing.isEmpty)
@@ -26,7 +26,7 @@ final class OpenCastIntentUITests: XCTestCase {
         app.launchArguments = ["--opencast-ui-testing", "--opencast-seed-ui-library"]
         app.launchEnvironment["OPENCAST_SEED_PLAYLISTS"] = "1"
         app.launch()
-        XCTAssertTrue(app.tabBars.buttons["Library"].waitForExistence(timeout: 20))
+        XCTAssertTrue(app.tabBars.buttons["Library"].existsOrWait(timeout: 20))
         let definitions = IntentDefinitions(bundleIdentifier: "mk.lan.opencast")
         let playlists = definitions.entities["OpenCastPlaylistEntity"]
         let suggested = try await playlists.suggestedEntities()
@@ -36,7 +36,7 @@ final class OpenCastIntentUITests: XCTestCase {
 
         // The mini player's VoiceOver value is the assertable contract for the source line.
         let miniPlayer = app.buttons["Open Now Playing"].firstMatch
-        XCTAssertTrue(miniPlayer.waitForExistence(timeout: 15))
+        XCTAssertTrue(miniPlayer.existsOrWait(timeout: 15))
         for _ in 0..<60 {
             if (miniPlayer.value as? String)?.contains("playing from Seeded Commute") == true { break }
             try await Task.sleep(for: .milliseconds(250))
@@ -59,17 +59,17 @@ final class OpenCastIntentUITests: XCTestCase {
         XCTAssertTrue(app.wait(for: .runningForeground, timeout: 10))
         for _ in 0..<3 where !app.navigationBars["Library"].exists {
             openSection("Library", in: app)
-            _ = app.navigationBars["Library"].waitForExistence(timeout: 3)
+            _ = app.navigationBars["Library"].existsOrWait(timeout: 3)
         }
         XCTAssertTrue(app.navigationBars["Library"].exists, "Library tab should be selected after the intents")
         let playlistsRow = app.buttons.matching(identifier: "Library Playlists Row").firstMatch
-        XCTAssertTrue(playlistsRow.waitForExistence(timeout: 10))
+        XCTAssertTrue(playlistsRow.existsOrWait(timeout: 10))
         playlistsRow.tap()
         let emptyRow = app.descendants(matching: .any).matching(identifier: "playlist-row-ui-test-playlist-empty").firstMatch
-        XCTAssertTrue(emptyRow.waitForExistence(timeout: 10))
+        XCTAssertTrue(emptyRow.existsOrWait(timeout: 10))
         emptyRow.tap()
         let countLine = app.descendants(matching: .any).matching(identifier: "Playlist Count Line").firstMatch
-        XCTAssertTrue(countLine.waitForExistence(timeout: 10))
+        XCTAssertTrue(countLine.existsOrWait(timeout: 10))
         // A whole clause, so "1 episode" cannot pass for "11 episodes".
         var clauses: [String] = []
         for _ in 0..<40 {

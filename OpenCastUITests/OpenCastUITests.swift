@@ -79,7 +79,7 @@ final class OpenCastUITests: XCTestCase {
         let app = makeCompletedOnboardingApp()
         app.launch()
 
-        XCTAssertTrue(app.tabBars.buttons["Library"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.tabBars.buttons["Library"].existsOrWait(timeout: 5))
         // Playlists replaced the Inbox and is where the app opens.
         let playlistsTab = app.tabBars.buttons["Playlists"]
         XCTAssertTrue(playlistsTab.exists)
@@ -156,7 +156,7 @@ final class OpenCastUITests: XCTestCase {
         assertExists(app.buttons["Download"], named: "download action proving episode is not local")
         let remoteAction = app.descendants(matching: .any)["Transcribe Remotely"].firstMatch
         XCTAssertTrue(
-            remoteAction.waitForExistence(timeout: 8),
+            remoteAction.existsOrWait(timeout: 8),
             "Remote transcription menu entry should be present on fresh launch without opening Settings"
         )
     }
@@ -201,7 +201,7 @@ final class OpenCastUITests: XCTestCase {
         // The remote card reports an empty frame to XCUITest, so dismiss it by
         // tapping the dimmed area above it.
         app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.2)).tap()
-        XCTAssertTrue(caption.waitForNonExistence(timeout: 5), "share sheet should dismiss")
+        XCTAssertTrue(caption.absentOrWait(timeout: 5), "share sheet should dismiss")
     }
 
     @MainActor
@@ -647,7 +647,7 @@ final class OpenCastUITests: XCTestCase {
         app.buttons["Done"].tap()
 
         XCTAssertTrue(
-            app.staticTexts["New Episode Alerts"].waitForNonExistence(timeout: 10),
+            app.staticTexts["New Episode Alerts"].absentOrWait(timeout: 10),
             "Onboarding should dismiss after the final notification page."
         )
         openAllPlaylist(in: app)
@@ -702,12 +702,12 @@ final class OpenCastUITests: XCTestCase {
 
         openAllPlaylist(in: app)
         let inboxEpisode = seededEpisodeRow(in: app)
-        XCTAssertTrue(inboxEpisode.waitForExistence(timeout: 5))
+        XCTAssertTrue(inboxEpisode.existsOrWait(timeout: 5))
         XCTAssertTrue(app.staticTexts["Deterministic UI Episode"].exists)
         inboxEpisode.tap()
 
         assertNowPlayingOverlay(in: app)
-        XCTAssertTrue(playbackProgress(in: app).waitForExistence(timeout: 5))
+        XCTAssertTrue(playbackProgress(in: app).existsOrWait(timeout: 5))
         XCTAssertTrue(app.buttons["Pause"].exists || app.buttons["Play"].exists)
 
         openCurrentEpisodeDetailFromNowPlaying(in: app)
@@ -758,7 +758,7 @@ final class OpenCastUITests: XCTestCase {
         XCTAssertTrue(alert.staticTexts.element(boundBy: 1).exists)
         alert.buttons["OK"].tap()
         assertExists(inboxEpisode, named: "seeded inbox episode after failed playback")
-        XCTAssertTrue(alert.waitForNonExistence(timeout: 5))
+        XCTAssertTrue(alert.absentOrWait(timeout: 5))
         // An asynchronous playback failure can leave Now Playing above Inbox.
         if nowPlayingOverlay(in: app).exists {
             dismissNowPlayingOverlay(in: app)
@@ -767,7 +767,7 @@ final class OpenCastUITests: XCTestCase {
         inboxEpisode.tap()
         assertExists(alert, named: "repeated Playback Failed alert", timeout: 10)
         alert.buttons["OK"].tap()
-        XCTAssertTrue(alert.waitForNonExistence(timeout: 5))
+        XCTAssertTrue(alert.absentOrWait(timeout: 5))
     }
 
     @MainActor
@@ -973,9 +973,9 @@ final class OpenCastUITests: XCTestCase {
             options: options
         ) {
             app.launch()
-            XCTAssertTrue(app.tabBars.buttons["Library"].waitForExistence(timeout: 5))
+            XCTAssertTrue(app.tabBars.buttons["Library"].existsOrWait(timeout: 5))
             openAllPlaylist(in: app)
-            XCTAssertTrue(seededEpisodeRow(in: app).waitForExistence(timeout: 5))
+            XCTAssertTrue(seededEpisodeRow(in: app).existsOrWait(timeout: 5))
             app.terminate()
         }
     }
@@ -999,11 +999,11 @@ final class OpenCastUITests: XCTestCase {
         assertExists(miniPlayer, named: "mini-player after opening episode")
 
         app.tabBars.buttons["Settings"].tap()
-        XCTAssertTrue(miniPlayer.waitForExistence(timeout: 5))
+        XCTAssertTrue(miniPlayer.existsOrWait(timeout: 5))
         app.tabBars.buttons["Library"].tap()
-        XCTAssertTrue(miniPlayer.waitForExistence(timeout: 5))
+        XCTAssertTrue(miniPlayer.existsOrWait(timeout: 5))
         openAllPlaylist(in: app)
-        XCTAssertTrue(miniPlayer.waitForExistence(timeout: 5))
+        XCTAssertTrue(miniPlayer.existsOrWait(timeout: 5))
 
         miniPlayer.tap()
         assertNowPlayingOverlay(in: app)
@@ -1045,11 +1045,11 @@ final class OpenCastUITests: XCTestCase {
 
         let miniPlayer = app.buttons["Open Now Playing"]
         XCTAssertTrue(
-            miniPlayer.waitForNonExistence(timeout: 25),
+            miniPlayer.absentOrWait(timeout: 25),
             "Natural completion should remove the collapsed mini-player."
         )
         let overlay = nowPlayingOverlay(in: app)
-        XCTAssertTrue(overlay.waitForNonExistence(timeout: 5))
+        XCTAssertTrue(overlay.absentOrWait(timeout: 5))
         assertDoesNotExist(
             finishedPlayback(in: overlay),
             named: "Finished presentation inside collapsed overlay"
@@ -1107,11 +1107,11 @@ final class OpenCastUITests: XCTestCase {
         stopPlayback.tap()
 
         XCTAssertTrue(
-            nowPlayingOverlay(in: app).waitForNonExistence(timeout: 5),
+            nowPlayingOverlay(in: app).absentOrWait(timeout: 5),
             "Stop Playback should collapse the Now Playing card."
         )
         XCTAssertTrue(
-            app.buttons["Open Now Playing"].waitForNonExistence(timeout: 5),
+            app.buttons["Open Now Playing"].absentOrWait(timeout: 5),
             "Stop Playback should unload the episode and remove the mini-player."
         )
         assertDoesNotExist(
@@ -1144,7 +1144,7 @@ final class OpenCastUITests: XCTestCase {
 
         replay.tap()
         XCTAssertTrue(
-            finished.waitForNonExistence(timeout: 5),
+            finished.absentOrWait(timeout: 5),
             "Replay should return the overlay to live Now Playing."
         )
         assertExists(playbackProgress(in: app), named: "progress control after Replay")
@@ -1153,7 +1153,7 @@ final class OpenCastUITests: XCTestCase {
 
         done.tap()
         XCTAssertTrue(
-            overlay.waitForNonExistence(timeout: 5),
+            overlay.absentOrWait(timeout: 5),
             "Done should finish the existing card dismissal before unmounting the overlay."
         )
         assertDoesNotExist(app.buttons["Open Now Playing"], named: "mini-player after Done")
@@ -1186,7 +1186,7 @@ final class OpenCastUITests: XCTestCase {
         )
 
         overlay.buttons["Done"].tap()
-        XCTAssertTrue(overlay.waitForNonExistence(timeout: 5))
+        XCTAssertTrue(overlay.absentOrWait(timeout: 5))
     }
 
     @MainActor
@@ -1200,7 +1200,7 @@ final class OpenCastUITests: XCTestCase {
         holdNowPlayingDismissDrag(in: app, endY: 0.58, holdDuration: 10)
 
         XCTAssertTrue(
-            overlay.waitForNonExistence(timeout: 5),
+            overlay.absentOrWait(timeout: 5),
             "A completion drag above threshold should finish dismissal."
         )
         assertDoesNotExist(finishedPlayback(in: app), named: "Finished card after completed dismissal")
@@ -1233,7 +1233,7 @@ final class OpenCastUITests: XCTestCase {
             velocity: .fast
         )
 
-        XCTAssertTrue(overlay.waitForNonExistence(timeout: 5))
+        XCTAssertTrue(overlay.absentOrWait(timeout: 5))
         assertHittable(app.tabBars.buttons["Library"], named: "interactive Library tab after in-flight completion")
         let summary = captureFramePacingSummary(in: app, expectedSessions: 1)
         assertEventOrder(
@@ -1483,7 +1483,7 @@ final class OpenCastUITests: XCTestCase {
         attachSmokeScreenshot(named: "library_remove_confirmation")
         confirmButton.tap()
 
-        XCTAssertTrue(podcastRow.waitForNonExistence(timeout: 5))
+        XCTAssertTrue(podcastRow.absentOrWait(timeout: 5))
         assertExists(app.staticTexts["No Subscriptions"], named: "empty library after removal")
         let libraryAddPodcastButton = app.buttons["Library Empty Add Podcast"]
         let librarySampleButton = app.buttons["Library Empty Try This American Life"]
@@ -1653,7 +1653,7 @@ final class OpenCastUITests: XCTestCase {
 
         let searchField = app.searchFields.firstMatch
         assertExists(searchField, named: "podcast search field after pull-down")
-        XCTAssertTrue(hero.waitForNonExistence(timeout: 5), "podcast hero should hide when pull-down opens search")
+        XCTAssertTrue(hero.absentOrWait(timeout: 5), "podcast hero should hide when pull-down opens search")
 
         searchField.typeText("Deterministic UI Episode")
         assertHittable(seededEpisodeRow(in: app), named: "pull-down search result without scrolling")
@@ -1686,7 +1686,7 @@ final class OpenCastUITests: XCTestCase {
 
         let searchField = app.searchFields.firstMatch
         assertExists(searchField, named: "podcast episode search field")
-        XCTAssertTrue(hero.waitForNonExistence(timeout: 5))
+        XCTAssertTrue(hero.absentOrWait(timeout: 5))
 
         searchField.typeText("Deterministic UI Episode")
         let result = seededEpisodeRow(in: app)
@@ -2261,7 +2261,7 @@ final class OpenCastUITests: XCTestCase {
             environmentKey: Self.nowPlayingDismissTraceArmingSecondsEnvironmentKey
         )
         dragDismissNowPlayingOverlayFromArtwork(in: app)
-        XCTAssertTrue(nowPlayingOverlay(in: app).waitForNonExistence(timeout: 5))
+        XCTAssertTrue(nowPlayingOverlay(in: app).absentOrWait(timeout: 5))
         assertExists(app.buttons["Open Now Playing"], named: "mini-player after content-area dismiss")
         let summary = captureFramePacingSummary(in: app, expectedSessions: 2)
         XCTAssertTrue(summary.contains("dismiss-drag-start"), "expected warmed dismissal frame data")
@@ -2302,7 +2302,7 @@ final class OpenCastUITests: XCTestCase {
         )
         attachSmokeScreenshot(named: "now_playing_progress_after_foreground")
         dragDismissNowPlayingOverlayFromArtwork(in: app)
-        XCTAssertTrue(nowPlayingOverlay(in: app).waitForNonExistence(timeout: 5))
+        XCTAssertTrue(nowPlayingOverlay(in: app).absentOrWait(timeout: 5))
         assertExists(app.buttons["Open Now Playing"], named: "mini-player after foreground dismiss")
     }
 
@@ -2348,7 +2348,7 @@ final class OpenCastUITests: XCTestCase {
         closeNowPlayingSoundLab(in: app)
 
         assertNowPlayingOverlay(in: app)
-        XCTAssertTrue(nowPlayingSoundLabPanel(in: app).waitForNonExistence(timeout: 5))
+        XCTAssertTrue(nowPlayingSoundLabPanel(in: app).absentOrWait(timeout: 5))
         XCTAssertFalse(app.switches["Voice Boost"].exists)
     }
 
@@ -2371,7 +2371,7 @@ final class OpenCastUITests: XCTestCase {
         nowPlayingArtwork(in: app).tap()
 
         assertNowPlayingOverlay(in: app)
-        XCTAssertTrue(nowPlayingSoundLabPanel(in: app).waitForNonExistence(timeout: 5))
+        XCTAssertTrue(nowPlayingSoundLabPanel(in: app).absentOrWait(timeout: 5))
         XCTAssertFalse(app.switches["Voice Boost"].exists)
     }
 
@@ -2467,7 +2467,7 @@ final class OpenCastUITests: XCTestCase {
         assertExists(app.buttons["Start"], named: "estimate sheet Start action")
         app.buttons["Cancel"].firstMatch.tap()
         XCTAssertTrue(
-            app.navigationBars["Remote Transcription"].waitForNonExistence(timeout: 5),
+            app.navigationBars["Remote Transcription"].absentOrWait(timeout: 5),
             "Cancelling the estimate sheet should dismiss it without starting"
         )
     }
@@ -2573,6 +2573,8 @@ final class OpenCastUITests: XCTestCase {
 
     @MainActor
     func testSeededNowPlayingAdFreePassControlStateScreenshots() throws {
+        // One relaunch per stage, so the run is long by design.
+        executionTimeAllowance = 600
         // The fixed-footprint row never shows progress text or "Working";
         // in-flight stages keep the stable title and expose status through
         // the accessibility value.
@@ -2604,6 +2606,8 @@ final class OpenCastUITests: XCTestCase {
 
     @MainActor
     func testSeededLandscapeNowPlayingAdFreePassControlLayoutScreenshots() throws {
+        // One relaunch per stage, so the run is long by design.
+        executionTimeAllowance = 600
         XCUIDevice.shared.orientation = .landscapeLeft
         defer {
             XCUIDevice.shared.orientation = .portrait
@@ -2855,7 +2859,7 @@ final class OpenCastUITests: XCTestCase {
         actionsButton.tap()
         attachSmokeScreenshot(named: "auto_skip_bug_episode_actions_menu")
         let clearProgress = app.descendants(matching: .any)["Clear Progress"].firstMatch
-        if clearProgress.waitForExistence(timeout: 3) {
+        if clearProgress.existsOrWait(timeout: 3) {
             clearProgress.tap()
             // The menu action opens a confirmation dialog whose destructive
             // "Clear Progress" button performs the actual reset.
@@ -2965,7 +2969,7 @@ final class OpenCastUITests: XCTestCase {
         app.buttons["Open Now Playing"].tap()
         assertNowPlayingOverlay(in: app)
         assertExists(playbackProgress(in: app), named: "Playback Progress control")
-        XCTAssertTrue(app.buttons["Pause"].waitForExistence(timeout: 5) || app.buttons["Play"].exists)
+        XCTAssertTrue(app.buttons["Pause"].existsOrWait(timeout: 5) || app.buttons["Play"].exists)
         assertPlayerUtilityControlsExist(in: app)
 
         dismissNowPlayingOverlay(in: app)
@@ -3088,7 +3092,7 @@ final class OpenCastUITests: XCTestCase {
         downloadedRowButton.tap()
 
         assertNowPlayingOverlay(in: app)
-        XCTAssertFalse(app.alerts["Playback Failed"].waitForExistence(timeout: 2))
+        XCTAssertFalse(app.alerts["Playback Failed"].existsOrWait(timeout: 2))
         dismissNowPlayingOverlay(in: app)
 
         let miniPlayer = app.buttons["Open Now Playing"]
@@ -3442,7 +3446,7 @@ final class OpenCastUITests: XCTestCase {
 
         assertExists(app.staticTexts["Analyzing Promos & Ads"], named: "live dev Worker analysis progress", timeout: 10)
         XCTAssertTrue(
-            app.staticTexts["Analyzing Promos & Ads"].waitForNonExistence(timeout: 120),
+            app.staticTexts["Analyzing Promos & Ads"].absentOrWait(timeout: 120),
             "Live dev Worker analysis should finish within two minutes."
         )
         openTranscriptOptionsMenu(in: app)
@@ -3494,7 +3498,7 @@ final class OpenCastUITests: XCTestCase {
 
         assertExists(app.staticTexts["Analyzing Promos & Ads"], named: "physical App Attest analysis progress", timeout: 10)
         XCTAssertTrue(
-            app.staticTexts["Analyzing Promos & Ads"].waitForNonExistence(timeout: 120),
+            app.staticTexts["Analyzing Promos & Ads"].absentOrWait(timeout: 120),
             "Physical App Attest analysis should finish within two minutes."
         )
         openTranscriptOptionsMenu(in: app)
@@ -3510,9 +3514,9 @@ final class OpenCastUITests: XCTestCase {
         assertExists(cachedKeyAnalyzeButton, named: "Analyze action after deleting first analysis")
         cachedKeyAnalyzeButton.tap()
 
-        _ = app.staticTexts["Analyzing Promos & Ads"].waitForExistence(timeout: 2)
+        _ = app.staticTexts["Analyzing Promos & Ads"].existsOrWait(timeout: 2)
         XCTAssertTrue(
-            app.staticTexts["Analyzing Promos & Ads"].waitForNonExistence(timeout: 120),
+            app.staticTexts["Analyzing Promos & Ads"].absentOrWait(timeout: 120),
             "Cached-key analysis should finish within two minutes."
         )
         openTranscriptOptionsMenu(in: app)
@@ -3566,7 +3570,7 @@ final class OpenCastUITests: XCTestCase {
         // under full-suite clone load (observed once during closeout
         // lane; green in isolation).
         XCTAssertTrue(
-            app.staticTexts["Outdated — run again"].waitForNonExistence(timeout: 15),
+            app.staticTexts["Outdated — run again"].absentOrWait(timeout: 15),
             "The stale banner should clear after deleting the analysis."
         )
         openTranscriptOptionsMenu(in: app)
@@ -3990,7 +3994,7 @@ final class OpenCastUITests: XCTestCase {
 
         assertExists(app.staticTexts["Running Device Probe"], named: "Running Device Probe progress", timeout: 5)
         let passedResult = diagnosticsRow(in: app, title: "Last Device Probe", value: "settings: passed")
-        if !passedResult.waitForExistence(timeout: 90) {
+        if !passedResult.existsOrWait(timeout: 90) {
             let timedOutExists = diagnosticsRow(in: app, title: "Last Device Probe", value: "settings: timedOut").exists
             let failedExists = diagnosticsRow(in: app, title: "Last Device Probe", value: "settings: failed").exists
             XCTFail("Expected Settings Voice Boost device probe to pass; timedOut=\(timedOutExists), failed=\(failedExists)")
@@ -4102,7 +4106,7 @@ final class OpenCastUITests: XCTestCase {
         XCUIDevice.shared.press(.home)
         RunLoop.current.run(until: Date.now.addingTimeInterval(2))
         app.activate()
-        if !nowPlayingOverlay(in: app).waitForExistence(timeout: 5) {
+        if !nowPlayingOverlay(in: app).existsOrWait(timeout: 5) {
             let miniPlayer = app.buttons["Open Now Playing"]
             assertExists(miniPlayer, named: "mini-player after foregrounding", timeout: 10)
             miniPlayer.tap()
@@ -4139,7 +4143,7 @@ final class OpenCastUITests: XCTestCase {
         assertExists(addThisAmericanLife, named: "This American Life fallback confirmation", timeout: 10)
         addThisAmericanLife.tap()
         XCTAssertTrue(
-            app.staticTexts["Find Podcasts"].waitForNonExistence(timeout: 90),
+            app.staticTexts["Find Podcasts"].absentOrWait(timeout: 90),
             "Onboarding should dismiss after accepting the This American Life fallback."
         )
 
@@ -4178,7 +4182,7 @@ final class OpenCastUITests: XCTestCase {
         assertExists(addThisAmericanLife, named: "This American Life fallback confirmation", timeout: 10)
         addThisAmericanLife.tap()
         XCTAssertTrue(
-            app.staticTexts["Find Podcasts"].waitForNonExistence(timeout: 90),
+            app.staticTexts["Find Podcasts"].absentOrWait(timeout: 90),
             "Onboarding should dismiss after accepting the This American Life fallback."
         )
 
@@ -4214,7 +4218,7 @@ final class OpenCastUITests: XCTestCase {
         scrubStart.press(forDuration: 0.08, thenDragTo: scrubEnd)
 
         let pauseAfterScrubButton = nowPlayingOverlay(in: app).buttons["Pause"].firstMatch
-        if pauseAfterScrubButton.waitForExistence(timeout: 5) {
+        if pauseAfterScrubButton.existsOrWait(timeout: 5) {
             pauseAfterScrubButton.tap()
         }
         RunLoop.current.run(until: Date.now.addingTimeInterval(2))
@@ -4222,7 +4226,7 @@ final class OpenCastUITests: XCTestCase {
         app.terminate()
         app.launch()
 
-        if !nowPlayingOverlay(in: app).waitForExistence(timeout: 5) {
+        if !nowPlayingOverlay(in: app).existsOrWait(timeout: 5) {
             let miniPlayer = app.buttons["Open Now Playing"]
             assertExists(miniPlayer, named: "mini-player after relaunch", timeout: 20)
             miniPlayer.tap()
@@ -4257,7 +4261,7 @@ final class OpenCastUITests: XCTestCase {
         assertExists(addThisAmericanLife, named: "This American Life fallback confirmation", timeout: 10)
         addThisAmericanLife.tap()
         XCTAssertTrue(
-            app.staticTexts["Find Podcasts"].waitForNonExistence(timeout: 90),
+            app.staticTexts["Find Podcasts"].absentOrWait(timeout: 90),
             "Onboarding should dismiss after accepting the This American Life fallback."
         )
 
@@ -4334,7 +4338,7 @@ final class OpenCastUITests: XCTestCase {
         attachSmokeScreenshot(named: "now_playing_expanded_light")
 
         let pauseButton = nowPlayingOverlay(in: app).buttons["Pause"].firstMatch
-        if pauseButton.waitForExistence(timeout: 5) {
+        if pauseButton.existsOrWait(timeout: 5) {
             pauseButton.tap()
         }
         assertExists(nowPlayingOverlay(in: app).buttons["Play"].firstMatch, named: "Play button after pausing")
@@ -4467,7 +4471,7 @@ final class OpenCastUITests: XCTestCase {
         secondRow.tap()
 
         XCTAssertTrue(
-            app.navigationBars["Up Next"].waitForNonExistence(timeout: 5),
+            app.navigationBars["Up Next"].absentOrWait(timeout: 5),
             "Playing a queued row should dismiss the Up Next sheet."
         )
         let miniPlayer = app.buttons["Open Now Playing"]
@@ -4510,7 +4514,7 @@ final class OpenCastUITests: XCTestCase {
         openSeededNowPlaying(in: app)
         let overlay = nowPlayingOverlay(in: app)
         let pauseButton = overlay.buttons["Pause"].firstMatch
-        if pauseButton.waitForExistence(timeout: 5) {
+        if pauseButton.existsOrWait(timeout: 5) {
             pauseButton.tap()
         }
 
@@ -4546,7 +4550,7 @@ final class OpenCastUITests: XCTestCase {
 
         let pauseButton = overlay.buttons["Pause"].firstMatch
         let playButton = overlay.buttons["Play"].firstMatch
-        let playPauseButton = pauseButton.waitForExistence(timeout: 2) ? pauseButton : playButton
+        let playPauseButton = pauseButton.existsOrWait(timeout: 2) ? pauseButton : playButton
         assertNowPlayingControlIsReachable(playPauseButton, named: "Play/Pause control", in: app)
 
         let skipBackButton = overlay.buttons.matching(
@@ -4568,6 +4572,9 @@ final class OpenCastUITests: XCTestCase {
 
         dismissNowPlayingOverlay(in: app)
         let miniPlayer = app.descendants(matching: .any)["mini-player-expanded"].firstMatch
+        // Reaching the row at this size scrolled the show page, which tucks
+        // the accessory inline; scrolling back up expands it again.
+        scrollBackUpUntilExists(miniPlayer, in: app, named: "expanded mini-player at Accessibility XXXL")
         let openPlayer = miniPlayer.buttons["Open Now Playing"]
         assertHittable(openPlayer, named: "mini-player metadata at Accessibility XXXL")
         XCTAssertEqual(openPlayer.value as? String, "Deterministic UI Episode, UI Test Show")
@@ -4669,10 +4676,10 @@ final class OpenCastUITests: XCTestCase {
             for alert in [app.alerts.firstMatch, springboard.alerts.firstMatch] where alert.exists {
                 let okButton = alert.buttons["OK"]
                 (okButton.exists ? okButton : alert.buttons.firstMatch).tap()
-                XCTAssertTrue(alert.waitForNonExistence(timeout: 3), "App icon change alert should dismiss")
+                XCTAssertTrue(alert.absentOrWait(timeout: 3), "App icon change alert should dismiss")
                 return
             }
-            _ = springboard.alerts.firstMatch.waitForExistence(timeout: 0.5)
+            _ = springboard.alerts.firstMatch.existsOrWait(timeout: 0.5)
         } while Date.now < deadline
     }
 
@@ -4690,7 +4697,7 @@ final class OpenCastUITests: XCTestCase {
     @MainActor
     private func returnToSettingsHub(in app: XCUIApplication) {
         openSection("Settings", in: app)
-        if !app.navigationBars["Settings"].waitForExistence(timeout: 2) {
+        if !app.navigationBars["Settings"].existsOrWait(timeout: 2) {
             openSection("Settings", in: app)
         }
         assertExists(app.navigationBars["Settings"], named: "Settings hub navigation bar")
@@ -4706,7 +4713,7 @@ final class OpenCastUITests: XCTestCase {
                || row.staticTexts[value].exists {
                 return true
             }
-            _ = row.staticTexts[value].waitForExistence(timeout: 0.5)
+            _ = row.staticTexts[value].existsOrWait(timeout: 0.5)
         } while Date.now < deadline
         return false
     }
@@ -4727,25 +4734,25 @@ final class OpenCastUITests: XCTestCase {
         app.launch()
 
         let settingsTab = app.tabBars.buttons["Settings"]
-        guard settingsTab.waitForExistence(timeout: 10) else {
+        guard settingsTab.existsOrWait(timeout: 10) else {
             return
         }
         settingsTab.tap()
-        if !app.navigationBars["Settings"].waitForExistence(timeout: 2) {
+        if !app.navigationBars["Settings"].existsOrWait(timeout: 2) {
             settingsTab.tap()
         }
         let appIconRow = app.buttons["Settings Row App Icon"].firstMatch
-        guard appIconRow.waitForExistence(timeout: 5) else {
+        guard appIconRow.existsOrWait(timeout: 5) else {
             return
         }
         appIconRow.tap()
         let emberOption = app.buttons["App Icon Option Ember"]
-        guard emberOption.waitForExistence(timeout: 5), !emberOption.isSelected else {
+        guard emberOption.existsOrWait(timeout: 5), !emberOption.isSelected else {
             return
         }
         emberOption.tap()
         let springboard = XCUIApplication(bundleIdentifier: "com.apple.springboard")
-        for alert in [app.alerts.firstMatch, springboard.alerts.firstMatch] where alert.waitForExistence(timeout: 3) {
+        for alert in [app.alerts.firstMatch, springboard.alerts.firstMatch] where alert.existsOrWait(timeout: 3) {
             alert.buttons.firstMatch.tap()
             break
         }
@@ -4796,7 +4803,7 @@ final class OpenCastUITests: XCTestCase {
         recap.tap()
         assertExists(app.navigationBars["Recap"], named: "recap sheet")
         let continueButton = app.buttons["Continue"].firstMatch
-        if continueButton.waitForExistence(timeout: 5) {
+        if continueButton.existsOrWait(timeout: 5) {
             continueButton.tap()
         }
         let list = app.descendants(matching: .any).matching(identifier: "Transcript Recap List").firstMatch
@@ -4867,7 +4874,7 @@ final class OpenCastUITests: XCTestCase {
         chip.tap()
 
         XCTAssertTrue(
-            app.navigationBars["Recap"].waitForNonExistence(timeout: 5),
+            app.navigationBars["Recap"].absentOrWait(timeout: 5),
             "tapping a citation should dismiss the recap sheet"
         )
         assertExists(app.navigationBars["Transcript"], named: "transcript route after seeking")
@@ -4955,7 +4962,7 @@ final class OpenCastUITests: XCTestCase {
         chip.tap()
 
         XCTAssertTrue(
-            app.navigationBars["Ask"].waitForNonExistence(timeout: 5),
+            app.navigationBars["Ask"].absentOrWait(timeout: 5),
             "tapping a citation should dismiss the ask sheet"
         )
         assertExists(app.navigationBars["Transcript"], named: "transcript route after seeking")
@@ -4985,7 +4992,7 @@ final class OpenCastUITests: XCTestCase {
         app.buttons[Self.askTitle].tap()
         assertExists(app.navigationBars["Ask"], named: "ask sheet")
         let continueButton = app.buttons["Continue"].firstMatch
-        if continueButton.waitForExistence(timeout: 5) {
+        if continueButton.existsOrWait(timeout: 5) {
             continueButton.tap()
         }
         let suggestion = app.buttons["What is this episode about?"].firstMatch
@@ -5010,7 +5017,7 @@ final class OpenCastUITests: XCTestCase {
         openTranscriptOptionsMenu(in: app)
         app.buttons[Self.askTitle].tap()
         assertExists(app.navigationBars["Ask"], named: "ask sheet (second launch)")
-        if continueButton.waitForExistence(timeout: 5) {
+        if continueButton.existsOrWait(timeout: 5) {
             continueButton.tap()
         }
         assertExists(suggestion, named: "suggested question (second launch)", timeout: 10)
@@ -5047,7 +5054,7 @@ final class OpenCastUITests: XCTestCase {
         ask.tap()
         assertExists(app.navigationBars["Ask"], named: "ask sheet")
         let continueButton = app.buttons["Continue"].firstMatch
-        if continueButton.waitForExistence(timeout: 5) {
+        if continueButton.existsOrWait(timeout: 5) {
             continueButton.tap()
         }
         let suggestion = app.buttons["What is this episode about?"].firstMatch
@@ -5194,7 +5201,7 @@ final class OpenCastUITests: XCTestCase {
         // A second tap on the Library tab pops the show; Back covers a stack
         // that stayed put.
         openLibrary(in: app)
-        if !app.navigationBars["Library"].waitForExistence(timeout: 3) {
+        if !app.navigationBars["Library"].existsOrWait(timeout: 3) {
             tapBackButton(in: app)
         }
         openPlaylistsCollection(in: app)
@@ -5608,7 +5615,7 @@ final class OpenCastUITests: XCTestCase {
 
         pill.tap()
         XCTAssertTrue(
-            nowPlayingOverlay(in: app).waitForNonExistence(timeout: 5),
+            nowPlayingOverlay(in: app).absentOrWait(timeout: 5),
             "Tapping the source pill should dismiss Now Playing"
         )
         assertExists(app.navigationBars["Seeded Commute"], named: "Seeded Commute detail from the source pill")
@@ -5759,7 +5766,7 @@ final class OpenCastUITests: XCTestCase {
             label: "Play Next puts an episode ahead of the rest of Seeded Commute.",
             in: app
         )
-        if !footer.waitForExistence(timeout: 2) {
+        if !footer.existsOrWait(timeout: 2) {
             app.navigationBars["Up Next"].swipeUp()
         }
         assertExists(footer, named: "Up Next playlist footer")
@@ -5768,7 +5775,7 @@ final class OpenCastUITests: XCTestCase {
         let secondQueuedRow = try XCTUnwrap(hittableQueuedRow(2, in: app), "Queued UI Episode 2 in the Up Next sheet")
         secondQueuedRow.tap()
         XCTAssertTrue(
-            app.navigationBars["Up Next"].waitForNonExistence(timeout: 5),
+            app.navigationBars["Up Next"].absentOrWait(timeout: 5),
             "Playing a row should dismiss the Up Next sheet"
         )
         // The sheet belonged to Now Playing, so the card stays up.
@@ -5784,7 +5791,7 @@ final class OpenCastUITests: XCTestCase {
         showPlaylist.tap()
 
         XCTAssertTrue(
-            nowPlayingOverlay(in: app).waitForNonExistence(timeout: 5),
+            nowPlayingOverlay(in: app).absentOrWait(timeout: 5),
             "Show Seeded Commute should dismiss Now Playing"
         )
         assertExists(app.navigationBars["Seeded Commute"], named: "Seeded Commute detail from the More menu")
@@ -6117,7 +6124,7 @@ final class OpenCastUITests: XCTestCase {
         file: StaticString = #filePath,
         line: UInt = #line
     ) {
-        guard !element.waitForExistence(timeout: timeout) else {
+        guard !element.existsOrWait(timeout: timeout) else {
             return
         }
         attachOrganizerHierarchy(named: "make_playlist_hierarchy_\(name)", in: app)
@@ -6239,7 +6246,7 @@ final class OpenCastUITests: XCTestCase {
         XCTAssertTrue(waitForStableFrame(of: menu), "The options menu should settle before the tap", file: file, line: line)
         menu.tap()
         let item = labeledButton(title, in: app)
-        guard item.waitForExistence(timeout: 5) else {
+        guard item.existsOrWait(timeout: 5) else {
             attachOrganizerHierarchy(named: "make_playlist_options_menu_hierarchy", in: app)
             XCTFail("\(title) proposal option not found", file: file, line: line)
             return
@@ -6248,7 +6255,7 @@ final class OpenCastUITests: XCTestCase {
         assertHittable(item, named: "\(title) proposal option", file: file, line: line)
         item.tap()
         XCTAssertTrue(
-            item.waitForNonExistence(timeout: 5),
+            item.absentOrWait(timeout: 5),
             "The options menu should close after choosing \(title)",
             file: file,
             line: line
@@ -6430,7 +6437,7 @@ final class OpenCastUITests: XCTestCase {
     ) {
         searchField.tap()
         let clearButton = searchField.buttons["Clear text"].firstMatch
-        if clearButton.waitForExistence(timeout: 2), clearButton.isHittable {
+        if clearButton.existsOrWait(timeout: 2), clearButton.isHittable {
             clearButton.tap()
             return
         }
@@ -6783,7 +6790,7 @@ final class OpenCastUITests: XCTestCase {
         assertHittable(option, named: "\(title) view option", file: file, line: line)
         option.tap()
         XCTAssertTrue(
-            option.waitForNonExistence(timeout: 5),
+            option.absentOrWait(timeout: 5),
             "View Options should close after choosing \(title)",
             file: file,
             line: line
@@ -7132,7 +7139,7 @@ final class OpenCastUITests: XCTestCase {
         file: StaticString = #filePath,
         line: UInt = #line
     ) {
-        XCTAssertTrue(element.waitForExistence(timeout: 5), "\(name) should exist", file: file, line: line)
+        XCTAssertTrue(element.existsOrWait(timeout: 5), "\(name) should exist", file: file, line: line)
         for _ in 0..<maxSwipes where !element.isHittable {
             app.swipeUp()
         }
@@ -7172,12 +7179,23 @@ final class OpenCastUITests: XCTestCase {
         return row
     }
 
-    /// The mini-player floats over list content, and rows below a hero header
-    /// can start out under it; the list's bottom margin lets them scroll clear.
+    /// The mini-player and tab bar float over list content, and rows below a
+    /// hero header (or tall rows at large text sizes) can start out under
+    /// them; the list's bottom margin lets them scroll clear.
     @MainActor
     private func scrollClearOfMiniPlayer(_ row: XCUIElement, in app: XCUIApplication) {
         let miniPlayer = app.buttons["Open Now Playing"].firstMatch
-        for _ in 0..<3 where miniPlayer.exists && row.frame.maxY > miniPlayer.frame.minY {
+        let tabBar = app.tabBars.firstMatch
+        func overlayTop() -> CGFloat? {
+            if miniPlayer.exists { return miniPlayer.frame.minY }
+            if tabBar.exists { return tabBar.frame.minY }
+            return nil
+        }
+        // A row taller than the space left can't clear; stop before its top
+        // scrolls under the navigation bar.
+        let highestTop = app.windows.firstMatch.frame.height * 0.25
+        for _ in 0..<4 {
+            guard let top = overlayTop(), row.frame.maxY > top, row.frame.minY > highestTop else { return }
             app.swipeUp()
         }
     }
@@ -7584,7 +7602,7 @@ final class OpenCastUITests: XCTestCase {
         line: UInt = #line
     ) -> XCUIElement {
         let searchField = app.searchFields.firstMatch
-        if !searchField.waitForExistence(timeout: 2) {
+        if !searchField.existsOrWait(timeout: 2) {
             let searchButtons = app.navigationBars[navigationBarTitle].buttons.matching(
                 NSPredicate(format: "label == %@", "Search")
             )
@@ -7620,7 +7638,7 @@ final class OpenCastUITests: XCTestCase {
             app.navigationBars["opencast"].buttons["Add"],
             app.buttons["Add"].firstMatch
         ]
-        guard let addButton = addButtons.first(where: { $0.waitForExistence(timeout: 2) }) else {
+        guard let addButton = addButtons.first(where: { $0.existsOrWait(timeout: 2) }) else {
             XCTFail("Add Podcast button should exist", file: file, line: line)
             return
         }
@@ -7680,7 +7698,7 @@ final class OpenCastUITests: XCTestCase {
     @MainActor
     private func restIsScienceFirstEpisode(in app: XCUIApplication) -> XCUIElement {
         let button = app.buttons.containing(.staticText, identifier: "The Rest Is Science").firstMatch
-        if button.waitForExistence(timeout: 2) {
+        if button.existsOrWait(timeout: 2) {
             return button
         }
 
@@ -7690,7 +7708,7 @@ final class OpenCastUITests: XCTestCase {
     @MainActor
     private func thisAmericanLifeEpisodeRow(in app: XCUIApplication) -> XCUIElement {
         let button = app.buttons.containing(.staticText, identifier: "This American Life").firstMatch
-        if button.waitForExistence(timeout: 2) {
+        if button.existsOrWait(timeout: 2) {
             return button
         }
 
@@ -7886,7 +7904,7 @@ final class OpenCastUITests: XCTestCase {
             app.swipeUp()
         }
 
-        XCTAssertTrue(element.waitForExistence(timeout: 5), file: file, line: line)
+        XCTAssertTrue(element.existsOrWait(timeout: 5), file: file, line: line)
         XCTAssertTrue(element.isHittable, file: file, line: line)
     }
 
@@ -7902,7 +7920,7 @@ final class OpenCastUITests: XCTestCase {
             app.swipeUp()
         }
 
-        XCTAssertTrue(element.waitForExistence(timeout: 5), file: file, line: line)
+        XCTAssertTrue(element.existsOrWait(timeout: 5), file: file, line: line)
         XCTAssertTrue(isVisible(element, in: app), file: file, line: line)
     }
 
@@ -7941,7 +7959,7 @@ final class OpenCastUITests: XCTestCase {
             app.swipeUp()
         }
 
-        XCTAssertTrue(element.waitForExistence(timeout: 5), file: file, line: line)
+        XCTAssertTrue(element.existsOrWait(timeout: 5), file: file, line: line)
     }
 
     /// Scrolls back up until `element` exists. The system re-expands the tab
@@ -7959,7 +7977,7 @@ final class OpenCastUITests: XCTestCase {
     ) {
         for _ in 0..<maxSwipes {
             app.swipeDown()
-            if element.waitForExistence(timeout: 5) {
+            if element.existsOrWait(timeout: 5) {
                 return
             }
         }
@@ -7989,9 +8007,10 @@ final class OpenCastUITests: XCTestCase {
         let list = libraryContainer("Playlists List", in: app)
         playlistsRow.tap()
         assertExists(app.navigationBars["Playlists"], named: "Playlists collection", file: file, line: line)
-        assertExists(grid, named: "Playlists grid under Automatic", file: file, line: line)
-        assertDoesNotExist(list, named: "Playlists list under Automatic", file: file, line: line)
-        attachSmokeScreenshot(named: "playlists_collection_grid\(screenshotSuffix)")
+        // Playlists keeps its own layout setting, which defaults to List.
+        assertExists(list, named: "Playlists list by default", file: file, line: line)
+        assertDoesNotExist(grid, named: "Playlists grid by default", file: file, line: line)
+        attachSmokeScreenshot(named: "playlists_collection_default\(screenshotSuffix)")
 
         tapBackButton(in: app)
         assertExists(app.navigationBars["Library"], named: "Library after leaving Playlists", file: file, line: line)
@@ -8280,7 +8299,7 @@ final class OpenCastUITests: XCTestCase {
         XCTAssertTrue(waitForStableFrame(of: chip), "The \(clause) chip should settle before the tap", file: file, line: line)
         chip.tap()
         let item = app.buttons.matching(NSPredicate(format: "label == %@", option)).firstMatch
-        guard item.waitForExistence(timeout: 5) else {
+        guard item.existsOrWait(timeout: 5) else {
             let attachment = XCTAttachment(string: app.debugDescription)
             attachment.name = "smart_rule_menu_hierarchy"
             attachment.lifetime = .keepAlways
@@ -8295,7 +8314,7 @@ final class OpenCastUITests: XCTestCase {
         }
         item.tap()
         XCTAssertTrue(
-            item.waitForNonExistence(timeout: 5),
+            item.absentOrWait(timeout: 5),
             "The \(clause) menu should close after choosing \(option)",
             file: file,
             line: line
@@ -8377,10 +8396,10 @@ final class OpenCastUITests: XCTestCase {
             line: line
         )
         confirmButton.tap()
-        if !alert.waitForNonExistence(timeout: 3), confirmButton.exists {
+        if !alert.absentOrWait(timeout: 3), confirmButton.exists {
             confirmButton.tap()
         }
-        XCTAssertTrue(alert.waitForNonExistence(timeout: 5), "\(title) alert should close", file: file, line: line)
+        XCTAssertTrue(alert.absentOrWait(timeout: 5), "\(title) alert should close", file: file, line: line)
     }
 
     /// True once two frame reads 300 ms apart agree, so a tap is not aimed
@@ -8417,7 +8436,7 @@ final class OpenCastUITests: XCTestCase {
         let item = app.descendants(matching: .any)
             .matching(NSPredicate(format: "label == %@", title))
             .firstMatch
-        guard item.waitForExistence(timeout: 5) else {
+        guard item.existsOrWait(timeout: 5) else {
             let attachment = XCTAttachment(string: app.debugDescription)
             attachment.name = "playlist_actions_menu_hierarchy"
             attachment.lifetime = .keepAlways
@@ -8428,7 +8447,7 @@ final class OpenCastUITests: XCTestCase {
         item.tap()
         // Delete Playlist's confirmation reuses the item's label, so it must
         // not be mistaken for a menu that stayed open.
-        if closesMenuIfStillOpen, !item.waitForNonExistence(timeout: 2) {
+        if closesMenuIfStillOpen, !item.absentOrWait(timeout: 2) {
             app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.85)).tap()
         }
     }
@@ -8469,7 +8488,7 @@ final class OpenCastUITests: XCTestCase {
         assertHittable(doneButton, named: "Add to Playlist Done button", file: file, line: line)
         doneButton.tap()
         XCTAssertTrue(
-            addToPlaylistSheet(in: app).waitForNonExistence(timeout: 5),
+            addToPlaylistSheet(in: app).absentOrWait(timeout: 5),
             "The Add to Playlist sheet should close",
             file: file,
             line: line
@@ -8563,7 +8582,7 @@ extension XCTestCase {
                 ["Library Empty Add Podcast"]
             )
         ).firstMatch
-        if addPodcastMenuItem.waitForExistence(timeout: 2) {
+        if addPodcastMenuItem.existsOrWait(timeout: 2) {
             addPodcastMenuItem.tap()
         }
     }

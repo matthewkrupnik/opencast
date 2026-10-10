@@ -159,7 +159,7 @@ final class ExtendedQADeviceProbeUITests: XCTestCase {
         sleep(1)
 
         let toggle = app.switches["Use Apple Transcription"].firstMatch
-        guard toggle.waitForExistence(timeout: 10) else {
+        guard toggle.existsOrWait(timeout: 10) else {
             print("EXTQA[engine]: toggle absent — Apple Speech unavailable, already on Whisper")
             return
         }
@@ -213,13 +213,13 @@ final class ExtendedQADeviceProbeUITests: XCTestCase {
         openEpisodeDetail(podcast: Self.longPodcastTitle, episode: Self.longEpisodeTitle, in: app)
 
         XCTAssertTrue(
-            app.buttons["Probe Mark"].waitForExistence(timeout: 10),
+            app.buttons["Probe Mark"].existsOrWait(timeout: 10),
             "frame probe must be armed for the screens pass"
         )
 
         tapProbeMark(app)
         let transcriptCard = app.buttons["Read Transcript"]
-        XCTAssertTrue(transcriptCard.waitForExistence(timeout: 10), "Read Transcript card must exist")
+        XCTAssertTrue(transcriptCard.existsOrWait(timeout: 10), "Read Transcript card must exist")
         transcriptCard.tap()
         sleep(2)
         tapProbeMark(app)
@@ -256,7 +256,7 @@ final class ExtendedQADeviceProbeUITests: XCTestCase {
         openAllPlaylist(in: app)
         sleep(2)
         XCTAssertTrue(
-            app.buttons["Probe Mark"].waitForExistence(timeout: 10),
+            app.buttons["Probe Mark"].existsOrWait(timeout: 10),
             "frame probe must be armed for the scroll pass"
         )
 
@@ -329,7 +329,7 @@ final class ExtendedQADeviceProbeUITests: XCTestCase {
             "Whisper model management must be reachable on the Transcription screen"
         )
         XCTAssertTrue(
-            app.buttons["Accurate"].waitForExistence(timeout: 10),
+            app.buttons["Accurate"].existsOrWait(timeout: 10),
             "Whisper Model picker must exist on the Transcription screen"
         )
     }
@@ -467,7 +467,7 @@ final class ExtendedQADeviceProbeUITests: XCTestCase {
     @MainActor
     private func waitForStatus(prefix: String, in app: XCUIApplication, timeout: TimeInterval) -> Bool {
         let match = app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH %@", prefix)).firstMatch
-        return match.waitForExistence(timeout: timeout)
+        return match.existsOrWait(timeout: timeout)
     }
 
     // MARK: - Episode navigation and actions
@@ -477,7 +477,7 @@ final class ExtendedQADeviceProbeUITests: XCTestCase {
         openSettingsScreen("Transcription", in: app)
         sleep(1)
         let toggle = app.switches["Use Apple Transcription"]
-        guard toggle.waitForExistence(timeout: 3) else {
+        guard toggle.existsOrWait(timeout: 3) else {
             return
         }
         let isOn = (toggle.value as? String) == "1"
@@ -517,7 +517,7 @@ final class ExtendedQADeviceProbeUITests: XCTestCase {
 
         for _ in 0..<2 {
             row.press(forDuration: 1.2)
-            if app.buttons["View Episode Details"].waitForExistence(timeout: 4) {
+            if app.buttons["View Episode Details"].existsOrWait(timeout: 4) {
                 break
             }
         }
@@ -525,7 +525,7 @@ final class ExtendedQADeviceProbeUITests: XCTestCase {
         XCTAssertTrue(detailButton.exists, "context menu must offer View Episode Details")
         detailButton.tap()
         XCTAssertTrue(
-            app.buttons["Episode Actions"].waitForExistence(timeout: 10),
+            app.buttons["Episode Actions"].existsOrWait(timeout: 10),
             "episode detail must present the Episode Actions menu"
         )
     }
@@ -557,13 +557,13 @@ final class ExtendedQADeviceProbeUITests: XCTestCase {
     @MainActor
     private func openShareMenu(in app: XCUIApplication) {
         let menu = app.buttons["Transcript Options"]
-        guard menu.waitForExistence(timeout: 5) else {
+        guard menu.existsOrWait(timeout: 5) else {
             print("EXTQA-FRAMES[transcript-screens]: Transcript Options menu not found")
             return
         }
         menu.tap()
         let share = app.buttons["Share Transcript"]
-        if share.waitForExistence(timeout: 3) {
+        if share.existsOrWait(timeout: 3) {
             share.tap()
             sleep(2)
             // Dismiss the share sheet.
@@ -590,7 +590,7 @@ final class ExtendedQADeviceProbeUITests: XCTestCase {
     @MainActor
     private func frameSummaryValue(in app: XCUIApplication) -> String {
         let element = app.descendants(matching: .any)["Frame Pacing Summary"]
-        guard element.waitForExistence(timeout: 10) else {
+        guard element.existsOrWait(timeout: 10) else {
             return "frame probe element missing"
         }
         return (element.value as? String) ?? ""

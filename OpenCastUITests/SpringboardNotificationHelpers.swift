@@ -27,12 +27,12 @@ extension XCTestCase {
 
         while Date() < deadline {
             let notification = springboard.descendants(matching: .any).matching(notificationPredicate).firstMatch
-            if notification.waitForExistence(timeout: 1) {
+            if notification.existsOrWait(timeout: 1) {
                 return notification
             }
 
             let text = springboard.descendants(matching: .any).matching(textPredicate).firstMatch
-            if text.waitForExistence(timeout: 1) {
+            if text.existsOrWait(timeout: 1) {
                 return text
             }
 

@@ -36,7 +36,7 @@ extension XCTestCase {
         line: UInt = #line
     ) {
         XCTAssertTrue(
-            element.waitForExistence(timeout: timeout),
+            element.existsOrWait(timeout: timeout),
             "\(name) should exist",
             file: file,
             line: line
@@ -52,6 +52,16 @@ extension XCTestCase {
         line: UInt = #line
     ) {
         assertExists(element, named: name, timeout: timeout, file: file, line: line)
+        // The expectation below first checks after about a second. Skip it
+        // when the element is already hittable and has stopped moving, so a
+        // tap that follows doesn't land mid-animation.
+        if element.exists, element.isHittable {
+            let frame = element.frame
+            RunLoop.current.run(until: Date().addingTimeInterval(0.25))
+            if element.exists, element.isHittable, element.frame == frame {
+                return
+            }
+        }
         let predicate = NSPredicate(format: "hittable == true")
         let expectation = XCTNSPredicateExpectation(predicate: predicate, object: element)
         XCTAssertEqual(
@@ -72,7 +82,7 @@ extension XCTestCase {
         line: UInt = #line
     ) {
         XCTAssertTrue(
-            element.waitForNonExistence(timeout: timeout),
+            element.absentOrWait(timeout: timeout),
             "\(name) should not exist",
             file: file,
             line: line

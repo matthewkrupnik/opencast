@@ -222,7 +222,7 @@ final class AdFreePassDeviceE2EUITests: XCTestCase {
         let parkDeadline = Date().addingTimeInterval(300)
         while Date() < parkDeadline, !parked {
             if tryOpenQueueScreen(in: restored),
-               staticText(containing: Self.capDeferredCopy, in: restored).waitForExistence(timeout: 3) {
+               staticText(containing: Self.capDeferredCopy, in: restored).existsOrWait(timeout: 3) {
                 parked = true
                 break
             }
@@ -246,7 +246,7 @@ final class AdFreePassDeviceE2EUITests: XCTestCase {
             } else if retryButton.exists, retryButton.isHittable {
                 retryButton.tap()
             }
-            _ = armedLabel.waitForExistence(timeout: 2)
+            _ = armedLabel.existsOrWait(timeout: 2)
         }
         assertExists(armedLabel, named: "armed label after mid-run arm", timeout: 5)
         assertExists(
@@ -298,7 +298,7 @@ final class AdFreePassDeviceE2EUITests: XCTestCase {
         let parkDeadline = Date().addingTimeInterval(600)
         while Date() < parkDeadline, !parked {
             if tryOpenQueueScreen(in: cappedApp),
-               staticText(containing: Self.capDeferredCopy, in: cappedApp).waitForExistence(timeout: 3) {
+               staticText(containing: Self.capDeferredCopy, in: cappedApp).existsOrWait(timeout: 3) {
                 parked = true
                 break
             }
@@ -361,7 +361,7 @@ final class AdFreePassDeviceE2EUITests: XCTestCase {
             )
             attachTimestampedSmokeScreenshot(named: "05-queue-restored-after-relaunch")
             let resumeButton = app.buttons["Resume"]
-            if resumeButton.waitForExistence(timeout: 10) {
+            if resumeButton.existsOrWait(timeout: 10) {
                 resumeButton.tap()
             }
         } else {
@@ -497,7 +497,7 @@ final class AdFreePassDeviceE2EUITests: XCTestCase {
             }
 
             openSearch(in: app)
-            _ = app.searchFields.firstMatch.waitForExistence(timeout: 4)
+            _ = app.searchFields.firstMatch.existsOrWait(timeout: 4)
         }
         XCTAssertTrue(didType, "Search tab field should accept the query")
 
@@ -551,9 +551,9 @@ final class AdFreePassDeviceE2EUITests: XCTestCase {
         episodeActionsButton.tap()
 
         let deleteButton = app.buttons["Delete Transcript"]
-        if deleteButton.waitForExistence(timeout: 5), deleteButton.isHittable {
+        if deleteButton.existsOrWait(timeout: 5), deleteButton.isHittable {
             deleteButton.tap()
-            _ = deleteButton.waitForNonExistence(timeout: 5)
+            _ = deleteButton.absentOrWait(timeout: 5)
         }
     }
 
@@ -572,12 +572,12 @@ final class AdFreePassDeviceE2EUITests: XCTestCase {
             let identifier = row.identifier
             for _ in 0..<2 {
                 row.press(forDuration: 1.2)
-                if app.buttons["View Episode Details"].waitForExistence(timeout: 4) {
+                if app.buttons["View Episode Details"].existsOrWait(timeout: 4) {
                     break
                 }
             }
             let detectButton = app.buttons["Detect Ads"]
-            if detectButton.waitForExistence(timeout: 3), detectButton.isEnabled {
+            if detectButton.existsOrWait(timeout: 3), detectButton.isEnabled {
                 detectButton.tap()
                 enqueuedRowIdentifiers[episodeTitle] = identifier
                 return
@@ -616,12 +616,12 @@ final class AdFreePassDeviceE2EUITests: XCTestCase {
         row.tap()
 
         let overlay = app.descendants(matching: .any)["Now Playing"]
-        if overlay.waitForExistence(timeout: 8) {
+        if overlay.existsOrWait(timeout: 8) {
             return
         }
 
         let playEpisodeButton = app.buttons["Play Episode"]
-        if playEpisodeButton.waitForExistence(timeout: 5) {
+        if playEpisodeButton.existsOrWait(timeout: 5) {
             playEpisodeButton.tap()
         }
         assertExists(overlay, named: "Now Playing overlay", timeout: 10)
@@ -652,7 +652,7 @@ final class AdFreePassDeviceE2EUITests: XCTestCase {
     private func settleAnyRestoredQueue(in app: XCUIApplication) {
         openPlaylistsRoot(in: app)
         let indicator = app.buttons["Ad Detection Queue Indicator"]
-        guard indicator.waitForExistence(timeout: 8) else {
+        guard indicator.existsOrWait(timeout: 8) else {
             return
         }
         let deadline = Date().addingTimeInterval(600)
@@ -672,7 +672,7 @@ final class AdFreePassDeviceE2EUITests: XCTestCase {
             }
         }
 
-        if app.navigationBars["Playlists"].waitForExistence(timeout: 3) {
+        if app.navigationBars["Playlists"].existsOrWait(timeout: 3) {
             return
         }
 
@@ -704,7 +704,7 @@ final class AdFreePassDeviceE2EUITests: XCTestCase {
         openPlaylistsRoot(in: app)
         dismissSearchIfPresented(in: app)
         let indicator = app.buttons["Ad Detection Queue Indicator"]
-        guard indicator.waitForExistence(timeout: 30) else {
+        guard indicator.existsOrWait(timeout: 30) else {
             return false
         }
         // The indicator button's SwiftUI identity is rebuilt on every queue
@@ -717,7 +717,7 @@ final class AdFreePassDeviceE2EUITests: XCTestCase {
             for _ in 0..<4 {
                 indicator.coordinate(withNormalizedOffset: CGVector(dx: offset, dy: 0.5))
                     .press(forDuration: 0.02)
-                if queueNav.waitForExistence(timeout: 2) {
+                if queueNav.existsOrWait(timeout: 2) {
                     break burst
                 }
             }
@@ -746,13 +746,13 @@ final class AdFreePassDeviceE2EUITests: XCTestCase {
                 openPlaylistsRoot(in: app)
                 dismissSearchIfPresented(in: app)
                 let indicator = app.buttons["Ad Detection Queue Indicator"]
-                if !indicator.waitForExistence(timeout: 5) {
+                if !indicator.existsOrWait(timeout: 5) {
                     return true
                 }
                 if indicator.exists, indicator.isHittable {
                     indicator.coordinate(withNormalizedOffset: CGVector(dx: 0.08, dy: 0.5)).tap()
                 }
-                guard app.navigationBars["Ad Detection"].waitForExistence(timeout: 4) else {
+                guard app.navigationBars["Ad Detection"].existsOrWait(timeout: 4) else {
                     continue
                 }
             }
@@ -779,21 +779,21 @@ final class AdFreePassDeviceE2EUITests: XCTestCase {
     private func cancelSystemCard(in springboard: XCUIApplication) -> Bool {
         for attempt in 0..<3 {
             let directCancel = springboard.buttons["Cancel"].firstMatch
-            if directCancel.waitForExistence(timeout: 2), directCancel.isHittable {
+            if directCancel.existsOrWait(timeout: 2), directCancel.isHittable {
                 directCancel.tap()
                 return true
             }
 
             let card = springboardText(containing: Self.liveActivityTitleFragment, in: springboard)
-            if card.waitForExistence(timeout: 2) {
+            if card.existsOrWait(timeout: 2) {
                 card.press(forDuration: 1.0)
                 let expandedCancel = springboard.buttons["Cancel"].firstMatch
-                if expandedCancel.waitForExistence(timeout: 3), expandedCancel.isHittable {
+                if expandedCancel.existsOrWait(timeout: 3), expandedCancel.isHittable {
                     expandedCancel.tap()
                     return true
                 }
                 let stopButton = springboard.buttons["Stop"].firstMatch
-                if stopButton.waitForExistence(timeout: 2), stopButton.isHittable {
+                if stopButton.existsOrWait(timeout: 2), stopButton.isHittable {
                     stopButton.tap()
                     return true
                 }
@@ -833,7 +833,7 @@ final class AdFreePassDeviceE2EUITests: XCTestCase {
         var checksNotificationCenter = false
         while Date() < deadline {
             for fragment in fragments {
-                if springboardText(containing: fragment, in: springboard).waitForExistence(timeout: 2) {
+                if springboardText(containing: fragment, in: springboard).existsOrWait(timeout: 2) {
                     attachTimestampedSmokeScreenshot(named: screenshotName)
                     if checksNotificationCenter {
                         XCUIDevice.shared.press(.home)
@@ -882,7 +882,7 @@ final class AdFreePassDeviceE2EUITests: XCTestCase {
         let deadline = Date().addingTimeInterval(timeout)
         var lastScreenshotAt = Date.distantPast
         while Date() < deadline {
-            if element.waitForExistence(timeout: 2) {
+            if element.existsOrWait(timeout: 2) {
                 return true
             }
             if let pollScreenshotName, Date().timeIntervalSince(lastScreenshotAt) > 120 {

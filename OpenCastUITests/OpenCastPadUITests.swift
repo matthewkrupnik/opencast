@@ -175,7 +175,7 @@ final class OpenCastPadUITests: XCTestCase {
         assertHittable(tile, named: "library tile before swipe")
         tile.swipeLeft()
         let confirmation = app.buttons["Remove & Clear History"]
-        if !confirmation.waitForExistence(timeout: 2) {
+        if !confirmation.existsOrWait(timeout: 2) {
             app.buttons["Remove Podcast Swipe Action"].firstMatch.tap()
         }
         assertExists(confirmation, named: "tile removal history choice")
@@ -191,7 +191,7 @@ final class OpenCastPadUITests: XCTestCase {
         assertHittable(tile, named: "tile retained after cancelling removal")
         attachSmokeScreenshot(named: "ipad_grid_swipe_cancelled")
         tile.swipeLeft()
-        if !confirmation.waitForExistence(timeout: 2) {
+        if !confirmation.existsOrWait(timeout: 2) {
             app.buttons["Remove Podcast Swipe Action"].firstMatch.tap()
         }
         assertExists(confirmation, named: "second tile removal confirmation")
@@ -444,7 +444,7 @@ final class OpenCastPadUITests: XCTestCase {
         openEpisodeDetailFromContextMenu(seededEpisodeRow(in: app), in: app, named: "seeded inbox episode")
         let readTranscript = app.buttons["Read Transcript"]
         var swipes = 0
-        while !(readTranscript.waitForExistence(timeout: 1) && readTranscript.isHittable), swipes < 8 {
+        while !(readTranscript.existsOrWait(timeout: 1) && readTranscript.isHittable), swipes < 8 {
             app.swipeUp()
             swipes += 1
         }
@@ -458,7 +458,7 @@ final class OpenCastPadUITests: XCTestCase {
         // disclosure, then a real PCC round trip.
         openDeviceRecapSheet(entry: "Recap So Far", in: app)
         let continueButton = app.buttons["Continue"].firstMatch
-        if continueButton.waitForExistence(timeout: 5) {
+        if continueButton.existsOrWait(timeout: 5) {
             attachSmokeScreenshot(named: "ipad_recap_disclosure_\(appearance)")
             continueButton.tap()
         }
@@ -467,7 +467,7 @@ final class OpenCastPadUITests: XCTestCase {
         attachSmokeScreenshot(named: "ipad_recap_so_far_\(appearance)")
         attachHierarchyDump(named: "ipad_recap_so_far_hierarchy_\(appearance)", in: app)
         app.buttons["Done"].firstMatch.tap()
-        XCTAssertTrue(app.navigationBars["Recap"].waitForNonExistence(timeout: 5), "Done should dismiss the recap sheet")
+        XCTAssertTrue(app.navigationBars["Recap"].absentOrWait(timeout: 5), "Done should dismiss the recap sheet")
 
         openDeviceRecapSheet(entry: "Recap the Last 5 Minutes", in: app)
         assertExists(recapList, named: "last-five-minutes recap from Private Cloud Compute", timeout: 120)
@@ -480,7 +480,7 @@ final class OpenCastPadUITests: XCTestCase {
         let chipLabel = chip.label
         chip.tap()
         XCTAssertTrue(
-            app.navigationBars["Recap"].waitForNonExistence(timeout: 5),
+            app.navigationBars["Recap"].absentOrWait(timeout: 5),
             "tapping a citation should dismiss the recap sheet"
         )
         assertExists(app.navigationBars["Transcript"], named: "transcript route after seeking", timeout: 5)
@@ -539,7 +539,7 @@ final class OpenCastPadUITests: XCTestCase {
         openEpisodeDetailFromContextMenu(seededEpisodeRow(in: app), in: app, named: "seeded inbox episode")
         let readTranscript = app.buttons["Read Transcript"]
         var swipes = 0
-        while !(readTranscript.waitForExistence(timeout: 1) && readTranscript.isHittable), swipes < 8 {
+        while !(readTranscript.existsOrWait(timeout: 1) && readTranscript.isHittable), swipes < 8 {
             app.swipeUp()
             swipes += 1
         }
@@ -549,7 +549,7 @@ final class OpenCastPadUITests: XCTestCase {
 
         openDeviceIntelligenceSheet(entry: "Ask About This Episode", navigationTitle: "Ask", in: app)
         let continueButton = app.buttons["Continue"].firstMatch
-        if continueButton.waitForExistence(timeout: 5) {
+        if continueButton.existsOrWait(timeout: 5) {
             attachSmokeScreenshot(named: "ipad_ask_disclosure_\(appearance)")
             continueButton.tap()
         }
@@ -575,7 +575,7 @@ final class OpenCastPadUITests: XCTestCase {
         attachHierarchyDump(named: "ipad_ask_second_answer_hierarchy_\(appearance)", in: app)
 
         let chip = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Play from")).firstMatch
-        guard chip.waitForExistence(timeout: 2) else {
+        guard chip.existsOrWait(timeout: 2) else {
             let note = XCTAttachment(string: "no citation chip to tap (declined or unanswerable)")
             note.name = "ipad_ask_seek_\(appearance)"
             note.lifetime = .keepAlways
@@ -585,7 +585,7 @@ final class OpenCastPadUITests: XCTestCase {
         let chipLabel = chip.label
         chip.tap()
         XCTAssertTrue(
-            app.navigationBars["Ask"].waitForNonExistence(timeout: 5),
+            app.navigationBars["Ask"].absentOrWait(timeout: 5),
             "tapping a citation should dismiss the ask sheet"
         )
         assertExists(app.navigationBars["Transcript"], named: "transcript route after seeking", timeout: 5)
@@ -638,7 +638,7 @@ final class OpenCastPadUITests: XCTestCase {
         let entry = app.buttons[title]
         assertExists(entry, named: "\(title) entry", timeout: 8)
         entry.tap()
-        if !app.navigationBars[navigationTitle].waitForExistence(timeout: 4) {
+        if !app.navigationBars[navigationTitle].existsOrWait(timeout: 4) {
             if !entry.exists {
                 menu.tap()
                 assertExists(entry, named: "\(title) entry (retry)", timeout: 8)
@@ -755,7 +755,7 @@ final class OpenCastPadUITests: XCTestCase {
         let option = app.buttons.matching(NSPredicate(format: "label == %@", title)).firstMatch
         assertHittable(option, named: "\(title) view option")
         option.tap()
-        XCTAssertTrue(option.waitForNonExistence(timeout: 5), "View Options should close after choosing \(title)")
+        XCTAssertTrue(option.absentOrWait(timeout: 5), "View Options should close after choosing \(title)")
     }
 
     @MainActor
@@ -816,7 +816,7 @@ final class OpenCastPadUITests: XCTestCase {
         let sidebarToggle = app.buttons.matching(
             NSPredicate(format: "label CONTAINS[c] %@ OR identifier CONTAINS[c] %@", "sidebar", "sidebar")
         ).firstMatch
-        if sidebarToggle.waitForExistence(timeout: 5) {
+        if sidebarToggle.existsOrWait(timeout: 5) {
             sidebarToggle.tap()
         }
         let entryIsHittable = NSPredicate { _, _ in
