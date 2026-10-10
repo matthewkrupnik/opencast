@@ -8,7 +8,7 @@ final class OpenCastIntentUITests: XCTestCase {
         app.launchArguments = ["--opencast-ui-testing", "--opencast-seed-ui-library", "--opencast-seed-episode-progress"]
         app.launch()
         XCTAssertTrue(app.tabBars.buttons["Library"].waitForExistence(timeout: 20))
-        let definitions = IntentDefinitions(bundleIdentifier: "com.connor.opencast")
+        let definitions = IntentDefinitions(bundleIdentifier: "mk.lan.opencast")
         let episodes = try await definitions.entities["OpenCastEpisodeEntity"].suggestedEntities()
         XCTAssertFalse(episodes.isEmpty)
         let episode = try XCTUnwrap(episodes.first)
@@ -27,7 +27,7 @@ final class OpenCastIntentUITests: XCTestCase {
         app.launchEnvironment["OPENCAST_SEED_PLAYLISTS"] = "1"
         app.launch()
         XCTAssertTrue(app.tabBars.buttons["Library"].waitForExistence(timeout: 20))
-        let definitions = IntentDefinitions(bundleIdentifier: "com.connor.opencast")
+        let definitions = IntentDefinitions(bundleIdentifier: "mk.lan.opencast")
         let playlists = definitions.entities["OpenCastPlaylistEntity"]
         let suggested = try await playlists.suggestedEntities()
         XCTAssertEqual(suggested.count, 3)
