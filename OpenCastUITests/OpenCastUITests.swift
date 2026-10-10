@@ -1235,7 +1235,7 @@ final class OpenCastUITests: XCTestCase {
 
         XCTAssertTrue(overlay.absentOrWait(timeout: 5))
         assertHittable(app.tabBars.buttons["Library"], named: "interactive Library tab after in-flight completion")
-        let summary = captureFramePacingSummary(in: app, expectedSessions: 1)
+        let summary = captureFramePacingSummary(in: app, expectedSessions: 1, containing: "card-dismissed")
         assertEventOrder(
             ["dismiss-drag-ended", "completion-fixture-triggered", "playback-finished", "card-dismissed"],
             in: summary,
@@ -1290,7 +1290,11 @@ final class OpenCastUITests: XCTestCase {
         XCTAssertTrue(miniPlayer.isHittable)
         let inline = app.descendants(matching: .any)["mini-player-inline"].firstMatch
         assertExists(inline, named: "inline player placement after scrolling")
-        XCTAssertFalse(app.buttons["Skip Forward 15 Seconds"].isHittable)
+        // The expanded control may still be animating out; let it settle.
+        let expandedSkip = app.buttons["Skip Forward 15 Seconds"]
+        if !expandedSkip.absentOrWait(timeout: 3) {
+            XCTAssertFalse(expandedSkip.isHittable)
+        }
         attachSmokeScreenshot(named: "mini_player_tab_accessory_inbox_scrolled")
 
         scrollBackUpUntilExists(expanded, in: app, named: "expanded player restored on upward scroll")
@@ -2263,7 +2267,7 @@ final class OpenCastUITests: XCTestCase {
         dragDismissNowPlayingOverlayFromArtwork(in: app)
         XCTAssertTrue(nowPlayingOverlay(in: app).absentOrWait(timeout: 5))
         assertExists(app.buttons["Open Now Playing"], named: "mini-player after content-area dismiss")
-        let summary = captureFramePacingSummary(in: app, expectedSessions: 2)
+        let summary = captureFramePacingSummary(in: app, expectedSessions: 2, containing: "dismiss-drag-start")
         XCTAssertTrue(summary.contains("dismiss-drag-start"), "expected warmed dismissal frame data")
     }
 
@@ -2977,7 +2981,7 @@ final class OpenCastUITests: XCTestCase {
         openAllPlaylist(in: app)
         let inboxEpisodeAfterPlayback = seededEpisodeRow(in: app)
         assertExists(inboxEpisodeAfterPlayback, named: "All playlist after playback")
-        scrollClearOfMiniPlayer(inboxEpisodeAfterPlayback, in: app)
+        scrollClearOfMiniPlayer(inboxEpisodeAfterPlayback, in: app, fully: true)
         assertMiniPlayerDoesNotCover(inboxEpisodeAfterPlayback, named: "seeded inbox episode", in: app)
         attachSmokeScreenshot(named: "inbox_compact")
         assertCompactCardPlateIsInset(named: "Inbox compact card plate")
@@ -6920,7 +6924,19 @@ final class OpenCastUITests: XCTestCase {
 
     @MainActor
     private func assertNowPlayingOverlay(in app: XCUIApplication) {
-        assertExists(nowPlayingOverlay(in: app), named: "Now Playing overlay")
+        let overlay = nowPlayingOverlay(in: app)
+        assertExists(overlay, named: "Now Playing overlay")
+        // Gestures sent while the card is still sliding in are lost, so wait
+        // for its frame to settle.
+        var frame = overlay.frame
+        let deadline = Date().addingTimeInterval(2)
+        while Date() < deadline {
+            RunLoop.current.run(until: Date().addingTimeInterval(0.15))
+            guard overlay.exists else { return }
+            let next = overlay.frame
+            if next == frame { return }
+            frame = next
+        }
     }
 
     @MainActor
@@ -7181,9 +7197,15 @@ final class OpenCastUITests: XCTestCase {
 
     /// The mini-player and tab bar float over list content, and rows below a
     /// hero header (or tall rows at large text sizes) can start out under
-    /// them; the list's bottom margin lets them scroll clear.
+    /// them; the list's bottom margin lets them scroll clear. A tap needs
+    /// only the row's center clear; scrolling further collapses the
+    /// mini-player, so full clearance is opt-in.
     @MainActor
-    private func scrollClearOfMiniPlayer(_ row: XCUIElement, in app: XCUIApplication) {
+    private func scrollClearOfMiniPlayer(
+        _ row: XCUIElement,
+        in app: XCUIApplication,
+        fully: Bool = false
+    ) {
         let miniPlayer = app.buttons["Open Now Playing"].firstMatch
         let tabBar = app.tabBars.firstMatch
         func overlayTop() -> CGFloat? {
@@ -7195,7 +7217,8 @@ final class OpenCastUITests: XCTestCase {
         // scrolls under the navigation bar.
         let highestTop = app.windows.firstMatch.frame.height * 0.25
         for _ in 0..<4 {
-            guard let top = overlayTop(), row.frame.maxY > top, row.frame.minY > highestTop else { return }
+            let edge = fully ? row.frame.maxY : row.frame.midY
+            guard let top = overlayTop(), edge > top, row.frame.minY > highestTop else { return }
             app.swipeUp()
         }
     }
@@ -7215,7 +7238,11 @@ final class OpenCastUITests: XCTestCase {
         dragDismissNowPlayingOverlay(in: app)
 
         assertExists(app.buttons["Open Now Playing"], named: "mini-player after dismissing Now Playing")
-        XCTAssertFalse(overlay.isHittable)
+        // Mid-exit the card has no valid hit point and isHittable throws;
+        // let it leave the hierarchy before checking it.
+        if !overlay.absentOrWait(timeout: 3) {
+            XCTAssertFalse(overlay.isHittable)
+        }
     }
 
     @MainActor
