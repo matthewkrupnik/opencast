@@ -858,11 +858,19 @@ struct AVFoundationPlaybackControllerTests {
 
     @Test
     func fixedDurationTimerStillDrainsWhilePaused() async throws {
+        // Local audio: a remote URL's 404 can land before the timer and
+        // fail the item instead of leaving it paused.
+        try await AVFoundationPlaybackTestGate.acquire()
+        defer { AVFoundationPlaybackTestGate.release() }
+        let fixtureURL = try VoiceBoostAudioFixture.writeSine(
+            fileExtension: "m4a", settings: VoiceBoostAudioFixture.aacSettings(), duration: 4
+        )
         let controller = AVFoundationPlaybackController()
         defer {
             controller.unload()
+            try? FileManager.default.removeItem(at: fixtureURL)
         }
-        try controller.load(episode(duration: 60))
+        try controller.load(playbackEpisode(audioURL: fixtureURL))
         controller.setSleepTimer(mode: .duration(0.02))
 
         try await waitUntil { controller.sleepTimerMode == .off }
