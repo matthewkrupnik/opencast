@@ -8,6 +8,7 @@ final class PlaybackVoiceBoostControllerSpy: @MainActor PlaybackSettingsControll
     private(set) var appliedValues: [Bool] = []
     private(set) var appliedSkipIntervals: [(backward: TimeInterval, forward: TimeInterval)] = []
     private(set) var appliedAutoSkipValues: [Bool] = []
+    private(set) var appliedSmartSpeedValues: [Bool] = []
 
     func setRate(_ rate: Float) {
         self.rate = rate
@@ -20,6 +21,10 @@ final class PlaybackVoiceBoostControllerSpy: @MainActor PlaybackSettingsControll
 
     func setSkipIntervals(backward: TimeInterval, forward: TimeInterval) {
         appliedSkipIntervals.append((backward, forward))
+    }
+
+    func setSmartSpeedEnabled(_ isEnabled: Bool) {
+        appliedSmartSpeedValues.append(isEnabled)
     }
 
     func setAutoSkipEnabled(_ isEnabled: Bool) {
