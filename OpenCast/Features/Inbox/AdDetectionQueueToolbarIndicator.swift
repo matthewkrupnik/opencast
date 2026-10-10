@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// Compact determinate progress indicator for the Inbox toolbar. Visible
+/// Compact determinate progress indicator for the Playlists toolbar. Visible
 /// whenever the ad-detection queue is non-idle; after a drain finishes it
 /// shows a brief completion state, then hides. State changes use gentle
 /// fades without attention-seeking motion.

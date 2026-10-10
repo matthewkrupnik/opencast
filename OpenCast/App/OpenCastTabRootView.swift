@@ -33,7 +33,12 @@ struct OpenCastTabRootView: View {
                 value: AppSection.playlists
             ) {
                 NavigationStack(path: $navigationPaths[.playlists]) {
-                    PlaylistsView(onOpenPlaylist: openPlaylist(on: .playlists))
+                    PlaylistsView(
+                        onOpenPlaylist: openPlaylist(on: .playlists),
+                        onOpenAdDetectionQueue: {
+                            navigationPaths[.playlists].append(.adDetectionQueue)
+                        }
+                    )
                         .withOpenCastDestinations(
                             onOpenEpisode: openEpisode(on: .playlists),
                             onOpenPlaylist: openPlaylist(on: .playlists)

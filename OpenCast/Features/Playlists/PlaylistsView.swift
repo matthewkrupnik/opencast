@@ -16,8 +16,14 @@ struct PlaylistsView: View {
     @State private var namePromptRequest: PlaylistNamePromptRequest?
     @State private var pendingOpenPlaylistID: String?
     @State private var selectionFeedbackTrigger = 0
+    /// Bumped each time the collection reappears, so a drain that finished
+    /// while a playlist was pushed still shows its brief finished state.
+    @State private var adDetectionIndicatorAppearance = 0
 
     var onOpenPlaylist: (String) -> Void = { _ in }
+    /// Shows the ad-detection queue indicator; only the Playlists tab root
+    /// passes it, so the queue has one entry point.
+    var onOpenAdDetectionQueue: (() -> Void)?
 
     private var layout: LibraryLayout {
         appModel.playlistDisplaySettings.layout.resolved(isRegularWidth: horizontalSizeClass == .regular)
@@ -36,6 +42,13 @@ struct PlaylistsView: View {
             .navigationBarTitleDisplayMode(.large)
             .toolbarMinimizationBehavior(.onScrollDown, for: .navigationBar)
             .toolbar {
+                if let onOpenAdDetectionQueue {
+                    ToolbarItem(placement: .topBarLeading) {
+                        AdDetectionQueueToolbarStatus(onOpen: onOpenAdDetectionQueue)
+                            .id(adDetectionIndicatorAppearance)
+                    }
+                }
+
                 if !playlists.isEmpty {
                     ToolbarItem(placement: .topBarTrailing) {
                         optionsMenu
@@ -54,7 +67,10 @@ struct PlaylistsView: View {
             .onChange(of: pendingOpenPlaylistID) {
                 openPendingPlaylistAfterPrompt()
             }
-            .onAppear(perform: appModel.library.advanceNewEpisodeReferenceDate)
+            .onAppear {
+                appModel.library.advanceNewEpisodeReferenceDate()
+                adDetectionIndicatorAppearance += 1
+            }
     }
 
     @ViewBuilder
