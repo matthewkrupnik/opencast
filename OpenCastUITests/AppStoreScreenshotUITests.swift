@@ -197,9 +197,9 @@ final class AppStoreScreenshotUITests: XCTestCase {
             "transcribing:\(Self.pipelineEpisodeID)|app-store-kitchen-table-episode-2|app-store-half-time-episode-2"
         app.launchEnvironment[Self.queueOverrideProgressEnvironmentKey] = "1822/2940"
         app.launch()
-        openInbox(in: app)
+        openSectionRoot("Playlists", in: app)
         let indicator = app.buttons["Ad Detection Queue"].firstMatch
-        assertHittable(indicator, named: "Inbox ad detection indicator")
+        assertHittable(indicator, named: "Playlists ad detection indicator")
         indicator.tap()
         assertExists(app.navigationBars["Ad Detection"], named: "Ad Detection queue screen")
         assertExists(app.staticTexts["The Quiet Season on the Sun"], named: "running queue row")
@@ -259,7 +259,7 @@ final class AppStoreScreenshotUITests: XCTestCase {
         app.launch()
 
         // The permission alert is SpringBoard's; a tap into the app to trigger
-        // the interruption monitor would land on an Inbox row instead.
+        // the interruption monitor would land on a playlist instead.
         let allowButton = springboard.buttons["Allow"]
         if allowButton.waitForExistence(timeout: 3) {
             allowButton.tap()
@@ -321,18 +321,18 @@ final class AppStoreScreenshotUITests: XCTestCase {
 
     // MARK: - Playback
 
-    // The primary episode is the newest row; after the Inbox has been
+    // The primary episode is the newest row; after the All playlist has been
     // scrolled (Up Next enqueueing reaches its fourth-day rows) the lazy list
     // no longer holds it, so scroll back up until it does.
     @MainActor
     private func startPrimaryEpisodePlayback(in app: XCUIApplication) {
-        openInbox(in: app)
+        openAllEpisodes(in: app)
         let primaryEpisode = episodeRow(Self.primaryEpisodeID, in: app)
         for _ in 0..<6 where !primaryEpisode.waitForExistence(timeout: 1) {
             app.swipeDown()
             Thread.sleep(forTimeInterval: 0.8)
         }
-        assertExists(primaryEpisode, named: "primary inbox episode")
+        assertExists(primaryEpisode, named: "primary All playlist episode")
         scrollUntilHittable(primaryEpisode, in: app)
         primaryEpisode.tap()
         assertNowPlayingOverlay(in: app)
@@ -448,7 +448,7 @@ final class AppStoreScreenshotUITests: XCTestCase {
     // Play Last keeps the deck's order: the first enqueued row stays first.
     @MainActor
     private func enqueueUpNextEpisodes(in app: XCUIApplication) {
-        openInbox(in: app)
+        openAllEpisodes(in: app)
         for episodeID in Self.upNextEpisodeIDs {
             let row = episodeRow(episodeID, in: app)
             scrollUntilHittable(row, in: app)
@@ -677,7 +677,7 @@ final class AppStoreScreenshotUITests: XCTestCase {
 
     @MainActor
     private func episodeRow(_ episodeID: String, in app: XCUIApplication) -> XCUIElement {
-        app.buttons.matching(identifier: "episode-row-\(episodeID)").firstMatch
+        episodeListRow("episode-row-\(episodeID)", in: app)
     }
 
     @MainActor
@@ -686,7 +686,7 @@ final class AppStoreScreenshotUITests: XCTestCase {
     }
 
     // Tabs keep their pushed stacks (episode detail opened from Now Playing
-    // lands on the Inbox tab, podcast detail on Library), so every section
+    // lands on the Playlists tab, podcast detail on Library), so every section
     // switch pops back to the root list before the next step.
     @MainActor
     private func openLibrary(in app: XCUIApplication) {
@@ -694,8 +694,9 @@ final class AppStoreScreenshotUITests: XCTestCase {
     }
 
     @MainActor
-    private func openInbox(in app: XCUIApplication) {
-        openSectionRoot("Inbox", in: app)
+    private func openAllEpisodes(in app: XCUIApplication) {
+        openSectionRoot("Playlists", in: app)
+        openAllPlaylist(in: app)
     }
 
     @MainActor

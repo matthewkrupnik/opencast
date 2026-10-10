@@ -247,13 +247,13 @@ final class ExtendedQADeviceProbeUITests: XCTestCase {
     // MARK: - C/H/I: real-library artwork scroll
 
     /// Real-store artwork scroll with a memory gauge: probe-marked fast flick
-    /// scrolls through the Inbox and the Library grid inside an
+    /// scrolls through the All playlist and the Library grid inside an
     /// `XCTMemoryMetric` measurement, with the frame-gap histogram printed for
     /// comparison against the 2026-07-22 baselines.
     @MainActor
     func testRealLibraryArtworkScrollMemoryAndFramePacing() throws {
         let app = launchApp(frameProbe: true)
-        openSection("Inbox", in: app)
+        openAllPlaylist(in: app)
         sleep(2)
         XCTAssertTrue(
             app.buttons["Probe Mark"].waitForExistence(timeout: 10),
@@ -281,7 +281,8 @@ final class ExtendedQADeviceProbeUITests: XCTestCase {
                 library.swipeDown(velocity: .fast)
                 tapProbeMark(app)
             }
-            openSection("Inbox", in: app)
+            // All stays pushed on the Playlists tab.
+            openSection("Playlists", in: app)
         }
 
         sleep(3)

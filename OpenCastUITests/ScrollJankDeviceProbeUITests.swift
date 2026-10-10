@@ -3,7 +3,7 @@ import XCTest
 /// On-device scroll-jank measurement for a reproducible active-download load
 /// scenario. Launches the installed app (no seeding seams, persistent store)
 /// with the frame-pacing probe enabled,
-/// drives the same Inbox scroll workload under increasing load — restored
+/// drives the same All playlist scroll workload under increasing load — restored
 /// baseline, active download, on-device ad detection, playback — and prints
 /// each scenario's frame-gap histogram as `SCROLLPROBE[...]` lines plus
 /// attachments.
@@ -30,7 +30,7 @@ final class ScrollJankDeviceProbeUITests: XCTestCase {
         app.launchArguments.append("--opencast-frame-probe")
         app.launch()
 
-        openSection("Inbox", in: app)
+        openAllPlaylist(in: app)
         sleep(2)
 
         XCTAssertTrue(
@@ -123,7 +123,7 @@ final class ScrollJankDeviceProbeUITests: XCTestCase {
     // MARK: - Load-state arrangement
 
     /// Long episodes from the configured fixture feed, all reachable within
-    /// the first screens of the Inbox (search targeting proved flaky on device).
+    /// the first screens of the All playlist (search targeting proved flaky on device).
     /// Download timing varies with the configured test network, so download
     /// scenarios scroll IMMEDIATELY after the tap to catch the burst; the
     /// sustained load comes from on-device transcription.
@@ -200,19 +200,19 @@ final class ScrollJankDeviceProbeUITests: XCTestCase {
         return false
     }
 
-    /// Finds an episode row in the Inbox by scrolling from the top through the
+    /// Finds an episode row in the All playlist by scrolling from the top through the
     /// first screens. The list is virtualized, so only realized rows match —
     /// bounded swipes realize successive screens.
     @MainActor
     private func findInboxRow(containing episodeTitle: String, in app: XCUIApplication) -> XCUIElement? {
-        openSection("Inbox", in: app)
+        openAllPlaylist(in: app)
         sleep(1)
 
         let list = app.collectionViews.firstMatch
         let row = app.buttons.matching(
             NSPredicate(
                 format: "identifier BEGINSWITH %@ AND label CONTAINS %@",
-                "episode-row-",
+                "playlist-episode-",
                 episodeTitle
             )
         ).firstMatch

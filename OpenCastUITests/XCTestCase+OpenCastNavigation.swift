@@ -56,6 +56,44 @@ extension XCTestCase {
         XCTFail("\(title) navigation item should exist", file: file, line: line)
     }
 
+    /// Opens the default All smart playlist, the list of new episodes that
+    /// replaced the Inbox. The store creates it whenever no playlists exist,
+    /// with a generated ID, so it is found by name.
+    @MainActor
+    func openAllPlaylist(
+        in app: XCUIApplication,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) {
+        // Already there: re-tapping the tab would pop to the collection and
+        // push All again, moving rows mid-assertion.
+        if app.navigationBars["All"].exists, app.tabBars.buttons["Playlists"].isSelected {
+            return
+        }
+        openSection("Playlists", in: app, file: file, line: line)
+        let allPlaylist = app.descendants(matching: .any)
+            .matching(NSPredicate(format: "identifier BEGINSWITH %@ AND label BEGINSWITH %@", "playlist-row-", "All"))
+            .firstMatch
+        XCTAssertTrue(allPlaylist.waitForExistence(timeout: 10), "All playlist should exist", file: file, line: line)
+        allPlaylist.tap()
+        XCTAssertTrue(
+            app.navigationBars["All"].waitForExistence(timeout: 10),
+            "All playlist should open",
+            file: file,
+            line: line
+        )
+    }
+
+    /// An episode row by its `episode-row-` identifier, or the same episode's
+    /// row in a smart playlist such as All.
+    @MainActor
+    func episodeListRow(_ rowIdentifier: String, in app: XCUIApplication) -> XCUIElement {
+        let playlistIdentifier = rowIdentifier.replacingOccurrences(of: "episode-row-", with: "playlist-episode-")
+        return app.buttons.matching(
+            NSPredicate(format: "identifier == %@ OR identifier == %@", rowIdentifier, playlistIdentifier)
+        ).firstMatch
+    }
+
     @MainActor
     func visibleTabButton(
         _ title: String,

@@ -22,7 +22,7 @@ final class OpenCastPadUITests: XCTestCase {
         openLibrary(in: app)
         attachHierarchyDump(named: "pad_library", in: app)
 
-        openInbox(in: app)
+        openAllPlaylist(in: app)
         let inboxEpisode = seededEpisodeRow(in: app)
         assertExists(inboxEpisode, named: "seeded inbox episode")
         inboxEpisode.tap()
@@ -42,7 +42,7 @@ final class OpenCastPadUITests: XCTestCase {
         let app = makeSeededApp()
         app.launch()
 
-        assertExists(tabButton("Inbox", in: app), named: "Inbox tab button")
+        assertExists(tabButton("Playlists", in: app), named: "Playlists tab button")
         assertExists(tabButton("Library", in: app), named: "Library tab button")
         assertExists(tabButton("Downloads", in: app), named: "Downloads tab button")
         assertExists(tabButton("Settings", in: app), named: "Settings tab button")
@@ -56,8 +56,8 @@ final class OpenCastPadUITests: XCTestCase {
         tabButton("Downloads", in: app).tap()
         assertExists(app.navigationBars["Downloads"], named: "Downloads navigation title")
 
-        openInbox(in: app)
-        assertExists(app.navigationBars["Inbox"], named: "Inbox navigation title")
+        openSection("Playlists", in: app)
+        assertExists(app.navigationBars["Playlists"], named: "Playlists navigation title")
     }
 
     @MainActor
@@ -67,8 +67,10 @@ final class OpenCastPadUITests: XCTestCase {
         let app = makeSeededApp(seedsPlaylists: true)
         app.launch()
 
-        // Launch lands on Inbox, where no Library row can share the label.
-        assertExists(app.navigationBars["Inbox"], named: "Inbox navigation title")
+        // Launch lands on Playlists; start from Downloads, where no Library
+        // row can share the label.
+        tabButton("Downloads", in: app).tap()
+        assertExists(app.navigationBars["Downloads"], named: "Downloads navigation title")
         // A narrow window left by an earlier resize test has no sidebar and,
         // by design, no Playlists tab; a double tap on the top edge restores it.
         let window = app.windows.firstMatch
@@ -203,7 +205,7 @@ final class OpenCastPadUITests: XCTestCase {
         let app = makeSeededApp()
         app.launchArguments.append("--opencast-seed-completed-download")
         app.launch()
-        assertExists(app.navigationBars["Inbox"], named: "Inbox before window resize")
+        assertExists(app.navigationBars["Playlists"], named: "Playlists before window resize")
 
         let window = app.windows.firstMatch
         let originalWidth = window.frame.width
@@ -293,6 +295,7 @@ final class OpenCastPadUITests: XCTestCase {
         let app = makeSeededApp()
         app.launch()
 
+        openAllPlaylist(in: app)
         let inboxEpisode = seededEpisodeRow(in: app)
         assertExists(inboxEpisode, named: "seeded inbox episode")
         inboxEpisode.tap()
@@ -304,49 +307,12 @@ final class OpenCastPadUITests: XCTestCase {
         assertExists(app.buttons["Open Now Playing"], named: "mini-player after Library switch")
         openSettings(in: app)
         assertExists(app.buttons["Open Now Playing"], named: "mini-player after Settings switch")
-        openInbox(in: app)
+        openSection("Playlists", in: app)
 
         let miniPlayer = app.buttons["Open Now Playing"]
-        assertExists(miniPlayer, named: "mini-player after returning to Inbox")
+        assertExists(miniPlayer, named: "mini-player after returning to Playlists")
         miniPlayer.tap()
         assertNowPlayingOverlay(in: app)
-    }
-
-    @MainActor
-    func testSeededPadInboxGroupByPodcastShowsGridAndOpensShow() throws {
-        try skipUnlessPad()
-        let app = makeSeededApp(seedsLibraryNewEpisodes: true)
-        app.launch()
-
-        openInbox(in: app)
-        let filterMenu = app.buttons.matching(
-            NSPredicate(format: "label BEGINSWITH %@", "Filter Episodes,")
-        ).firstMatch
-        assertHittable(filterMenu, named: "Inbox filter menu")
-        filterMenu.tap()
-        let groupToggle = app.descendants(matching: .any)
-            .matching(NSPredicate(format: "label == %@", "Group by Podcast"))
-            .firstMatch
-        assertExists(groupToggle, named: "Group by Podcast toggle")
-        groupToggle.tap()
-
-        // Automatic resolves to the grid at regular width.
-        let grid = libraryContainer("Inbox Podcast Grid", in: app)
-        let mainShow = app.buttons.matching(
-            identifier: "inbox-podcast-group-https://example.com/ui-test-feed.xml"
-        ).firstMatch
-        assertExists(grid, named: "grouped Inbox grid under Automatic")
-        assertDoesNotExist(libraryContainer("Inbox Podcast List", in: app), named: "grouped Inbox list under Automatic")
-        assertExists(mainShow, named: "UI Test Show group tile")
-        XCTAssertEqual(mainShow.value as? String, "7 episodes")
-        attachSmokeScreenshot(named: "pad_inbox_grouped_grid")
-
-        mainShow.tap()
-        assertExists(app.staticTexts["Episodes"], named: "podcast detail opened from an Inbox group tile")
-        attachSmokeScreenshot(named: "pad_inbox_group_podcast_detail")
-
-        tapBackButton(in: app)
-        assertExists(grid, named: "grouped Inbox grid after Back")
     }
 
     @MainActor
@@ -474,7 +440,7 @@ final class OpenCastPadUITests: XCTestCase {
         app.launchEnvironment[appearance == "dark" ? "OPENCAST_FORCE_DARK_MODE" : "OPENCAST_FORCE_LIGHT_MODE"] = "1"
         app.launch()
 
-        openInbox(in: app)
+        openAllPlaylist(in: app)
         openEpisodeDetailFromContextMenu(seededEpisodeRow(in: app), in: app, named: "seeded inbox episode")
         let readTranscript = app.buttons["Read Transcript"]
         var swipes = 0
@@ -569,7 +535,7 @@ final class OpenCastPadUITests: XCTestCase {
         app.launchEnvironment[appearance == "dark" ? "OPENCAST_FORCE_DARK_MODE" : "OPENCAST_FORCE_LIGHT_MODE"] = "1"
         app.launch()
 
-        openInbox(in: app)
+        openAllPlaylist(in: app)
         openEpisodeDetailFromContextMenu(seededEpisodeRow(in: app), in: app, named: "seeded inbox episode")
         let readTranscript = app.buttons["Read Transcript"]
         var swipes = 0
@@ -754,11 +720,6 @@ final class OpenCastPadUITests: XCTestCase {
     }
 
     @MainActor
-    private func openInbox(in app: XCUIApplication) {
-        openSection("Inbox", in: app)
-    }
-
-    @MainActor
     private func openSettings(in app: XCUIApplication) {
         openSection("Settings", in: app)
     }
@@ -799,7 +760,7 @@ final class OpenCastPadUITests: XCTestCase {
 
     @MainActor
     private func seededEpisodeRow(in app: XCUIApplication) -> XCUIElement {
-        app.buttons.matching(identifier: Self.seededEpisodeRowIdentifier).firstMatch
+        episodeListRow(Self.seededEpisodeRowIdentifier, in: app)
     }
 
     @MainActor

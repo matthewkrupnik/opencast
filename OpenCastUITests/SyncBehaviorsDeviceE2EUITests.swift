@@ -1343,13 +1343,13 @@ final class SyncBehaviorsDeviceE2EUITests: XCTestCase {
         return false
     }
 
-    /// Pulls to refresh on the Inbox tab, which is a List with a
-    /// `.refreshable` full-library refresh on every size class — the iPad
-    /// Library is a ScrollView grid whose pull control cannot be relied on.
+    /// Pulls to refresh on the Library, the one screen with a `.refreshable`
+    /// full-library refresh now that the Inbox is gone. The iPad Library grid
+    /// is a ScrollView whose pull control is less reliable than a List's.
     @MainActor
     private func pullToRefreshAllFeeds(in app: XCUIApplication) {
         dismissNowPlayingCardIfPresent(in: app)
-        openTab("Inbox", in: app)
+        openTab("Library", in: app)
         let start = app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.3))
         let end = app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.8))
         start.press(forDuration: 0.1, thenDragTo: end)

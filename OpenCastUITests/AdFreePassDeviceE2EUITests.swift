@@ -311,7 +311,7 @@ final class AdFreePassDeviceE2EUITests: XCTestCase {
         // Relaunch without the hook: the restored session is allowed one
         // probe, which retries the deferred item on its own — the resumed
         // drain keeps the indicator un-tappable, so completion is asserted
-        // from the Inbox indicator settling plus the menu state.
+        // from the Playlists indicator settling plus the menu state.
         let app = makeRealApp()
         app.launch()
         XCTAssertTrue(
@@ -650,7 +650,7 @@ final class AdFreePassDeviceE2EUITests: XCTestCase {
     /// is the settle signal.
     @MainActor
     private func settleAnyRestoredQueue(in app: XCUIApplication) {
-        openInbox(in: app)
+        openPlaylistsRoot(in: app)
         let indicator = app.buttons["Ad Detection Queue Indicator"]
         guard indicator.waitForExistence(timeout: 8) else {
             return
@@ -661,8 +661,9 @@ final class AdFreePassDeviceE2EUITests: XCTestCase {
         }
     }
 
+    /// The Playlists root, whose toolbar carries the queue indicator.
     @MainActor
-    private func openInbox(in app: XCUIApplication) {
+    private func openPlaylistsRoot(in app: XCUIApplication) {
         let queueNav = app.navigationBars["Ad Detection"]
         if queueNav.exists {
             let backButton = queueNav.buttons.firstMatch
@@ -671,11 +672,11 @@ final class AdFreePassDeviceE2EUITests: XCTestCase {
             }
         }
 
-        if app.navigationBars["Inbox"].waitForExistence(timeout: 3) {
+        if app.navigationBars["Playlists"].waitForExistence(timeout: 3) {
             return
         }
 
-        openSection("Inbox", in: app)
+        openSection("Playlists", in: app)
     }
 
     @MainActor
@@ -700,7 +701,7 @@ final class AdFreePassDeviceE2EUITests: XCTestCase {
             return true
         }
 
-        openInbox(in: app)
+        openPlaylistsRoot(in: app)
         dismissSearchIfPresented(in: app)
         let indicator = app.buttons["Ad Detection Queue Indicator"]
         guard indicator.waitForExistence(timeout: 30) else {
@@ -742,7 +743,7 @@ final class AdFreePassDeviceE2EUITests: XCTestCase {
         let deadline = Date().addingTimeInterval(timeout)
         while Date() < deadline {
             if !app.navigationBars["Ad Detection"].exists {
-                openInbox(in: app)
+                openPlaylistsRoot(in: app)
                 dismissSearchIfPresented(in: app)
                 let indicator = app.buttons["Ad Detection Queue Indicator"]
                 if !indicator.waitForExistence(timeout: 5) {

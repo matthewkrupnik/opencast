@@ -80,14 +80,14 @@ final class OpenCastUITests: XCTestCase {
         app.launch()
 
         XCTAssertTrue(app.tabBars.buttons["Library"].waitForExistence(timeout: 5))
-        let inboxTab = app.tabBars.buttons["Inbox"]
-        XCTAssertTrue(inboxTab.exists)
-        XCTAssertTrue(inboxTab.isSelected)
+        // Playlists replaced the Inbox and is where the app opens.
+        let playlistsTab = app.tabBars.buttons["Playlists"]
+        XCTAssertTrue(playlistsTab.exists)
+        XCTAssertTrue(playlistsTab.isSelected)
         XCTAssertTrue(app.tabBars.buttons["Downloads"].exists)
         XCTAssertTrue(app.tabBars.buttons["Settings"].exists)
         XCTAssertTrue(app.tabBars.buttons["Search"].exists)
-        // Playlists is a sidebar-only tab; compact width reaches it from Library.
-        XCTAssertFalse(app.tabBars.buttons["Playlists"].exists)
+        XCTAssertFalse(app.tabBars.buttons["Inbox"].exists)
     }
 
     @MainActor
@@ -144,7 +144,7 @@ final class OpenCastUITests: XCTestCase {
         app.launchArguments.append("-OPENCAST_REMOTE_TRANSCRIPTION_DEV")
         app.launch()
 
-        openInbox(in: app)
+        openAllPlaylist(in: app)
         let inboxEpisode = seededEpisodeRow(in: app)
         assertExists(inboxEpisode, named: "seeded inbox episode")
         openEpisodeDetailFromContextMenu(inboxEpisode, in: app, named: "seeded inbox episode")
@@ -172,7 +172,7 @@ final class OpenCastUITests: XCTestCase {
         app.launchEnvironment["OPENCAST_SEED_AUDIO_FILE_URL"] = "https://example.com/ui-test-episode.mp3"
         app.launch()
 
-        openInbox(in: app)
+        openAllPlaylist(in: app)
         let inboxEpisode = seededEpisodeRow(in: app)
         assertExists(inboxEpisode, named: "seeded inbox episode")
         openEpisodeDetailFromContextMenu(inboxEpisode, in: app, named: "seeded inbox episode")
@@ -214,7 +214,7 @@ final class OpenCastUITests: XCTestCase {
         )
         app.launch()
 
-        openInbox(in: app)
+        openAllPlaylist(in: app)
         let inboxEpisode = seededEpisodeRow(in: app)
         assertExists(inboxEpisode, named: "seeded inbox episode")
         // The shared context-menu helper expects an enabled Detect Ads action,
@@ -270,7 +270,7 @@ final class OpenCastUITests: XCTestCase {
         )
         app.launch()
 
-        openInbox(in: app)
+        openAllPlaylist(in: app)
         let inboxEpisode = seededEpisodeRow(in: app)
         assertExists(inboxEpisode, named: "seeded inbox episode")
         // The shared context-menu helper expects a Download action, which the
@@ -516,19 +516,6 @@ final class OpenCastUITests: XCTestCase {
     }
 
     @MainActor
-    func testCompletedOnboardingEmptyLaunchShowsInboxLoadingThenEmpty() throws {
-        let app = makeCompletedOnboardingApp(libraryLoadDelayMilliseconds: 6_000)
-        app.launchEnvironment["OPENCAST_UI_TEST_CLOUDKIT_ACCOUNT_STATUS"] = "noAccount"
-        app.launch()
-
-        let inboxTab = app.tabBars.buttons["Inbox"]
-        assertExists(inboxTab, named: "Inbox tab")
-        XCTAssertTrue(inboxTab.isSelected)
-        assertExists(app.descendants(matching: .any)["Inbox Loading"], named: "Inbox loading spinner")
-        assertExists(app.staticTexts["Inbox Empty"], named: "empty Inbox after load", timeout: 15)
-    }
-
-    @MainActor
     func testFirstLaunchOnboardingScreenshotsOPMLSkipAndPodcastSetup() throws {
         let app = makeOnboardingApp(forcesDarkMode: true)
         app.launch()
@@ -663,7 +650,7 @@ final class OpenCastUITests: XCTestCase {
             app.staticTexts["New Episode Alerts"].waitForNonExistence(timeout: 10),
             "Onboarding should dismiss after the final notification page."
         )
-        openInbox(in: app)
+        openAllPlaylist(in: app)
         XCTAssertFalse(app.staticTexts["New Episode Alerts"].exists)
     }
 
@@ -713,9 +700,7 @@ final class OpenCastUITests: XCTestCase {
         let app = makeSeededApp()
         app.launch()
 
-        let inboxTab = app.tabBars.buttons["Inbox"]
-        XCTAssertTrue(inboxTab.waitForExistence(timeout: 5))
-        XCTAssertTrue(inboxTab.isSelected)
+        openAllPlaylist(in: app)
         let inboxEpisode = seededEpisodeRow(in: app)
         XCTAssertTrue(inboxEpisode.waitForExistence(timeout: 5))
         XCTAssertTrue(app.staticTexts["Deterministic UI Episode"].exists)
@@ -762,7 +747,7 @@ final class OpenCastUITests: XCTestCase {
         app.launch()
 
         assertExists(app.tabBars.buttons["Library"], named: "Library tab")
-        app.tabBars.buttons["Inbox"].tap()
+        openAllPlaylist(in: app)
 
         let inboxEpisode = seededEpisodeRow(in: app)
         assertExists(inboxEpisode, named: "seeded inbox episode")
@@ -791,7 +776,7 @@ final class OpenCastUITests: XCTestCase {
         app.launch()
 
         assertExists(app.tabBars.buttons["Library"], named: "Library tab")
-        app.tabBars.buttons["Inbox"].tap()
+        openAllPlaylist(in: app)
 
         let inboxEpisode = seededEpisodeRow(in: app)
         assertExists(inboxEpisode, named: "seeded inbox episode")
@@ -803,9 +788,9 @@ final class OpenCastUITests: XCTestCase {
 
         openCurrentEpisodeDetailFromNowPlaying(in: app)
         swipeBack(in: app)
-        let inboxTab = app.tabBars.buttons["Inbox"]
-        assertExists(inboxTab, named: "Inbox tab after episode detail Back")
-        XCTAssertTrue(inboxTab.isSelected)
+        let playlistsTab = app.tabBars.buttons["Playlists"]
+        assertExists(playlistsTab, named: "Playlists tab after episode detail Back")
+        XCTAssertTrue(playlistsTab.isSelected)
         assertExists(seededEpisodeRow(in: app), named: "Inbox after episode detail Back")
 
         let miniPlayer = app.buttons["Open Now Playing"]
@@ -819,8 +804,8 @@ final class OpenCastUITests: XCTestCase {
         assertExists(app.staticTexts["Episodes"], named: "show episodes section")
 
         swipeBack(in: app)
-        assertExists(inboxTab, named: "Inbox tab after show detail Back")
-        XCTAssertTrue(inboxTab.isSelected)
+        assertExists(playlistsTab, named: "Playlists tab after show detail Back")
+        XCTAssertTrue(playlistsTab.isSelected)
         assertExists(seededEpisodeRow(in: app), named: "Inbox after show detail Back")
     }
 
@@ -830,7 +815,7 @@ final class OpenCastUITests: XCTestCase {
         app.launch()
 
         assertExists(app.tabBars.buttons["Library"], named: "Library tab")
-        app.tabBars.buttons["Inbox"].tap()
+        openAllPlaylist(in: app)
 
         let inboxEpisode = seededEpisodeRow(in: app)
         assertExists(inboxEpisode, named: "inbox episode before Go to Show")
@@ -861,6 +846,7 @@ final class OpenCastUITests: XCTestCase {
         let app = makeSeededApp()
         app.launch()
 
+        openAllPlaylist(in: app)
         let inboxEpisode = seededEpisodeRow(in: app)
         assertHittable(inboxEpisode, named: "seeded inbox episode")
         inboxEpisode.swipeRight()
@@ -898,7 +884,7 @@ final class OpenCastUITests: XCTestCase {
         app.launch()
 
         assertExists(app.tabBars.buttons["Library"], named: "Library tab")
-        app.tabBars.buttons["Inbox"].tap()
+        openAllPlaylist(in: app)
 
         let inboxEpisode = seededEpisodeRow(in: app)
         assertExists(inboxEpisode, named: "seeded inbox episode with preview")
@@ -928,7 +914,7 @@ final class OpenCastUITests: XCTestCase {
 
         assertExists(app.tabBars.buttons["Library"], named: "Library tab")
         waitForExternalTraceIfRequested(environmentKey: Self.manyArtworkTraceArmingSecondsEnvironmentKey)
-        app.tabBars.buttons["Inbox"].tap()
+        openAllPlaylist(in: app)
 
         let firstRow = seededEpisodeRow(in: app)
         assertExists(firstRow, named: "first seeded inbox episode with varied preview")
@@ -988,7 +974,7 @@ final class OpenCastUITests: XCTestCase {
         ) {
             app.launch()
             XCTAssertTrue(app.tabBars.buttons["Library"].waitForExistence(timeout: 5))
-            app.tabBars.buttons["Inbox"].tap()
+            openAllPlaylist(in: app)
             XCTAssertTrue(seededEpisodeRow(in: app).waitForExistence(timeout: 5))
             app.terminate()
         }
@@ -1000,7 +986,7 @@ final class OpenCastUITests: XCTestCase {
         app.launch()
 
         assertExists(app.tabBars.buttons["Library"], named: "Library tab")
-        app.tabBars.buttons["Inbox"].tap()
+        openAllPlaylist(in: app)
 
         let inboxEpisode = seededEpisodeRow(in: app)
         assertExists(inboxEpisode, named: "seeded inbox episode")
@@ -1016,7 +1002,7 @@ final class OpenCastUITests: XCTestCase {
         XCTAssertTrue(miniPlayer.waitForExistence(timeout: 5))
         app.tabBars.buttons["Library"].tap()
         XCTAssertTrue(miniPlayer.waitForExistence(timeout: 5))
-        app.tabBars.buttons["Inbox"].tap()
+        openAllPlaylist(in: app)
         XCTAssertTrue(miniPlayer.waitForExistence(timeout: 5))
 
         miniPlayer.tap()
@@ -1034,7 +1020,7 @@ final class OpenCastUITests: XCTestCase {
         assertHittable(picker, named: "Skip Forward picker")
         picker.tap()
         app.buttons["45s"].tap()
-        openInbox(in: app)
+        openAllPlaylist(in: app)
         openSeededNowPlaying(in: app)
         let overlay = nowPlayingOverlay(in: app)
         assertHittable(overlay.buttons["Pause"], named: "Pause before testing skip")
@@ -1278,7 +1264,7 @@ final class OpenCastUITests: XCTestCase {
         app.launch()
 
         assertExists(app.tabBars.buttons["Library"], named: "Library tab")
-        app.tabBars.buttons["Inbox"].tap()
+        openAllPlaylist(in: app)
 
         let inboxEpisode = seededEpisodeRow(in: app)
         assertExists(inboxEpisode, named: "seeded inbox episode")
@@ -1312,7 +1298,7 @@ final class OpenCastUITests: XCTestCase {
 
         app.tabBars.buttons["Search"].tap()
         assertExists(app.searchFields.firstMatch, named: "Search tab search field")
-        openInbox(in: app)
+        openAllPlaylist(in: app)
         miniPlayer.tap()
         assertNowPlayingOverlay(in: app)
         assertExists(playbackProgress(in: app), named: "Playback Progress control")
@@ -1325,7 +1311,7 @@ final class OpenCastUITests: XCTestCase {
         app.launch()
 
         assertExists(app.tabBars.buttons["Library"], named: "Library tab")
-        app.tabBars.buttons["Inbox"].tap()
+        openAllPlaylist(in: app)
 
         let inboxEpisode = seededEpisodeRow(in: app)
         assertExists(inboxEpisode, named: "seeded inbox episode")
@@ -1347,7 +1333,7 @@ final class OpenCastUITests: XCTestCase {
         app.launch()
 
         assertExists(app.tabBars.buttons["Library"], named: "Library tab")
-        app.tabBars.buttons["Inbox"].tap()
+        openAllPlaylist(in: app)
 
         let inboxEpisode = seededEpisodeRow(in: app)
         assertExists(inboxEpisode, named: "seeded inbox episode")
@@ -1448,190 +1434,6 @@ final class OpenCastUITests: XCTestCase {
     }
 
     @MainActor
-    func testSeededInboxFilterHidesPlayedEpisodes() throws {
-        let app = makeSeededApp(seedsEpisodeProgress: true)
-        app.launch()
-
-        openInbox(in: app)
-        let inProgressRow = seededEpisodeRow(in: app)
-        let completedRow = app.buttons.matching(identifier: Self.seededCompletedEpisodeRowIdentifier).firstMatch
-        assertExists(inProgressRow, named: "seeded in-progress inbox row under All Episodes")
-        assertExists(completedRow, named: "seeded completed inbox row under All Episodes")
-        assertExists(inboxFilterMenu(showing: "All Episodes", in: app), named: "Inbox filter menu under All Episodes")
-        attachSmokeScreenshot(named: "inbox_filter_all")
-
-        chooseInboxFilter("Unplayed", in: app)
-        assertExists(inboxFilterMenu(showing: "Unplayed", in: app), named: "Inbox filter menu under Unplayed")
-        assertExists(inboxSubtitle("Unplayed", in: app), named: "Inbox subtitle under Unplayed")
-        assertExists(inProgressRow, named: "in-progress row under Unplayed")
-        assertDoesNotExist(completedRow, named: "completed row under Unplayed")
-        attachSmokeScreenshot(named: "inbox_filter_unplayed")
-
-        chooseInboxFilter("In Progress", in: app)
-        assertExists(inProgressRow, named: "in-progress row under In Progress")
-        assertDoesNotExist(completedRow, named: "completed row under In Progress")
-
-        chooseInboxFilter("Played", in: app)
-        assertExists(completedRow, named: "completed row under Played")
-        assertDoesNotExist(inProgressRow, named: "in-progress row under Played")
-        attachSmokeScreenshot(named: "inbox_filter_played")
-
-        chooseInboxFilter("Downloaded", in: app)
-        let filteredEmpty = app.descendants(matching: .any).matching(identifier: "Inbox Filtered Empty").firstMatch
-        assertExists(filteredEmpty, named: "Inbox filtered-empty view under Downloaded")
-        assertExists(app.staticTexts["No Downloaded Episodes"], named: "filtered-empty title under Downloaded")
-        assertExists(inboxSubtitle("Downloaded", in: app), named: "Inbox subtitle under Downloaded")
-        assertDoesNotExist(inProgressRow, named: "in-progress row under Downloaded")
-        assertDoesNotExist(completedRow, named: "completed row under Downloaded")
-        attachSmokeScreenshot(named: "inbox_filter_downloaded_empty")
-
-        let showAllButton = app.buttons["Show All Episodes"]
-        assertHittable(showAllButton, named: "Show All Episodes button")
-        showAllButton.tap()
-        assertExists(
-            inboxFilterMenu(showing: "All Episodes", in: app),
-            named: "Inbox filter menu after Show All Episodes"
-        )
-        assertDoesNotExist(
-            inboxSubtitle("Downloaded", in: app),
-            named: "Inbox subtitle after Show All Episodes",
-            timeout: 5
-        )
-        assertExists(inProgressRow, named: "in-progress row after Show All Episodes")
-        assertExists(completedRow, named: "completed row after Show All Episodes")
-        assertDoesNotExist(filteredEmpty, named: "filtered-empty view after Show All Episodes")
-    }
-
-    @MainActor
-    func testSeededInboxHideUpNextToggleHidesQueuedRows() throws {
-        let app = makeSeededApp(seedsUpNextQueue: true)
-        app.launch()
-
-        openInbox(in: app)
-        let unqueuedRow = seededEpisodeRow(in: app)
-        let queuedRows = Self.seededQueuedEpisodeRowIdentifiers.map {
-            app.buttons.matching(identifier: $0).firstMatch
-        }
-        assertExists(unqueuedRow, named: "unqueued seeded inbox row")
-        for (index, row) in queuedRows.enumerated() {
-            assertExists(row, named: "queued inbox row \(index + 1) before hiding Up Next")
-        }
-        attachSmokeScreenshot(named: "inbox_hide_up_next_off")
-
-        toggleInboxHidesUpNext(in: app)
-        for (index, row) in queuedRows.enumerated() {
-            assertDoesNotExist(row, named: "queued inbox row \(index + 1) while hiding Up Next", timeout: 5)
-        }
-        assertExists(unqueuedRow, named: "unqueued inbox row while hiding Up Next")
-        assertExists(
-            inboxFilterMenu(showing: "Up Next hidden", in: app),
-            named: "Inbox filter menu while hiding Up Next"
-        )
-        assertExists(inboxSubtitle("Up Next hidden", in: app), named: "Inbox subtitle while hiding Up Next")
-        attachSmokeScreenshot(named: "inbox_hide_up_next_on")
-
-        toggleInboxHidesUpNext(in: app)
-        for (index, row) in queuedRows.enumerated() {
-            assertExists(row, named: "queued inbox row \(index + 1) after showing Up Next again")
-        }
-        assertExists(unqueuedRow, named: "unqueued inbox row after showing Up Next again")
-        assertExists(
-            inboxFilterMenu(showing: "All Episodes", in: app),
-            named: "Inbox filter menu after showing Up Next again"
-        )
-        assertDoesNotExist(
-            inboxSubtitle("Up Next hidden", in: app),
-            named: "Inbox subtitle after showing Up Next again",
-            timeout: 5
-        )
-    }
-
-    @MainActor
-    func testSeededInboxGroupByPodcastCountsShowsAndOpensThemFiltered() throws {
-        let app = makeSeededApp(seedsUpNextQueue: true, seedsLibraryNewEpisodes: true)
-        app.launch()
-
-        openInbox(in: app)
-        let episodeRow = app.buttons.matching(identifier: "episode-row-ui-test-new-episode-1").firstMatch
-        let mainShow = inboxPodcastGroup("https://example.com/ui-test-feed.xml", in: app)
-        let aardvark = inboxPodcastGroup("https://example.com/ui-test-aardvark.xml", in: app)
-        let list = libraryContainer("Inbox Podcast List", in: app)
-        let grid = libraryContainer("Inbox Podcast Grid", in: app)
-        let layoutMenu = app.navigationBars["Inbox"].buttons.matching(
-            NSPredicate(format: "identifier == %@ OR label == %@", "Inbox Layout Options", "Layout")
-        ).firstMatch
-        assertExists(episodeRow, named: "Inbox episode row before grouping")
-        assertDoesNotExist(layoutMenu, named: "Inbox layout menu before grouping")
-
-        toggleInboxMenuItem("Group by Podcast", in: app)
-        assertExists(list, named: "grouped Inbox list")
-        assertDoesNotExist(episodeRow, named: "Inbox episode row while grouping", timeout: 5)
-        assertValue(of: mainShow, becomes: "10 episodes", named: "UI Test Show group under All Episodes")
-        assertValue(of: aardvark, becomes: "1 episode", named: "Aardvark group under All Episodes")
-        // Grouping is a view choice: nothing is filtered, so the menu and the
-        // subtitle still read as the whole Inbox.
-        assertExists(inboxFilterMenu(showing: "All Episodes", in: app), named: "Inbox filter menu while grouping")
-        assertExists(layoutMenu, named: "Inbox layout menu while grouping")
-        attachSmokeScreenshot(named: "inbox_grouped_list")
-
-        // A group counts what the Inbox would list: three queued episodes
-        // leave with Hide Up Next, and the played one with Unplayed.
-        toggleInboxHidesUpNext(in: app)
-        assertValue(of: mainShow, becomes: "7 episodes", named: "UI Test Show group while hiding Up Next")
-        chooseInboxFilter("Unplayed", in: app)
-        assertValue(of: mainShow, becomes: "6 episodes", named: "UI Test Show group under Unplayed")
-        assertExists(inboxSubtitle("Unplayed · Up Next hidden", in: app), named: "Inbox subtitle while grouping")
-
-        // The show opens under the Inbox's settings without storing them.
-        mainShow.tap()
-        assertExists(
-            app.descendants(matching: .any)["Podcast Hero Header"],
-            named: "podcast detail opened from an Inbox group"
-        )
-        // The hero header's identifier replaces its children's, so the
-        // caption is found by label.
-        let showHidden = app.buttons["Episodes playing or in Up Next are hidden, Show"]
-        let showFilter = app.buttons["Filter Episodes, Unplayed"]
-        let queuedRow = app.buttons.matching(identifier: Self.seededQueuedEpisodeRowIdentifiers[0]).firstMatch
-        assertExists(showFilter, named: "show filter under the Inbox's Unplayed")
-        assertHittable(showHidden, named: "hidden Up Next caption on the show")
-        attachSmokeScreenshot(named: "inbox_group_podcast_detail")
-        // The queued episodes are the show's oldest, so they would sit just
-        // past the oldest row that is listed.
-        scrollUntilExists(seededEpisodeRow(in: app), in: app)
-        app.swipeUp()
-        assertDoesNotExist(queuedRow, named: "queued row on the show while Up Next is hidden")
-
-        // Leaving and coming back applies the Inbox's settings again; Show
-        // keeps the filter and returns the queued rows.
-        tapBackButton(in: app)
-        assertExists(mainShow, named: "UI Test Show group after Back")
-        mainShow.tap()
-        assertHittable(showHidden, named: "hidden Up Next caption on the second visit")
-        showHidden.tap()
-        assertDoesNotExist(showHidden, named: "hidden Up Next caption after Show", timeout: 5)
-        assertExists(showFilter, named: "show filter after Show")
-        scrollUntilExists(queuedRow, in: app)
-
-        tapBackButton(in: app)
-        assertExists(list, named: "grouped Inbox list after Back")
-        assertHittable(layoutMenu, named: "Inbox layout menu after Back")
-        layoutMenu.tap()
-        let gridOption = app.buttons.matching(NSPredicate(format: "label == %@", "Grid")).firstMatch
-        assertHittable(gridOption, named: "Grid layout option")
-        gridOption.tap()
-        assertExists(grid, named: "grouped Inbox grid")
-        assertDoesNotExist(list, named: "grouped Inbox list after choosing Grid", timeout: 5)
-        assertValue(of: mainShow, becomes: "6 episodes", named: "UI Test Show tile")
-        attachSmokeScreenshot(named: "inbox_grouped_grid")
-
-        toggleInboxMenuItem("Group by Podcast", in: app)
-        assertDoesNotExist(grid, named: "grouped Inbox grid after ungrouping", timeout: 5)
-        assertDoesNotExist(layoutMenu, named: "Inbox layout menu after ungrouping")
-        assertExists(episodeRow, named: "Inbox episode row after ungrouping")
-    }
-
-    @MainActor
     func testSeededEpisodeProgressRestoresMiniPlayerAndShowsRows() throws {
         let app = makeSeededApp(seedsEpisodeProgress: true)
         app.launch()
@@ -1639,7 +1441,7 @@ final class OpenCastUITests: XCTestCase {
         assertExists(app.tabBars.buttons["Library"], named: "Library tab")
         assertExists(app.buttons["Open Now Playing"], named: "restored mini-player")
 
-        app.tabBars.buttons["Inbox"].tap()
+        openAllPlaylist(in: app)
         let inboxEpisode = seededEpisodeRow(in: app)
         assertExists(inboxEpisode, named: "seeded in-progress inbox episode")
         assertExists(app.staticTexts["2m left"], named: "remaining time row label")
@@ -1695,14 +1497,10 @@ final class OpenCastUITests: XCTestCase {
         XCTAssertLessThan(abs(librarySampleButton.frame.midX - app.staticTexts["No Subscriptions"].frame.midX), 4)
         attachSmokeScreenshot(named: "library_after_swipe_remove")
 
-        openInbox(in: app)
-        assertExists(app.staticTexts["Inbox Empty"], named: "empty inbox after removal")
-        let inboxAddPodcastButton = app.buttons["Inbox Empty Add Podcast"]
-        assertExists(inboxAddPodcastButton, named: "empty inbox Add Podcast action")
-        XCTAssertLessThan(inboxAddPodcastButton.frame.height, 80)
-        XCTAssertGreaterThan(inboxAddPodcastButton.frame.width, 180)
-        XCTAssertLessThan(abs(inboxAddPodcastButton.frame.midX - app.staticTexts["Inbox Empty"].frame.midX), 4)
-        attachSmokeScreenshot(named: "inbox_after_library_swipe_remove")
+        // The removed show's episodes leave the All playlist with it.
+        openAllPlaylist(in: app)
+        assertExists(app.staticTexts["No Matching Episodes"], named: "empty All playlist after removal")
+        attachSmokeScreenshot(named: "all_playlist_after_library_swipe_remove")
     }
 
     @MainActor
@@ -2092,6 +1890,7 @@ final class OpenCastUITests: XCTestCase {
         let indicator = app.buttons["Ad Detection Queue Indicator"]
         assertDoesNotExist(indicator, named: "indicator while the queue is idle")
 
+        openAllPlaylist(in: app)
         let episodeRow = seededEpisodeRow(in: app)
         assertExists(episodeRow, named: "seeded inbox episode row")
         episodeRow.press(forDuration: 1.2)
@@ -2101,6 +1900,8 @@ final class OpenCastUITests: XCTestCase {
 
         // On the simulator the pass deterministically pauses at whisper model
         // consent (Apple transcriber unavailable), a stable paused state.
+        // The indicator sits on the Playlists root, not inside All.
+        openSection("Playlists", in: app)
         assertExists(indicator, named: "indicator after enqueue", timeout: 10)
         attachSmokeScreenshot(named: "adqueue_indicator_paused_consent")
         indicator.tap()
@@ -2123,6 +1924,7 @@ final class OpenCastUITests: XCTestCase {
         app.launchArguments.append("-OPENCAST_REMOTE_TRANSCRIPTION_DEV")
         app.launch()
 
+        openAllPlaylist(in: app)
         let episodeRow = seededEpisodeRow(in: app)
         assertExists(episodeRow, named: "seeded inbox episode row")
         episodeRow.press(forDuration: 1.2)
@@ -2139,6 +1941,8 @@ final class OpenCastUITests: XCTestCase {
 
         // The chosen on-device pass runs (parks at whisper model consent on
         // the simulator) — no second confirmation.
+        // The indicator sits on the Playlists root, not inside All.
+        openSection("Playlists", in: app)
         let indicator = app.buttons["Ad Detection Queue Indicator"]
         assertExists(indicator, named: "indicator after device choice", timeout: 10)
         assertDoesNotExist(
@@ -2172,6 +1976,7 @@ final class OpenCastUITests: XCTestCase {
         ]
         app.launch()
 
+        openAllPlaylist(in: app)
         let episodeRow = seededEpisodeRow(in: app)
         assertExists(episodeRow, named: "seeded inbox episode row")
         episodeRow.press(forDuration: 1.2)
@@ -2186,6 +1991,8 @@ final class OpenCastUITests: XCTestCase {
         // The unresolved backend fails the viability precheck immediately:
         // the queue finishes with a cloud-unavailable outcome — never a
         // silent switch to on-device.
+        // The indicator sits on the Playlists root, not inside All.
+        openSection("Playlists", in: app)
         let indicator = app.buttons["Ad Detection Queue Indicator"]
         assertExists(indicator, named: "indicator after cloud-unavailable outcome", timeout: 10)
         indicator.tap()
@@ -2214,6 +2021,7 @@ final class OpenCastUITests: XCTestCase {
         app.launchEnvironment["OPENCAST_AD_ANALYSIS_CLIENT_TOKEN"] = "ui-test-forced-cap"
         app.launch()
 
+        openAllPlaylist(in: app)
         let episodeRow = seededEpisodeRow(in: app)
         assertExists(episodeRow, named: "seeded inbox episode row")
         episodeRow.press(forDuration: 1.2)
@@ -2223,6 +2031,8 @@ final class OpenCastUITests: XCTestCase {
 
         // Transcript reuse goes straight to analysis; the forced 429 cap
         // rejection pauses the queue in capDeferred.
+        // The indicator sits on the Playlists root, not inside All.
+        openSection("Playlists", in: app)
         let indicator = app.buttons["Ad Detection Queue Indicator"]
         assertExists(indicator, named: "indicator after cap deferral", timeout: 10)
         indicator.tap()
@@ -2286,7 +2096,7 @@ final class OpenCastUITests: XCTestCase {
         assertNowPlayingOverlay(in: app)
         dismissNowPlayingOverlay(in: app)
 
-        openInbox(in: app)
+        openSection("Playlists", in: app)
         let indicator = app.buttons["Ad Detection Queue Indicator"]
         assertExists(indicator, named: "running queue indicator", timeout: 10)
         attachSmokeScreenshot(named: "adqueue_indicator_running")
@@ -2319,6 +2129,7 @@ final class OpenCastUITests: XCTestCase {
         app.launchEnvironment[Self.seedAdDetectionModeEnvironmentKey] = Self.onDeviceAdDetectionModeValue
         app.launch()
 
+        openAllPlaylist(in: app)
         let episodeRow = seededEpisodeRow(in: app)
         assertExists(episodeRow, named: "seeded inbox episode row")
         episodeRow.press(forDuration: 1.2)
@@ -2328,6 +2139,8 @@ final class OpenCastUITests: XCTestCase {
 
         // The bad audio URL fails the download immediately; the drain ends
         // and the indicator shows its brief finished state (failure-tinted).
+        // The indicator sits on the Playlists root, not inside All.
+        openSection("Playlists", in: app)
         let indicator = app.buttons["Ad Detection Queue Indicator"]
         assertExists(indicator, named: "finished indicator", timeout: 10)
         attachSmokeScreenshot(named: "adqueue_indicator_finished_tinted")
@@ -2373,7 +2186,7 @@ final class OpenCastUITests: XCTestCase {
         app.launch()
 
         assertExists(app.tabBars.buttons["Library"], named: "Library tab")
-        app.tabBars.buttons["Inbox"].tap()
+        openAllPlaylist(in: app)
 
         let inboxEpisode = seededEpisodeRow(in: app)
         assertExists(inboxEpisode, named: "seeded inbox episode")
@@ -2407,7 +2220,7 @@ final class OpenCastUITests: XCTestCase {
         app.launch()
 
         assertExists(app.tabBars.buttons["Library"], named: "Library tab")
-        app.tabBars.buttons["Inbox"].tap()
+        openAllPlaylist(in: app)
         openEpisodeDetailFromContextMenu(seededEpisodeRow(in: app), in: app, named: "inbox episode")
 
         let timestampLink = app.links["1:30"]
@@ -2436,7 +2249,7 @@ final class OpenCastUITests: XCTestCase {
         app.launch()
 
         assertExists(app.tabBars.buttons["Library"], named: "Library tab")
-        app.tabBars.buttons["Inbox"].tap()
+        openAllPlaylist(in: app)
 
         let inboxEpisode = seededEpisodeRow(in: app)
         assertExists(inboxEpisode, named: "seeded inbox episode")
@@ -2460,7 +2273,7 @@ final class OpenCastUITests: XCTestCase {
         app.launch()
 
         assertExists(app.tabBars.buttons["Library"], named: "Library tab")
-        app.tabBars.buttons["Inbox"].tap()
+        openAllPlaylist(in: app)
 
         let inboxEpisode = seededEpisodeRow(in: app)
         assertExists(inboxEpisode, named: "seeded inbox episode")
@@ -2499,7 +2312,7 @@ final class OpenCastUITests: XCTestCase {
         app.launch()
 
         assertExists(app.tabBars.buttons["Library"], named: "Library tab")
-        app.tabBars.buttons["Inbox"].tap()
+        openAllPlaylist(in: app)
 
         let inboxEpisode = seededEpisodeRow(in: app)
         assertExists(inboxEpisode, named: "seeded inbox episode")
@@ -2522,7 +2335,7 @@ final class OpenCastUITests: XCTestCase {
         app.launch()
 
         assertExists(app.tabBars.buttons["Library"], named: "Library tab")
-        app.tabBars.buttons["Inbox"].tap()
+        openAllPlaylist(in: app)
 
         let inboxEpisode = seededEpisodeRow(in: app)
         assertExists(inboxEpisode, named: "seeded inbox episode")
@@ -2545,7 +2358,7 @@ final class OpenCastUITests: XCTestCase {
         app.launch()
 
         assertExists(app.tabBars.buttons["Library"], named: "Library tab")
-        app.tabBars.buttons["Inbox"].tap()
+        openAllPlaylist(in: app)
 
         let inboxEpisode = seededEpisodeRow(in: app)
         assertExists(inboxEpisode, named: "seeded inbox episode")
@@ -3138,7 +2951,7 @@ final class OpenCastUITests: XCTestCase {
         tapBackButton(in: app)
         assertExists(libraryPodcast, named: "Library root after podcast detail")
 
-        openInbox(in: app)
+        openAllPlaylist(in: app)
         let inboxEpisode = seededEpisodeRow(in: app)
         assertExists(inboxEpisode, named: "seeded inbox episode")
         inboxEpisode.tap()
@@ -3157,9 +2970,10 @@ final class OpenCastUITests: XCTestCase {
 
         dismissNowPlayingOverlay(in: app)
         tapBackButton(in: app)
-        openInbox(in: app)
+        openAllPlaylist(in: app)
         let inboxEpisodeAfterPlayback = seededEpisodeRow(in: app)
-        assertExists(inboxEpisodeAfterPlayback, named: "Inbox root after playback")
+        assertExists(inboxEpisodeAfterPlayback, named: "All playlist after playback")
+        scrollClearOfMiniPlayer(inboxEpisodeAfterPlayback, in: app)
         assertMiniPlayerDoesNotCover(inboxEpisodeAfterPlayback, named: "seeded inbox episode", in: app)
         attachSmokeScreenshot(named: "inbox_compact")
         assertCompactCardPlateIsInset(named: "Inbox compact card plate")
@@ -3216,7 +3030,7 @@ final class OpenCastUITests: XCTestCase {
         app.launch()
 
         assertExists(app.tabBars.buttons["Library"], named: "Library tab")
-        app.tabBars.buttons["Inbox"].tap()
+        openAllPlaylist(in: app)
 
         let inboxEpisode = seededEpisodeRow(in: app)
         assertExists(inboxEpisode, named: "seeded inbox episode")
@@ -3339,7 +3153,7 @@ final class OpenCastUITests: XCTestCase {
         scrollUntilExists(installedStatus, in: app)
         assertExists(installedStatus, named: "installed speech model status")
 
-        openInbox(in: app)
+        openAllPlaylist(in: app)
         let inboxEpisode = seededEpisodeRow(in: app)
         assertExists(inboxEpisode, named: "seeded inbox episode")
         inboxEpisode.tap()
@@ -3401,7 +3215,7 @@ final class OpenCastUITests: XCTestCase {
         )
         app.launch()
 
-        openInbox(in: app)
+        openAllPlaylist(in: app)
         let inboxEpisode = seededEpisodeRow(in: app)
         assertExists(inboxEpisode, named: "seeded inbox episode")
         inboxEpisode.tap()
@@ -3428,7 +3242,7 @@ final class OpenCastUITests: XCTestCase {
         )
         app.launch()
 
-        openInbox(in: app)
+        openAllPlaylist(in: app)
         let inboxEpisode = seededEpisodeRow(in: app)
         assertExists(inboxEpisode, named: "seeded inbox episode")
         inboxEpisode.tap()
@@ -3481,7 +3295,7 @@ final class OpenCastUITests: XCTestCase {
         app.launchEnvironment[Self.liveAdAnalysisResponsePathEnvironmentKey] = responsePath
         app.launch()
 
-        openInbox(in: app)
+        openAllPlaylist(in: app)
         let liveEpisode = liveAdAnalysisEpisodeRow(in: app)
         scrollUntilExists(liveEpisode, in: app, maxSwipes: 3)
         openEpisodeDetailFromContextMenu(
@@ -3517,7 +3331,7 @@ final class OpenCastUITests: XCTestCase {
         app.launchEnvironment["OPENCAST_SEED_WORD_BOUNDARY_AD_ANALYSIS"] = "1"
         app.launch()
 
-        openInbox(in: app)
+        openAllPlaylist(in: app)
         let episode = seededEpisodeRow(in: app)
         assertExists(episode, named: "seeded word-boundary episode")
         episode.press(forDuration: 1.2)
@@ -3551,7 +3365,7 @@ final class OpenCastUITests: XCTestCase {
         app.launchEnvironment[Self.liveAdAnalysisResponsePathEnvironmentKey] = responsePath
         app.launch()
 
-        openInbox(in: app)
+        openAllPlaylist(in: app)
         // The artifact seed has a fixed display title but retains the supplied
         // transcript's real episode ID. Do not assume the old fixture's ID.
         let episode = app.buttons.matching(NSPredicate(
@@ -3608,7 +3422,7 @@ final class OpenCastUITests: XCTestCase {
         }
         app.launch()
 
-        openInbox(in: app)
+        openAllPlaylist(in: app)
         let inboxEpisode = seededEpisodeRow(in: app)
         assertExists(inboxEpisode, named: "seeded inbox episode")
         inboxEpisode.tap()
@@ -3660,7 +3474,7 @@ final class OpenCastUITests: XCTestCase {
         }
         app.launch()
 
-        openInbox(in: app)
+        openAllPlaylist(in: app)
         let inboxEpisode = seededEpisodeRow(in: app)
         assertExists(inboxEpisode, named: "seeded inbox episode")
         inboxEpisode.tap()
@@ -3718,7 +3532,7 @@ final class OpenCastUITests: XCTestCase {
         app.launchEnvironment[Self.adAnalysisClientTokenEnvironmentKey] = ""
         app.launch()
 
-        openInbox(in: app)
+        openAllPlaylist(in: app)
         let inboxEpisode = seededEpisodeRow(in: app)
         assertExists(inboxEpisode, named: "seeded inbox episode")
         inboxEpisode.tap()
@@ -3777,7 +3591,7 @@ final class OpenCastUITests: XCTestCase {
         app.launchEnvironment[Self.adAnalysisClientTokenEnvironmentKey] = ""
         app.launch()
 
-        openInbox(in: app)
+        openAllPlaylist(in: app)
         let inboxEpisode = seededEpisodeRow(in: app)
         assertExists(inboxEpisode, named: "seeded inbox episode")
         inboxEpisode.tap()
@@ -3896,7 +3710,11 @@ final class OpenCastUITests: XCTestCase {
         assertExists(episodePlaybackControl(in: app), named: "episode playback control at AX size")
         assertExists(app.buttons["Download"], named: "Download button at AX size")
         assertExists(app.buttons["Make Ad-Free"], named: "Make Ad-Free button at AX size")
-        let showLink = app.buttons["UI Test Show"]
+        // Detail is pushed from the show's page, so Back carries the same label.
+        let navigationBarBottom = app.navigationBars.firstMatch.frame.maxY
+        let showLink = app.buttons.matching(NSPredicate(format: "label == %@", "UI Test Show"))
+            .allElementsBoundByIndex
+            .first { $0.frame.minY >= navigationBarBottom } ?? app.buttons["UI Test Show"]
         assertHittable(showLink, named: "episode show link at AX size")
         XCTAssertGreaterThanOrEqual(showLink.frame.width, 44)
         XCTAssertGreaterThanOrEqual(showLink.frame.height, 44)
@@ -4210,7 +4028,7 @@ final class OpenCastUITests: XCTestCase {
         app.buttons["Subscribe"].tap()
 
         assertExists(app.staticTexts["The Rest Is Science - Goalhanger"], named: "The Rest Is Science subscription", timeout: 30)
-        openInbox(in: app)
+        openAllPlaylist(in: app)
 
         let firstEpisode = restIsScienceFirstEpisode(in: app)
         assertExists(firstEpisode, named: "The Rest Is Science inbox episode", timeout: 30)
@@ -4327,7 +4145,7 @@ final class OpenCastUITests: XCTestCase {
 
         openLibrary(in: app)
         assertExists(app.staticTexts["This American Life"], named: "This American Life library subscription", timeout: 90)
-        openInbox(in: app)
+        openAllPlaylist(in: app)
         assertExists(
             thisAmericanLifeEpisodeRow(in: app),
             named: "This American Life inbox episode",
@@ -4366,7 +4184,7 @@ final class OpenCastUITests: XCTestCase {
 
         openLibrary(in: app)
         assertExists(app.staticTexts["This American Life"], named: "This American Life library subscription", timeout: 90)
-        openInbox(in: app)
+        openAllPlaylist(in: app)
         let inboxEpisode = thisAmericanLifeEpisodeRow(in: app)
         assertExists(inboxEpisode, named: "This American Life inbox episode", timeout: 90)
         inboxEpisode.tap()
@@ -4443,7 +4261,7 @@ final class OpenCastUITests: XCTestCase {
             "Onboarding should dismiss after accepting the This American Life fallback."
         )
 
-        openInbox(in: app)
+        openAllPlaylist(in: app)
         let inboxEpisode = thisAmericanLifeEpisodeRow(in: app)
         assertExists(inboxEpisode, named: "This American Life inbox episode", timeout: 90)
         inboxEpisode.tap()
@@ -4503,7 +4321,7 @@ final class OpenCastUITests: XCTestCase {
         let app = makeSeededApp(forcesDarkMode: false, forcesLightMode: true)
         app.launch()
 
-        openInbox(in: app)
+        openAllPlaylist(in: app)
 
         let inboxEpisode = seededEpisodeRow(in: app)
         assertExists(inboxEpisode, named: "seeded inbox episode")
@@ -4540,14 +4358,8 @@ final class OpenCastUITests: XCTestCase {
         let rows = rowQueries.map { query in
             query.allElementsBoundByIndex.first(where: \.isHittable) ?? query.firstMatch
         }
-        for (index, query) in rowQueries.enumerated() {
-            XCTAssertGreaterThanOrEqual(
-                query.count,
-                2,
-                "Queued episode \(index + 1) should exist in the Inbox and Up Next sheet."
-            )
-            let row = rows[index]
-            assertExists(row, named: "queued episode \(index + 1)")
+        for index in rowQueries.indices {
+            assertExists(rows[index], named: "queued episode \(index + 1)")
         }
 
         app.buttons["Edit"].tap()
@@ -4601,7 +4413,7 @@ final class OpenCastUITests: XCTestCase {
         let app = makeSeededApp(seedsUpNextQueue: true, extraFeedCount: 12)
         app.launch()
 
-        openInbox(in: app)
+        openAllPlaylist(in: app)
         let accessory = app.buttons["Open Up Next"]
         let miniPlayer = app.buttons["Open Now Playing"]
         assertExists(accessory, named: "Up Next accessory with nothing playing")
@@ -4685,43 +4497,6 @@ final class OpenCastUITests: XCTestCase {
         assertExists(nowPlayingOverlay(in: app).buttons["Play"].firstMatch, named: "restored paused playback control")
         openUpNextSheetFromNowPlaying(in: app)
         assertQueuedRowsInUpNextSheet(remaining: [1, 2, 3], in: app)
-    }
-
-    @MainActor
-    func testSeededHideUpNextKeepsQueueAccessoryAndPlaysHead() throws {
-        let app = makeSeededApp(seedsUpNextQueue: true)
-        app.launch()
-
-        openInbox(in: app)
-        let queuedRows = Self.seededQueuedEpisodeRowIdentifiers.map {
-            app.buttons.matching(identifier: $0).firstMatch
-        }
-        assertExists(queuedRows[0], named: "queued inbox row 1 before hiding Up Next")
-        toggleInboxHidesUpNext(in: app)
-        for (index, row) in queuedRows.enumerated() {
-            assertDoesNotExist(row, named: "queued inbox row \(index + 1) while hiding Up Next", timeout: 5)
-        }
-
-        let accessory = app.buttons["Open Up Next"]
-        let playUpNext = app.buttons["Play Up Next"]
-        assertExists(accessory, named: "Up Next accessory while queued rows are hidden")
-        assertValue(of: accessory, contains: "Queued UI Episode 1", named: "Up Next accessory while queued rows are hidden")
-        assertHittable(playUpNext, named: "Play Up Next while queued rows are hidden")
-        attachSmokeScreenshot(named: "inbox_hide_up_next_accessory")
-        playUpNext.tap()
-
-        let miniPlayer = app.buttons["Open Now Playing"]
-        assertExists(miniPlayer, named: "mini-player after starting the hidden queue")
-        assertValue(of: miniPlayer, contains: "Queued UI Episode 1", named: "mini-player after starting the hidden queue")
-        // Hide Up Next hides the playing episode too, so leaving the queue
-        // for the player keeps the row out of the Inbox.
-        assertDoesNotExist(queuedRows[0], named: "playing episode while hiding Up Next", timeout: 5)
-        assertDoesNotExist(queuedRows[1], named: "queued inbox row 2 while hiding Up Next")
-        assertDoesNotExist(queuedRows[2], named: "queued inbox row 3 while hiding Up Next")
-        assertExists(
-            inboxFilterMenu(showing: "Up Next hidden", in: app),
-            named: "Inbox filter menu after starting the queue"
-        )
     }
 
     @MainActor
@@ -4993,7 +4768,7 @@ final class OpenCastUITests: XCTestCase {
         app.launchEnvironment[Self.transcriptIntelligenceAvailabilityEnvironmentKey] = "deviceNotEligible"
         app.launch()
 
-        openSeededTranscriptRouteFromInbox(in: app)
+        openSeededTranscriptRouteFromAllPlaylist(in: app)
         openTranscriptOptionsMenu(in: app)
         assertExists(app.buttons["Share Transcript"], named: "transcript options menu content")
         assertDoesNotExist(app.buttons[Self.recapLastFiveMinutesTitle], named: "recap entry on ineligible hardware")
@@ -5014,7 +4789,7 @@ final class OpenCastUITests: XCTestCase {
         app.launchArguments.append(Self.transcriptIntelligenceEnableArgument)
         app.launch()
 
-        openSeededTranscriptRouteFromInbox(in: app)
+        openSeededTranscriptRouteFromAllPlaylist(in: app)
         openTranscriptOptionsMenu(in: app)
         let recap = app.buttons[Self.recapLastFiveMinutesTitle]
         assertExists(recap, named: "recap entry with the host's Apple Intelligence")
@@ -5044,7 +4819,7 @@ final class OpenCastUITests: XCTestCase {
         app.launchEnvironment[Self.transcriptIntelligenceAvailabilityEnvironmentKey] = "appleIntelligenceNotEnabled"
         app.launch()
 
-        openSeededTranscriptRouteFromInbox(in: app)
+        openSeededTranscriptRouteFromAllPlaylist(in: app)
         openTranscriptOptionsMenu(in: app)
         let recap = app.buttons[Self.recapLastFiveMinutesTitle]
         assertExists(recap, named: "recap entry with Apple Intelligence off")
@@ -5069,7 +4844,7 @@ final class OpenCastUITests: XCTestCase {
         app.launchEnvironment[Self.transcriptIntelligenceAvailabilityEnvironmentKey] = "available"
         app.launch()
 
-        openSeededTranscriptRouteFromInbox(in: app)
+        openSeededTranscriptRouteFromAllPlaylist(in: app)
         openTranscriptOptionsMenu(in: app)
         let recap = app.buttons[Self.recapLastFiveMinutesTitle]
         assertExists(recap, named: "recap entry")
@@ -5120,7 +4895,7 @@ final class OpenCastUITests: XCTestCase {
         app.launchEnvironment[Self.transcriptIntelligenceAvailabilityEnvironmentKey] = "appleIntelligenceNotEnabled"
         app.launch()
 
-        openSeededTranscriptRouteFromInbox(in: app)
+        openSeededTranscriptRouteFromAllPlaylist(in: app)
         openTranscriptOptionsMenu(in: app)
         let ask = app.buttons[Self.askTitle]
         assertExists(ask, named: "Ask entry with Apple Intelligence off")
@@ -5146,7 +4921,7 @@ final class OpenCastUITests: XCTestCase {
         app.launchEnvironment[Self.transcriptIntelligenceAvailabilityEnvironmentKey] = "available"
         app.launch()
 
-        openSeededTranscriptRouteFromInbox(in: app)
+        openSeededTranscriptRouteFromAllPlaylist(in: app)
         openTranscriptOptionsMenu(in: app)
         let ask = app.buttons[Self.askTitle]
         assertExists(ask, named: "Ask entry")
@@ -5205,7 +4980,7 @@ final class OpenCastUITests: XCTestCase {
         app.launchEnvironment["OPENCAST_UI_TEST_TRANSCRIPT_ASK_ANSWER"] = "unverified"
         app.launch()
 
-        openSeededTranscriptRouteFromInbox(in: app)
+        openSeededTranscriptRouteFromAllPlaylist(in: app)
         openTranscriptOptionsMenu(in: app)
         app.buttons[Self.askTitle].tap()
         assertExists(app.navigationBars["Ask"], named: "ask sheet")
@@ -5231,7 +5006,7 @@ final class OpenCastUITests: XCTestCase {
         app.terminate()
         app.launchEnvironment["OPENCAST_UI_TEST_TRANSCRIPT_ASK_ANSWER"] = "unanswerable"
         app.launch()
-        openSeededTranscriptRouteFromInbox(in: app)
+        openSeededTranscriptRouteFromAllPlaylist(in: app)
         openTranscriptOptionsMenu(in: app)
         app.buttons[Self.askTitle].tap()
         assertExists(app.navigationBars["Ask"], named: "ask sheet (second launch)")
@@ -5265,7 +5040,7 @@ final class OpenCastUITests: XCTestCase {
         app.launchArguments += [Self.transcriptIntelligenceEnableArgument, Self.transcriptIntelligenceAskEnableArgument]
         app.launch()
 
-        openSeededTranscriptRouteFromInbox(in: app)
+        openSeededTranscriptRouteFromAllPlaylist(in: app)
         openTranscriptOptionsMenu(in: app)
         let ask = app.buttons[Self.askTitle]
         assertExists(ask, named: "Ask entry with the host's Apple Intelligence")
@@ -5638,9 +5413,13 @@ final class OpenCastUITests: XCTestCase {
         let app = makeSeededApp(seedsPlaylists: true, extraFeedCount: 1)
         app.launch()
 
-        openInbox(in: app)
+        // Seeded playlists mean no All playlist, so reach the episode from its show.
+        openLibrary(in: app)
+        let extraShow = libraryShow(Self.firstExtraSubscriptionRowIdentifier, in: app)
+        assertHittable(extraShow, named: "extra Library show")
+        extraShow.tap()
         let episodeRow = seededExtraEpisodeRow(in: app, index: 1)
-        openAddToPlaylistSheet(fromContextMenuOf: episodeRow, named: "extra Inbox episode", in: app)
+        openAddToPlaylistSheet(fromContextMenuOf: episodeRow, named: "extra show episode", in: app)
         assertExists(
             app.buttons.matching(identifier: "Add to Playlist New Playlist").firstMatch,
             named: "Add to Playlist New Playlist row"
@@ -5662,7 +5441,7 @@ final class OpenCastUITests: XCTestCase {
         attachSmokeScreenshot(named: "playlists_add_sheet")
         dismissAddToPlaylistSheet(in: app)
 
-        openEpisodeDetailFromContextMenu(episodeRow, in: app, named: "extra Inbox episode")
+        openEpisodeDetailFromContextMenu(episodeRow, in: app, named: "extra show episode", expectsGoToShow: false)
         let chip = app.buttons.matching(identifier: "Episode Playlists Chip").firstMatch
         assertHittable(chip, named: "Episode Playlists chip")
         XCTAssertTrue(
@@ -5762,8 +5541,12 @@ final class OpenCastUITests: XCTestCase {
 
         walkSeededPlaylistsFromLibrary(in: app, screenshotSuffix: "_light")
 
-        openInbox(in: app)
-        openAddToPlaylistSheet(fromContextMenuOf: seededEpisodeRow(in: app), named: "seeded Inbox episode", in: app)
+        // Seeded playlists mean no All playlist, so reach the episode from its show.
+        openLibrary(in: app)
+        let libraryPodcast = seededSubscriptionRow(in: app)
+        assertHittable(libraryPodcast, named: "seeded library podcast")
+        libraryPodcast.tap()
+        openAddToPlaylistSheet(fromContextMenuOf: seededEpisodeRow(in: app), named: "seeded show episode", in: app)
         let commutePlaylistRow = addToPlaylistRow(Self.commutePlaylistID, in: app)
         assertExists(commutePlaylistRow, named: "Seeded Commute picker row")
         XCTAssertTrue(
@@ -5808,9 +5591,9 @@ final class OpenCastUITests: XCTestCase {
         swipeBack(in: app)
         assertExists(app.navigationBars["Playlists"], named: "Playlists collection after Back")
 
-        openInbox(in: app)
+        openSection("Playlists", in: app)
         let miniPlayer = app.buttons["Open Now Playing"].firstMatch
-        assertHittable(miniPlayer, named: "mini player on Inbox")
+        assertHittable(miniPlayer, named: "mini player on Playlists")
         miniPlayer.tap()
         assertNowPlayingOverlay(in: app)
 
@@ -5833,9 +5616,9 @@ final class OpenCastUITests: XCTestCase {
             app.descendants(matching: .any)["Playlist Hero Header"],
             named: "Seeded Commute hero header from the source pill"
         )
-        let inboxTab = app.tabBars.buttons["Inbox"]
-        assertExists(inboxTab, named: "Inbox tab")
-        XCTAssertTrue(inboxTab.isSelected, "The source pill should push onto the current tab")
+        let playlistsTab = app.tabBars.buttons["Playlists"]
+        assertExists(playlistsTab, named: "Playlists tab")
+        XCTAssertTrue(playlistsTab.isSelected, "The source pill should push onto the current tab")
         attachSmokeScreenshot(named: "playlists_source_pill_opens_detail")
     }
 
@@ -6476,8 +6259,8 @@ final class OpenCastUITests: XCTestCase {
     /// seeded progress record (90 s), which clears the five-minute entry's
     /// threshold without the fixture audio having to play.
     @MainActor
-    private func openSeededTranscriptRouteFromInbox(in app: XCUIApplication) {
-        openInbox(in: app)
+    private func openSeededTranscriptRouteFromAllPlaylist(in app: XCUIApplication) {
+        openAllPlaylist(in: app)
         let inboxEpisode = seededEpisodeRow(in: app)
         assertExists(inboxEpisode, named: "seeded inbox episode")
         inboxEpisode.press(forDuration: 1.2)
@@ -6916,7 +6699,7 @@ final class OpenCastUITests: XCTestCase {
 
     @MainActor
     private func seededEpisodeRow(in app: XCUIApplication) -> XCUIElement {
-        app.buttons.matching(identifier: Self.seededEpisodeRowIdentifier).firstMatch
+        episodeListRow(Self.seededEpisodeRowIdentifier, in: app)
     }
 
     @MainActor
@@ -6926,17 +6709,17 @@ final class OpenCastUITests: XCTestCase {
 
     @MainActor
     private func liveAdAnalysisEpisodeRow(in app: XCUIApplication) -> XCUIElement {
-        app.buttons.matching(identifier: Self.liveAdAnalysisEpisodeRowIdentifier).firstMatch
+        episodeListRow(Self.liveAdAnalysisEpisodeRowIdentifier, in: app)
     }
 
     @MainActor
     private func seededExtraEpisodeRow(in app: XCUIApplication, index: Int) -> XCUIElement {
-        app.buttons.matching(identifier: "episode-row-ui-test-extra-episode-\(index)").firstMatch
+        episodeListRow("episode-row-ui-test-extra-episode-\(index)", in: app)
     }
 
     @MainActor
     private func seededCompletedEpisodeRow(in app: XCUIApplication) -> XCUIElement {
-        app.buttons.matching(identifier: Self.seededCompletedEpisodeRowIdentifier).firstMatch
+        episodeListRow(Self.seededCompletedEpisodeRowIdentifier, in: app)
     }
 
     @MainActor
@@ -6972,96 +6755,6 @@ final class OpenCastUITests: XCTestCase {
     @MainActor
     private func libraryContainer(_ identifier: String, in app: XCUIApplication) -> XCUIElement {
         app.descendants(matching: .any).matching(identifier: identifier).firstMatch
-    }
-
-    /// A show in the Group by Podcast Inbox, as a list row or grid tile; its
-    /// value carries the show's count of matching episodes.
-    @MainActor
-    private func inboxPodcastGroup(_ feedURL: String, in app: XCUIApplication) -> XCUIElement {
-        app.buttons.matching(identifier: "inbox-podcast-group-\(feedURL)").firstMatch
-    }
-
-    /// The Inbox filter's trailing toolbar menu. Its label names the
-    /// settings that differ from their defaults, or All Episodes.
-    @MainActor
-    private func inboxFilterMenu(showing summary: String, in app: XCUIApplication) -> XCUIElement {
-        app.navigationBars["Inbox"].buttons["Filter Episodes, \(summary)"]
-    }
-
-    /// The Inbox navigation subtitle, shown only while something is filtered.
-    @MainActor
-    private func inboxSubtitle(_ text: String, in app: XCUIApplication) -> XCUIElement {
-        app.navigationBars["Inbox"].staticTexts[text]
-    }
-
-    @MainActor
-    private func openInboxFilterMenu(
-        in app: XCUIApplication,
-        file: StaticString = #filePath,
-        line: UInt = #line
-    ) {
-        let menu = app.navigationBars["Inbox"].buttons
-            .matching(NSPredicate(format: "label BEGINSWITH %@", "Filter Episodes,"))
-            .firstMatch
-        assertHittable(menu, named: "Inbox filter menu", file: file, line: line)
-        menu.tap()
-    }
-
-    @MainActor
-    private func chooseInboxFilter(
-        _ title: String,
-        in app: XCUIApplication,
-        file: StaticString = #filePath,
-        line: UInt = #line
-    ) {
-        openInboxFilterMenu(in: app, file: file, line: line)
-        let option = app.buttons.matching(NSPredicate(format: "label == %@", title)).firstMatch
-        assertHittable(option, named: "\(title) Inbox filter option", file: file, line: line)
-        option.tap()
-        XCTAssertTrue(
-            option.waitForNonExistence(timeout: 5),
-            "The Inbox filter menu should close after choosing \(title)",
-            file: file,
-            line: line
-        )
-    }
-
-    @MainActor
-    private func toggleInboxHidesUpNext(
-        in app: XCUIApplication,
-        file: StaticString = #filePath,
-        line: UInt = #line
-    ) {
-        toggleInboxMenuItem("Hide Up Next", in: app, file: file, line: line)
-    }
-
-    /// Flips a toggle inside the Inbox filter menu. The item's element type
-    /// is not pinned, so the query is type-agnostic and a miss attaches the
-    /// hierarchy.
-    @MainActor
-    private func toggleInboxMenuItem(
-        _ title: String,
-        in app: XCUIApplication,
-        file: StaticString = #filePath,
-        line: UInt = #line
-    ) {
-        openInboxFilterMenu(in: app, file: file, line: line)
-        let item = app.descendants(matching: .any)
-            .matching(NSPredicate(format: "label == %@", title))
-            .firstMatch
-        guard item.waitForExistence(timeout: 5) else {
-            let attachment = XCTAttachment(string: app.debugDescription)
-            attachment.name = "inbox_filter_menu_hierarchy"
-            attachment.lifetime = .keepAlways
-            add(attachment)
-            XCTFail("\(title) menu item not found", file: file, line: line)
-            return
-        }
-        attachSmokeScreenshot(named: "inbox_filter_menu_open")
-        item.tap()
-        if !item.waitForNonExistence(timeout: 2) {
-            app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.85)).tap()
-        }
     }
 
     /// Picks a Library View Options entry, opening `submenu` first for the
@@ -7456,22 +7149,42 @@ final class OpenCastUITests: XCTestCase {
 
     @MainActor
     private func openSeededNowPlaying(in app: XCUIApplication) {
-        openInbox(in: app)
-
-        let inboxEpisode = seededEpisodeRow(in: app)
-        assertExists(inboxEpisode, named: "seeded inbox episode")
-        inboxEpisode.tap()
+        seededShowEpisodeRow(in: app).tap()
 
         assertNowPlayingOverlay(in: app)
     }
 
+    /// The seeded episode's row on its show page, scrolled into view and
+    /// clear of the mini-player that floats over the list. Show-page rows
+    /// play just the tapped episode, as the Inbox's did; a playlist row
+    /// would also queue the rest of the playlist.
+    @MainActor
+    private func seededShowEpisodeRow(in app: XCUIApplication) -> XCUIElement {
+        openLibrary(in: app)
+        let libraryPodcast = seededSubscriptionRow(in: app)
+        assertHittable(libraryPodcast, named: "seeded library podcast")
+        libraryPodcast.tap()
+
+        let row = seededEpisodeRow(in: app)
+        scrollUntilExists(row, in: app)
+        scrollClearOfMiniPlayer(row, in: app)
+        assertHittable(row, named: "seeded show episode")
+        return row
+    }
+
+    /// The mini-player floats over list content, and rows below a hero header
+    /// can start out under it; the list's bottom margin lets them scroll clear.
+    @MainActor
+    private func scrollClearOfMiniPlayer(_ row: XCUIElement, in app: XCUIApplication) {
+        let miniPlayer = app.buttons["Open Now Playing"].firstMatch
+        for _ in 0..<3 where miniPlayer.exists && row.frame.maxY > miniPlayer.frame.minY {
+            app.swipeUp()
+        }
+    }
+
     @MainActor
     private func openSeededEpisodeDetail(in app: XCUIApplication) {
-        openInbox(in: app)
-
-        let inboxEpisode = seededEpisodeRow(in: app)
-        assertExists(inboxEpisode, named: "seeded inbox episode")
-        inboxEpisode.tap()
+        seededShowEpisodeRow(in: app).tap()
 
         openCurrentEpisodeDetailFromNowPlaying(in: app)
     }
@@ -7568,9 +7281,9 @@ final class OpenCastUITests: XCTestCase {
         assertExists(app.navigationBars["Up Next"], named: "Up Next sheet")
     }
 
-    /// The Inbox and the Up Next sheet share row identifiers; while the sheet
-    /// is up only its copies are hittable, and behind the Now Playing card the
-    /// Inbox copies leave the accessibility tree altogether.
+    /// A show's episode list and the Up Next sheet share row identifiers;
+    /// while the sheet is up only its copies are hittable, and behind the Now
+    /// Playing card the list's copies leave the accessibility tree altogether.
     @MainActor
     private func hittableQueuedRow(_ number: Int, in app: XCUIApplication) -> XCUIElement? {
         app.buttons.matching(identifier: Self.seededQueuedEpisodeRowIdentifiers[number - 1])
@@ -7894,15 +7607,6 @@ final class OpenCastUITests: XCTestCase {
             line: line
         )
         return searchField
-    }
-
-    @MainActor
-    private func openInbox(
-        in app: XCUIApplication,
-        file: StaticString = #filePath,
-        line: UInt = #line
-    ) {
-        openSection("Inbox", in: app, file: file, line: line)
     }
 
     @MainActor
@@ -8837,7 +8541,7 @@ final class OpenCastUITests: XCTestCase {
         play.tap()
     }
 
-    /// Up Next sheet rows share identifiers with the Inbox rows behind it.
+    /// Up Next sheet rows share identifiers with the episode list behind it.
     @MainActor
     private func hittableUpNextRow(_ identifier: String, in app: XCUIApplication) -> XCUIElement? {
         app.buttons.matching(identifier: identifier)
@@ -8856,7 +8560,7 @@ extension XCTestCase {
             NSPredicate(
                 format: "label == %@ AND NOT (identifier IN %@)",
                 "Add Podcast",
-                ["Library Empty Add Podcast", "Inbox Empty Add Podcast"]
+                ["Library Empty Add Podcast"]
             )
         ).firstMatch
         if addPodcastMenuItem.waitForExistence(timeout: 2) {
