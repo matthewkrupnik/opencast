@@ -1218,6 +1218,44 @@ struct AVFoundationPlaybackControllerTests {
         #expect(controller.snapshot.position == 100)
     }
 
+    @Test("Entering a skip zone between ticks skips at the zone's exact start")
+    func skipZoneBoundarySkipsBeforeNextTick() throws {
+        let controller = AVFoundationPlaybackController()
+        defer { controller.unload() }
+        try controller.load(episode(duration: 240))
+        controller.setSkipZones([
+            PlaybackSkipZone(id: 1, startTime: 30, endTime: 60),
+            PlaybackSkipZone(id: 2, startTime: 120, endTime: 150)
+        ])
+        let generation = controller.observationGenerationForTesting
+        #expect(controller.skipZoneBoundaryCountForTesting == 2)
+        controller.handleObservedPlaybackPosition(29.2, duration: 240)
+
+        controller.handleSkipZoneBoundaryReached(30, observationGeneration: generation)
+
+        #expect(controller.position == 60)
+        #expect(controller.lastAutoSkipEvent?.zoneID == 1)
+    }
+
+    @Test("Skip zone boundaries ignore stale items and cleared zones")
+    func skipZoneBoundaryIgnoresStaleCallbacks() throws {
+        let controller = AVFoundationPlaybackController()
+        defer { controller.unload() }
+        try controller.load(episode(duration: 240))
+        controller.setSkipZones([PlaybackSkipZone(id: 1, startTime: 30, endTime: 60)])
+        let generation = controller.observationGenerationForTesting
+        controller.handleObservedPlaybackPosition(29.2, duration: 240)
+
+        controller.handleSkipZoneBoundaryReached(30, observationGeneration: generation - 1)
+        #expect(controller.position == 29.2)
+        #expect(controller.lastAutoSkipEvent == nil)
+
+        controller.setSkipZones([])
+        #expect(controller.skipZoneBoundaryCountForTesting == 0)
+        controller.handleSkipZoneBoundaryReached(30, observationGeneration: generation)
+        #expect(controller.lastAutoSkipEvent == nil)
+    }
+
     @Test
     func resolvingUnknownDurationInstallsPreciseBoundary() throws {
         let controller = AVFoundationPlaybackController()

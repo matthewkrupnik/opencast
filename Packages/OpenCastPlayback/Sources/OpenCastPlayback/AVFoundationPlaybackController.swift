@@ -44,6 +44,7 @@ public final class AVFoundationPlaybackController {
     @ObservationIgnored private var timeObserver: PlayerTimeObserver?
     @ObservationIgnored private var outroBoundaryObserver: PlayerTimeObserver?
     @ObservationIgnored private var outroBoundaryCutoff: TimeInterval?
+    @ObservationIgnored private var skipZoneBoundaryObservers: [PlayerTimeObserver] = []
     @ObservationIgnored private var currentItemObservationGeneration = 0
     @ObservationIgnored private var mediaClockObservers: [UUID: PlayerTimeObserver] = [:]
     @ObservationIgnored private var mediaClockContinuations: [UUID: AsyncStream<PlaybackMediaClockSample>.Continuation] = [:]
@@ -299,6 +300,7 @@ public final class AVFoundationPlaybackController {
         playbackAdSkipPolicy.setZones(zones)
         snapshot.skipZones = playbackAdSkipPolicy.zones
         syncObservableState()
+        refreshSkipZoneBoundaryObservers()
 
         guard snapshot.currentEpisode != nil else {
             return
@@ -1097,6 +1099,7 @@ public final class AVFoundationPlaybackController {
         observeDuration(of: playerItem, generation: generation)
         observeStatus(of: playerItem, generation: generation)
         observeBuffering(of: playerItem, generation: generation)
+        refreshSkipZoneBoundaryObservers()
     }
 
     private func observeEnd(of playerItem: AVPlayerItem, generation: Int) {
@@ -1201,6 +1204,7 @@ public final class AVFoundationPlaybackController {
             self.timeObserver = nil
         }
         removeOutroBoundaryObserver()
+        removeSkipZoneBoundaryObservers()
         if let currentItemEndObserver {
             NotificationCenter.default.removeObserver(currentItemEndObserver)
             self.currentItemEndObserver = nil
@@ -1794,6 +1798,61 @@ public final class AVFoundationPlaybackController {
         )
     }
 
+    /// The periodic tick runs once a second of wall-clock time, so entering a
+    /// zone between ticks would play up to a second of the ad (more at faster
+    /// rates). A boundary at each zone start skips it on arrival.
+    private func refreshSkipZoneBoundaryObservers() {
+        removeSkipZoneBoundaryObservers()
+        guard let playerItem = player.currentItem else {
+            return
+        }
+
+        let generation = currentItemObservationGeneration
+        skipZoneBoundaryObservers = playbackAdSkipPolicy.zones.map { zone in
+            let boundaryTime = CMTime(seconds: zone.startTime, preferredTimescale: 600)
+            return PlayerTimeObserver(token: player.addBoundaryTimeObserver(
+                forTimes: [NSValue(time: boundaryTime)],
+                queue: .main
+            ) { [weak self] in
+                Task { @MainActor [weak self] in
+                    guard let self,
+                          isCurrentItemCallback(playerItem, generation: generation)
+                    else {
+                        return
+                    }
+                    handleSkipZoneBoundaryReached(
+                        zone.startTime,
+                        observationGeneration: generation
+                    )
+                }
+            })
+        }
+    }
+
+    private func removeSkipZoneBoundaryObservers() {
+        for observer in skipZoneBoundaryObservers {
+            player.removeTimeObserver(observer.token)
+        }
+        skipZoneBoundaryObservers = []
+    }
+
+    func handleSkipZoneBoundaryReached(
+        _ startTime: TimeInterval,
+        observationGeneration: Int
+    ) {
+        guard observationGeneration == currentItemObservationGeneration,
+              snapshot.currentEpisode != nil,
+              !hasFinishedCurrentEpisode
+        else {
+            return
+        }
+        evaluateAutoSkip(
+            previousPosition: snapshot.position,
+            position: startTime,
+            cause: .acceptedTick
+        )
+    }
+
     private func isCurrentItemCallback(
         _ playerItem: AVPlayerItem,
         generation: Int
@@ -1809,6 +1868,10 @@ public final class AVFoundationPlaybackController {
 
     var outroBoundaryCutoffForTesting: TimeInterval? {
         outroBoundaryCutoff
+    }
+
+    var skipZoneBoundaryCountForTesting: Int {
+        skipZoneBoundaryObservers.count
     }
 
     var isFinishLatchedForTesting: Bool {
