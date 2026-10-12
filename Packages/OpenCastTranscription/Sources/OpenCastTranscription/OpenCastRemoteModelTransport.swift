@@ -3,8 +3,6 @@ import Foundation
 typealias OpenCastRemoteModelDownloadProgressHandler = @Sendable (_ bytesReceived: Int64) -> Void
 
 protocol OpenCastRemoteModelTransport: Sendable {
-    func data(from url: URL) async throws -> OpenCastRemoteModelDataResponse
-
     func download(
         from url: URL,
         to destinationURL: URL,

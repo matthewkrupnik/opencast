@@ -115,8 +115,8 @@ struct EpisodeTranscriptImprovementCoordinatorTests {
             localFileURL: harness.localFileURL,
             engine: .whisper,
             modelIdentity: EpisodeTranscriptionModelIdentity(
-                modelIdentifier: OpenCastWhisperModel.tinyEnglish.rawValue,
-                version: OpenCastWhisperModel.tinyEnglish.defaultRemoteVersion,
+                modelIdentifier: OpenCastWhisperModel.largeV3.rawValue,
+                version: OpenCastWhisperModel.largeV3.defaultRemoteVersion,
                 treeSHA256: String(repeating: "b", count: 64)
             ),
             languageCode: "en",
@@ -195,8 +195,8 @@ struct EpisodeTranscriptImprovementCoordinatorTests {
             localFileURL: localFileURL,
             engine: .whisper,
             modelIdentity: EpisodeTranscriptionModelIdentity(
-                modelIdentifier: OpenCastWhisperModel.tinyEnglish.rawValue,
-                version: OpenCastWhisperModel.tinyEnglish.defaultRemoteVersion,
+                modelIdentifier: OpenCastWhisperModel.largeV3.rawValue,
+                version: OpenCastWhisperModel.largeV3.defaultRemoteVersion,
                 treeSHA256: String(repeating: "b", count: 64)
             ),
             languageCode: "en",

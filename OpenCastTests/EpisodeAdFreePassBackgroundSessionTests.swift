@@ -417,8 +417,8 @@ struct EpisodeAdFreePassBackgroundSessionTests {
     private func installProgress(_ fraction: Double) -> OpenCastWhisperModelInstallProgress {
         let totalByteCount: Int64 = 1_000
         return OpenCastWhisperModelInstallProgress(
-            modelIdentifier: OpenCastWhisperModel.tinyEnglish.rawValue,
-            version: OpenCastWhisperModel.tinyEnglish.defaultRemoteVersion,
+            modelIdentifier: OpenCastWhisperModel.largeV3.rawValue,
+            version: OpenCastWhisperModel.largeV3.defaultRemoteVersion,
             completedFileCount: Int(fraction * 10),
             totalFileCount: 10,
             completedByteCount: Int64(fraction * Double(totalByteCount)),

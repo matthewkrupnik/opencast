@@ -13,17 +13,17 @@ enum OpenCastUITestAdFreePassPresentationOverride {
         case "idle":
             return .idle
         case "consent", "model-consent":
-            return .awaitingModelConsent(byteCount: 78_900_000)
+            return .awaitingModelConsent(byteCount: 629_482_970)
         case "downloading":
             return .downloadingEpisode
         case "installing":
             return .installingModel(OpenCastWhisperModelInstallProgress(
-                modelIdentifier: OpenCastWhisperModel.tinyEnglish.rawValue,
-                version: OpenCastWhisperModel.tinyEnglish.defaultRemoteVersion,
+                modelIdentifier: OpenCastWhisperModel.largeV3.rawValue,
+                version: OpenCastWhisperModel.largeV3.defaultRemoteVersion,
                 completedFileCount: 2,
                 totalFileCount: 5,
-                completedByteCount: 24_000_000,
-                totalByteCount: 78_900_000,
+                completedByteCount: 190_000_000,
+                totalByteCount: 629_482_970,
                 currentFilePath: "model.bin"
             ))
         case "checking":

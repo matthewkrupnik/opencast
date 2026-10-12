@@ -1,9 +1,9 @@
 import SwiftUI
 
 struct WhisperModelInstallToast: View {
-    static let title = "Tiny Whisper install started"
+    static let title = "Whisper install started"
     static let detail = "Downloading in the background."
-    static let accessibilityAnnouncement = "Tiny Whisper model install started. Downloading in the background."
+    static let accessibilityAnnouncement = "Whisper model install started. Downloading in the background."
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
@@ -36,7 +36,7 @@ struct WhisperModelInstallToast: View {
         .glassEffect(.regular, in: .rect(cornerRadius: 18))
         .accessibilityElement(children: .combine)
         .accessibilityLabel(Self.accessibilityAnnouncement)
-        .accessibilityIdentifier("Tiny Whisper Install Toast")
+        .accessibilityIdentifier("Whisper Install Toast")
         .onAppear(perform: startAnimation)
         .onDisappear(perform: stopAnimation)
     }

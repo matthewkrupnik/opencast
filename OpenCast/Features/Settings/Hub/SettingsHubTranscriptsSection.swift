@@ -24,6 +24,6 @@ struct SettingsHubTranscriptsSection: View {
            appModel.appleSpeechAssets.isTranscriberAvailable {
             return "Apple"
         }
-        return "Whisper \(appModel.transcriptionModels.selectedChoice.title)"
+        return "Whisper"
     }
 }

@@ -223,8 +223,8 @@ private struct AutoResumeFixture {
 
 private final class AutoResumeTranscriptionModelInstaller: TranscriptionModelInstalling, @unchecked Sendable {
     let summary = OpenCastWhisperModelInstalledSummary(
-        modelIdentifier: OpenCastWhisperModel.tinyEnglish.rawValue,
-        version: OpenCastWhisperModel.tinyEnglish.defaultRemoteVersion,
+        modelIdentifier: OpenCastWhisperModel.largeV3.rawValue,
+        version: OpenCastWhisperModel.largeV3.defaultRemoteVersion,
         totalByteCount: 10,
         treeSHA256: String(repeating: "d", count: 64)
     )

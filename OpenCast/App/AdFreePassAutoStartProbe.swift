@@ -84,12 +84,8 @@ enum AdFreePassAutoStartProbe {
             }
 
             let transcriptionEngine = requestedTranscriptionEngine ?? .productDefault
-            if transcriptionEngine == .whisperTiny {
-                _ = appModel.setTranscriptionModelChoice(.fastTinyEnglish, modelContext: modelContext)
-            }
 
             if shouldInstallModel, !isModelInstalled(appModel.transcriptionModels.state) {
-                _ = appModel.setTranscriptionModelChoice(.fastTinyEnglish, modelContext: modelContext)
                 guard appModel.installTranscriptionModel() else {
                     AdFreePassBackgroundRunLog.record("autostart model install start failed")
                     return

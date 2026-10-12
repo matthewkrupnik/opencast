@@ -16,55 +16,8 @@ struct TranscriptionModelStoreTests {
         #expect(store.state == .notInstalled)
     }
 
-    @Test("Fast model requires remote install")
-    func fastModelRequiresRemoteInstall() throws {
-        let container = try OpenCastModelContainerFactory.make(inMemory: true)
-        let context = ModelContext(container)
-        let store = TranscriptionModelStore(installer: FakeTranscriptionModelInstaller(isInstalled: false))
-
-        #expect(store.setSelectedChoice(.fastTinyEnglish, modelContext: context))
-
-        #expect(store.selectedChoice == .fastTinyEnglish)
-        #expect(!store.canStartTranscription)
-        #expect(store.installedSummary == nil)
-        #expect(store.state == .notInstalled)
-    }
-
-    @Test("Default model choice is fast tiny and stored explicit choice is respected")
-    func defaultChoiceIsFastTinyAndStoredChoiceWins() throws {
-        let container = try OpenCastModelContainerFactory.make(inMemory: true)
-        let context = ModelContext(container)
-        let defaultStore = TranscriptionModelStore(installer: FakeTranscriptionModelInstaller(isInstalled: false))
-
-        defaultStore.load(modelContext: context)
-
-        #expect(TranscriptionModelChoice.defaultChoice == .fastTinyEnglish)
-        #expect(defaultStore.selectedChoice == .fastTinyEnglish)
-        #expect(defaultStore.setSelectedChoice(.accurateLargeV3, modelContext: context))
-
-        let reloadedStore = TranscriptionModelStore(installer: FakeTranscriptionModelInstaller(isInstalled: false))
-        reloadedStore.load(modelContext: context)
-
-        #expect(reloadedStore.selectedChoice == .accurateLargeV3)
-    }
-
-    @Test("Model choice persists through local load")
-    func modelChoicePersistsThroughLocalLoad() throws {
-        let container = try OpenCastModelContainerFactory.make(inMemory: true)
-        let context = ModelContext(container)
-        let firstStore = TranscriptionModelStore(installer: FakeTranscriptionModelInstaller(isInstalled: false))
-
-        #expect(firstStore.setSelectedChoice(.fastTinyEnglish, modelContext: context))
-
-        let secondStore = TranscriptionModelStore(installer: FakeTranscriptionModelInstaller(isInstalled: false))
-        secondStore.load(modelContext: context)
-
-        #expect(secondStore.selectedChoice == .fastTinyEnglish)
-        #expect(!secondStore.canStartTranscription)
-    }
-
-    @Test("Active transcription blocks model choice changes with message")
-    func activeTranscriptionBlocksModelChoiceChangesWithMessage() async throws {
+    @Test("Active transcription blocks model install with message")
+    func activeTranscriptionBlocksModelInstallWithMessage() async throws {
         let container = try OpenCastModelContainerFactory.make(inMemory: true)
         let context = ModelContext(container)
         let temporaryDirectory = try makeTemporaryDirectory()
@@ -94,16 +47,8 @@ struct TranscriptionModelStoreTests {
         )
 
         #expect(await waitUntil { blockingTranscriber.requestCount == 1 })
-        #expect(!appModel.setTranscriptionModelChoice(.fastTinyEnglish, modelContext: context))
-        if case .failed(let message) = transcriptionModels.state {
-            #expect(message == "Finish or cancel the active transcript before changing the speech model.")
-        } else {
-            Issue.record("Expected failed model-choice state, got \(transcriptionModels.state).")
-        }
-
         #expect(!appModel.installTranscriptionModel())
         #expect(installer.requestedInstallModel == nil)
-        #expect(transcriptionModels.selectedChoice == .fastTinyEnglish)
         if case .failed(let message) = transcriptionModels.state {
             #expect(message == "Finish or cancel the active transcript before installing the speech model.")
         } else {
@@ -186,31 +131,22 @@ struct TranscriptionModelStoreTests {
         #expect(installer.installRequestCount == 1)
     }
 
-    @Test("Installing fast model uses tiny remote release")
-    func installingFastModelUsesTinyRemoteRelease() async throws {
-        let container = try OpenCastModelContainerFactory.make(inMemory: true)
-        let context = ModelContext(container)
-        let summary = OpenCastWhisperModelInstalledSummary(
-            modelIdentifier: OpenCastWhisperModel.tinyEnglish.rawValue,
-            version: OpenCastWhisperModel.tinyEnglish.defaultRemoteVersion,
-            totalByteCount: 10,
-            treeSHA256: String(repeating: "c", count: 64)
-        )
-        let installer = FakeTranscriptionModelInstaller(isInstalled: false, summary: summary)
+    @Test("Installing uses the pinned large-v3 release")
+    func installingUsesPinnedLargeV3Release() async {
+        let installer = FakeTranscriptionModelInstaller(isInstalled: false)
         let store = TranscriptionModelStore(installer: installer)
 
-        #expect(store.setSelectedChoice(.fastTinyEnglish, modelContext: context))
         #expect(store.installPinnedModel())
 
         #expect(await waitUntil {
             if case .installed(let installedSummary) = store.state {
-                installedSummary.modelIdentifier == OpenCastWhisperModel.tinyEnglish.rawValue
+                installedSummary.modelIdentifier == OpenCastWhisperModel.largeV3.rawValue
             } else {
                 false
             }
         })
-        #expect(installer.requestedInstallModel == .tinyEnglish)
-        #expect(installer.requestedInstallVersion == OpenCastWhisperModel.tinyEnglish.defaultRemoteVersion)
+        #expect(installer.requestedInstallModel == .largeV3)
+        #expect(installer.requestedInstallVersion == OpenCastWhisperModel.largeV3.defaultRemoteVersion)
     }
 
     @Test("Late install progress cannot overwrite installed state")
@@ -239,8 +175,8 @@ struct TranscriptionModelStoreTests {
     @Test("Manifest mismatch reports repair")
     func manifestMismatchReportsRepair() async {
         let installed = OpenCastWhisperModelInstalledSummary(
-            modelIdentifier: OpenCastWhisperModel.tinyEnglish.rawValue,
-            version: OpenCastWhisperModel.tinyEnglish.defaultRemoteVersion,
+            modelIdentifier: OpenCastWhisperModel.largeV3.rawValue,
+            version: OpenCastWhisperModel.largeV3.defaultRemoteVersion,
             totalByteCount: 10,
             treeSHA256: String(repeating: "1", count: 64)
         )
@@ -350,8 +286,8 @@ private final class FakeTranscriptionModelInstaller: TranscriptionModelInstallin
     init(
         isInstalled: Bool,
         summary: OpenCastWhisperModelInstalledSummary = OpenCastWhisperModelInstalledSummary(
-            modelIdentifier: OpenCastWhisperModel.tinyEnglish.rawValue,
-            version: OpenCastWhisperModel.tinyEnglish.defaultRemoteVersion,
+            modelIdentifier: OpenCastWhisperModel.largeV3.rawValue,
+            version: OpenCastWhisperModel.largeV3.defaultRemoteVersion,
             totalByteCount: 10,
             treeSHA256: String(repeating: "a", count: 64)
         ),

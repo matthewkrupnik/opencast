@@ -5,9 +5,9 @@ import Testing
 
 /// Opt-in real-model gate for the exact-output stack: cancel after the
 /// first durable checkpoint, resume from it, and verify the stitched segments
-/// cover the clip with no gaps or duplicates. Requires the local Tiny model:
+/// cover the clip with no gaps or duplicates. Requires the local large-v3 model:
 /// OPENCAST_TINY_RESUME_PROBE=1 OPENCAST_TRANSCRIPTION_AUDIO=<file>.
-@Suite("Tiny cancellation and resume probe")
+@Suite("Cancellation and resume probe")
 struct TinyCancellationResumeProbeTests {
     @Test(
         "Cancel after a checkpoint, resume, and stitch without gaps or duplicates",
@@ -19,7 +19,7 @@ struct TinyCancellationResumeProbeTests {
 
         let clipEnd: TimeInterval = 120
         let audioURL = URL(fileURLWithPath: audioPath)
-        let service = OpenCastTranscriptionService(modelLocator: DownloadedWhisperModelLocator(model: .tinyEnglish))
+        let service = OpenCastTranscriptionService(modelLocator: DownloadedWhisperModelLocator(model: .largeV3))
 
         func request(resumeStart: TimeInterval?) -> OpenCastLongFormTranscriptionRequest {
             OpenCastLongFormTranscriptionRequest(
@@ -29,8 +29,8 @@ struct TinyCancellationResumeProbeTests {
                 sourceAudioURL: audioURL.absoluteString,
                 sourceFileByteCount: 0,
                 sourceFileSHA256: "probe",
-                modelIdentifier: OpenCastWhisperModel.tinyEnglish.rawValue,
-                modelVersion: OpenCastWhisperModel.tinyEnglish.defaultRemoteVersion,
+                modelIdentifier: OpenCastWhisperModel.largeV3.rawValue,
+                modelVersion: OpenCastWhisperModel.largeV3.defaultRemoteVersion,
                 modelTreeSHA256: "probe"
             )
         }

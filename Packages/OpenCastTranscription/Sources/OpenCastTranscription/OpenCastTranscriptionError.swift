@@ -10,11 +10,8 @@ public enum OpenCastTranscriptionError: Error, LocalizedError, Equatable, Sendab
     case noTranscriptionResult
     case unsupportedModelIdentifier(String)
     case modelNotInstalled(modelIdentifier: String, version: String)
-    case remoteManifestUnavailable(URL)
-    case remoteManifestSignatureUnavailable(URL)
     case remoteManifestMissingModel(modelIdentifier: String, version: String)
     case invalidRemoteManifest(String)
-    case invalidRemoteManifestSignature(String)
     case remoteModelDownloadFailed(URL)
     case checksumMismatch(path: String, expected: String, actual: String)
 
@@ -38,16 +35,10 @@ public enum OpenCastTranscriptionError: Error, LocalizedError, Equatable, Sendab
             "Unsupported transcription model: \(modelIdentifier)."
         case let .modelNotInstalled(modelIdentifier, version):
             "Transcription model is not installed: \(modelIdentifier) \(version)."
-        case let .remoteManifestUnavailable(url):
-            "Remote transcription model manifest is unavailable: \(url.absoluteString)."
-        case let .remoteManifestSignatureUnavailable(url):
-            "Remote transcription model manifest signature is unavailable: \(url.absoluteString)."
         case let .remoteManifestMissingModel(modelIdentifier, version):
             "Remote transcription model manifest does not include \(modelIdentifier) \(version)."
         case let .invalidRemoteManifest(reason):
             "Remote transcription model manifest is invalid: \(reason)."
-        case let .invalidRemoteManifestSignature(reason):
-            "Remote transcription model manifest signature is invalid: \(reason)."
         case let .remoteModelDownloadFailed(url):
             "Failed to download remote transcription model file: \(url.absoluteString)."
         case let .checksumMismatch(path, expected, actual):

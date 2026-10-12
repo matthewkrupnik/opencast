@@ -9,14 +9,6 @@ struct URLSessionRemoteModelTransport: OpenCastRemoteModelTransport {
         self.session = session
     }
 
-    func data(from url: URL) async throws -> OpenCastRemoteModelDataResponse {
-        let (data, response) = try await session.data(from: url)
-        return OpenCastRemoteModelDataResponse(
-            data: data,
-            response: OpenCastRemoteModelResponse(statusCode: (response as? HTTPURLResponse)?.statusCode)
-        )
-    }
-
     func download(
         from url: URL,
         to destinationURL: URL,

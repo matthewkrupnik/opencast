@@ -38,56 +38,29 @@ final class ExtendedQADeviceProbeUITests: XCTestCase {
 
     // MARK: - Model-download watch
 
-    /// Fresh tiny.en install watching the bar move mid-file: deletes the Fast
-    /// model if installed, reinstalls it, and samples the settings status row
-    /// throughout. Passing requires the completed-byte reading to move at
-    /// least twice strictly between 0 and the total — pre-Phase-11 the bar
-    /// only moved at per-file boundaries, and post-Phase-11 the delegate's
-    /// mid-file callback feeds it continuously.
+    /// Large-v3 (~630 MB) fresh install with a mid-download cancel and a
+    /// restart to completion: deletes the model first if installed. The
+    /// 402 MB AudioEncoder file dominates the byte range, so a rich
+    /// strictly-increasing sample set proves mid-file progress; the cancel
+    /// must settle back to Not Installed (delete-on-failure contract) and the
+    /// restart must complete.
     @MainActor
-    func testFreshFastModelInstallShowsMidFileProgress() throws {
+    func testModelInstallMidFileProgressCancelRestart() throws {
         let app = launchApp()
         openTranscriptionSettings(in: app)
 
-        if scrollToButton("Delete Fast Model", in: app) {
-            app.buttons["Delete Fast Model"].tap()
-            confirmDialogButton("Delete Fast Model", in: app)
+        if scrollToButton("Delete Model", in: app) {
+            app.buttons["Delete Model"].tap()
+            confirmDialogButton("Delete Model", in: app)
             XCTAssertTrue(
                 waitForStatus(prefix: "Not Installed", in: app, timeout: 60),
-                "Fast model delete should settle to Not Installed"
+                "Model delete should settle to Not Installed"
             )
-            print("EXTQA[fast-install]: deleted pre-existing Fast model")
         }
 
-        XCTAssertTrue(scrollToButton("Install Fast Model", in: app), "Install Fast Model button must exist")
-        app.buttons["Install Fast Model"].tap()
-        confirmDialogButton("Install Fast Model", in: app)
-
-        let samples = sampleInstallProgress(in: app, timeout: 300, label: "fast-install")
-        XCTAssertTrue(
-            waitForStatus(prefix: "Installed,", in: app, timeout: 120),
-            "Fast model install should settle to Installed"
-        )
-        assertMidFileMovement(samples, minimumDistinctMidValues: 2, label: "fast-install")
-    }
-
-    /// Accurate (large-v3, ~630 MB) fresh install with a mid-download cancel
-    /// and a restart to completion. The 402 MB AudioEncoder file dominates the
-    /// byte range, so a rich strictly-increasing sample set proves mid-file
-    /// progress; the cancel must settle back to Not Installed (delete-on-
-    /// failure contract) and the restart must complete. Restores the picker to
-    /// Fast afterwards so later transcription legs keep using tiny.
-    @MainActor
-    func testAccurateModelInstallMidFileProgressCancelRestart() throws {
-        let app = launchApp()
-        openTranscriptionSettings(in: app)
-
-        app.buttons["Accurate"].tap()
-        usleep(500_000)
-
-        XCTAssertTrue(scrollToButton("Install Accurate Model", in: app), "Install Accurate Model button must exist")
-        app.buttons["Install Accurate Model"].tap()
-        confirmDialogButton("Install Accurate Model", in: app)
+        XCTAssertTrue(scrollToButton("Install Model", in: app), "Install Model button must exist")
+        app.buttons["Install Model"].tap()
+        confirmDialogButton("Install Model", in: app)
 
         let cancelSamples = sampleInstallProgress(
             in: app,
@@ -97,52 +70,20 @@ final class ExtendedQADeviceProbeUITests: XCTestCase {
         )
         XCTAssertTrue(
             waitForStatus(prefix: "Not Installed", in: app, timeout: 60),
-            "cancelled Accurate install should settle to Not Installed"
+            "cancelled install should settle to Not Installed"
         )
         print("EXTQA[accurate-cancel-leg]: cancel settled to Not Installed after \(cancelSamples.count) samples")
 
-        XCTAssertTrue(scrollToButton("Install Accurate Model", in: app), "Install button should return after cancel")
-        app.buttons["Install Accurate Model"].tap()
-        confirmDialogButton("Install Accurate Model", in: app)
+        XCTAssertTrue(scrollToButton("Install Model", in: app), "Install button should return after cancel")
+        app.buttons["Install Model"].tap()
+        confirmDialogButton("Install Model", in: app)
 
         let samples = sampleInstallProgress(in: app, timeout: 900, label: "accurate-install")
         XCTAssertTrue(
             waitForStatus(prefix: "Installed,", in: app, timeout: 300),
-            "Accurate model install should settle to Installed"
+            "Model install should settle to Installed"
         )
         assertMidFileMovement(samples, minimumDistinctMidValues: 10, label: "accurate-install")
-
-        app.buttons["Fast"].tap()
-        usleep(500_000)
-        XCTAssertTrue(
-            waitForStatus(prefix: "Installed,", in: app, timeout: 30),
-            "Fast model should still be installed after restoring the picker"
-        )
-    }
-
-    /// End-of-QA cleanup: deletes the Accurate model and restores the Fast
-    /// selection, returning the device to its pre-QA model state.
-    @MainActor
-    func testDeleteAccurateModelRestoreFastSelection() throws {
-        let app = launchApp()
-        openTranscriptionSettings(in: app)
-
-        app.buttons["Accurate"].tap()
-        usleep(500_000)
-        if scrollToButton("Delete Accurate Model", in: app) {
-            app.buttons["Delete Accurate Model"].tap()
-            confirmDialogButton("Delete Accurate Model", in: app)
-            XCTAssertTrue(
-                waitForStatus(prefix: "Not Installed", in: app, timeout: 60),
-                "Accurate model delete should settle to Not Installed"
-            )
-        }
-        app.buttons["Fast"].tap()
-        usleep(500_000)
-        XCTAssertTrue(
-            waitForStatus(prefix: "Installed,", in: app, timeout: 30),
-            "Fast model should remain installed after cleanup"
-        )
     }
 
     // MARK: - Engine selection (kill-soak precondition)
@@ -317,20 +258,16 @@ final class ExtendedQADeviceProbeUITests: XCTestCase {
         return app
     }
 
-    /// Settings › Transcription owns both the engine toggle and the
-    /// Fast/Accurate Whisper picker.
+    /// Settings › Transcription owns both the engine toggle and the Whisper
+    /// model controls.
     @MainActor
     private func openTranscriptionSettings(in app: XCUIApplication) {
         openSettingsScreen("Transcription", in: app)
         sleep(1)
         XCTAssertTrue(
-            scrollToButton("Install Fast Model", in: app) || scrollToButton("Delete Fast Model", in: app)
+            scrollToButton("Install Model", in: app) || scrollToButton("Delete Model", in: app)
                 || scrollToButton("Cancel Install", in: app),
             "Whisper model management must be reachable on the Transcription screen"
-        )
-        XCTAssertTrue(
-            app.buttons["Accurate"].existsOrWait(timeout: 10),
-            "Whisper Model picker must exist on the Transcription screen"
         )
     }
 

@@ -486,15 +486,15 @@ final class OpenCastUITests: XCTestCase {
         attachSmokeScreenshot(named: "onboarding_podcast_setup_dark")
 
         app.buttons["Continue"].tap()
-        assertExists(app.staticTexts["Tiny Whisper Model"], named: "Tiny Whisper onboarding screen")
-        let installTinyModelButton = app.buttons["Install Tiny Model"]
-        assertExists(installTinyModelButton, named: "Install Tiny Model onboarding action")
-        XCTAssertTrue(installTinyModelButton.isHittable, "Install Tiny Model should be visible without scrolling")
-        attachSmokeScreenshot(named: "onboarding_tiny_whisper_setup_dark")
-        installTinyModelButton.tap()
+        assertExists(app.staticTexts["Whisper Model"], named: "Whisper onboarding screen")
+        let installModelButton = app.buttons["Install Model"]
+        assertExists(installModelButton, named: "Install Model onboarding action")
+        XCTAssertTrue(installModelButton.isHittable, "Install Model should be visible without scrolling")
+        attachSmokeScreenshot(named: "onboarding_whisper_setup_dark")
+        installModelButton.tap()
         assertExists(
-            app.descendants(matching: .any)["Tiny Whisper Install Toast"],
-            named: "Tiny Whisper install toast"
+            app.descendants(matching: .any)["Whisper Install Toast"],
+            named: "Whisper install toast"
         )
         assertExists(app.staticTexts["New Episode Alerts"], named: "notification onboarding screen")
         assertExists(app.buttons["Enable Notifications"], named: "Enable Notifications onboarding action")
@@ -534,7 +534,7 @@ final class OpenCastUITests: XCTestCase {
         XCTAssertFalse(app.staticTexts["Sample Podcasts"].exists)
         attachSmokeScreenshot(named: "settings_debug_onboarding_podcast_setup_light")
         app.buttons["Continue"].tap()
-        assertExists(app.staticTexts["Tiny Whisper Model"], named: "debug Tiny Whisper setup")
+        assertExists(app.staticTexts["Whisper Model"], named: "debug Whisper setup")
         app.buttons["Skip"].tap()
         assertExists(app.staticTexts["New Episode Alerts"], named: "debug notification setup")
         attachSmokeScreenshot(named: "settings_debug_onboarding_notification_setup_light")
@@ -560,14 +560,14 @@ final class OpenCastUITests: XCTestCase {
         assertExists(app.staticTexts["UI Test Show"], named: "imported subscription row")
         attachSmokeScreenshot(named: "onboarding_imported_podcast_setup_light")
         app.buttons["Continue"].tap()
-        assertExists(app.staticTexts["Tiny Whisper Model"], named: "Tiny Whisper onboarding screen")
-        let installTinyModelButton = app.buttons["Install Tiny Model"]
-        assertExists(installTinyModelButton, named: "Install Tiny Model onboarding action")
-        XCTAssertTrue(installTinyModelButton.isHittable, "Install Tiny Model should be visible without scrolling")
-        installTinyModelButton.tap()
+        assertExists(app.staticTexts["Whisper Model"], named: "Whisper onboarding screen")
+        let installModelButton = app.buttons["Install Model"]
+        assertExists(installModelButton, named: "Install Model onboarding action")
+        XCTAssertTrue(installModelButton.isHittable, "Install Model should be visible without scrolling")
+        installModelButton.tap()
         assertExists(
-            app.descendants(matching: .any)["Tiny Whisper Install Toast"],
-            named: "Tiny Whisper install toast"
+            app.descendants(matching: .any)["Whisper Install Toast"],
+            named: "Whisper install toast"
         )
         assertExists(app.staticTexts["New Episode Alerts"], named: "notification onboarding screen")
         app.buttons["Done"].tap()
@@ -2938,9 +2938,8 @@ final class OpenCastUITests: XCTestCase {
         app.launch()
 
         openSettingsScreen("Transcription", in: app)
-        // The Fast/Accurate model picker is back on the product path.
-        assertExists(app.buttons["Fast"], named: "Fast model picker")
-        assertExists(app.buttons["Accurate"], named: "Accurate model picker")
+        // One Whisper model: no Fast/Accurate picker.
+        assertDoesNotExist(app.buttons["Fast"], named: "Fast model picker", timeout: 1)
         let installedStatus = elementContaining(label: "Installed", in: app)
         scrollUntilExists(installedStatus, in: app)
         assertExists(installedStatus, named: "installed speech model status")
@@ -3851,7 +3850,7 @@ final class OpenCastUITests: XCTestCase {
         assertExists(app.staticTexts["Find Podcasts"], named: "Find Podcasts onboarding screen")
 
         app.buttons["Continue"].tap()
-        assertExists(app.staticTexts["Tiny Whisper Model"], named: "Tiny Whisper onboarding screen")
+        assertExists(app.staticTexts["Whisper Model"], named: "Whisper onboarding screen")
         app.buttons["Skip"].tap()
         assertExists(app.staticTexts["New Episode Alerts"], named: "notification onboarding screen")
         app.buttons["Done"].tap()
@@ -3890,7 +3889,7 @@ final class OpenCastUITests: XCTestCase {
         assertExists(app.staticTexts["This American Life"], named: "This American Life sample suggestion")
 
         app.buttons["Continue"].tap()
-        assertExists(app.staticTexts["Tiny Whisper Model"], named: "Tiny Whisper onboarding screen")
+        assertExists(app.staticTexts["Whisper Model"], named: "Whisper onboarding screen")
         app.buttons["Skip"].tap()
         assertExists(app.staticTexts["New Episode Alerts"], named: "notification onboarding screen")
         app.buttons["Done"].tap()
@@ -3969,7 +3968,7 @@ final class OpenCastUITests: XCTestCase {
         assertExists(app.staticTexts["Find Podcasts"], named: "Find Podcasts onboarding screen")
 
         app.buttons["Continue"].tap()
-        assertExists(app.staticTexts["Tiny Whisper Model"], named: "Tiny Whisper onboarding screen")
+        assertExists(app.staticTexts["Whisper Model"], named: "Whisper onboarding screen")
         app.buttons["Skip"].tap()
         assertExists(app.staticTexts["New Episode Alerts"], named: "notification onboarding screen")
         app.buttons["Done"].tap()

@@ -1,12 +1,9 @@
 import OpenCastTranscription
-import SwiftData
 import SwiftUI
 
 struct SettingsWhisperModelSection: View {
     @Environment(OpenCastAppModel.self) private var appModel
-    @Environment(\.modelContext) private var modelContext
 
-    @State private var selectedChoice = TranscriptionModelChoice.defaultChoice
     @State private var isConfirmingInstall = false
     @State private var isConfirmingRepair = false
     @State private var isConfirmingDelete = false
@@ -14,15 +11,7 @@ struct SettingsWhisperModelSection: View {
 
     var body: some View {
         Section {
-            Picker("Transcript Model", selection: $selectedChoice) {
-                ForEach(TranscriptionModelChoice.allCases) { choice in
-                    Text(choice.title)
-                        .tag(choice)
-                }
-            }
-            .pickerStyle(.segmented)
-
-            Text(selectedChoice.detail)
+            Text("Whisper large-v3, downloaded from Hugging Face and checked against pinned hashes.")
                 .font(.footnote)
                 .foregroundStyle(.secondary)
 
@@ -59,7 +48,7 @@ struct SettingsWhisperModelSection: View {
                         Button("Repair Model", action: repairModel)
                         Button("Cancel", role: .cancel) {}
                     } message: {
-                        Text("The installed receipt does not match the signed manifest. The model will be reinstalled.")
+                        Text("The installed model does not match the pinned model files. It will be reinstalled.")
                     }
                 deleteButton
             case .deleting:
@@ -68,24 +57,12 @@ struct SettingsWhisperModelSection: View {
         } header: {
             Text("Whisper Model")
         }
-        .onChange(of: selectedChoice) { _, newChoice in
-            updateSelectedChoice(newChoice)
-        }
-        .onChange(of: appModel.transcriptionModels.selectedChoice) { _, storeChoice in
-            guard selectedChoice != storeChoice else {
-                return
-            }
-            selectedChoice = storeChoice
-        }
         .task {
-            selectedChoice = appModel.transcriptionModels.selectedChoice
-            let choice = selectedChoice
             let loadedState = await Self.loadModelState(
-                modelIdentifier: choice.model.rawValue,
-                version: choice.defaultVersion
+                modelIdentifier: TranscriptionModelStore.model.rawValue,
+                version: TranscriptionModelStore.model.defaultRemoteVersion
             )
-            guard !Task.isCancelled,
-                  choice == appModel.transcriptionModels.selectedChoice else {
+            guard !Task.isCancelled else {
                 return
             }
             loadedModelState = loadedState
@@ -110,7 +87,7 @@ struct SettingsWhisperModelSection: View {
                 Button(deleteButtonTitle, role: .destructive, action: deleteModel)
                 Button("Cancel", role: .cancel) {}
             } message: {
-                Text("Completed transcripts stay on this device. New \(selectedChoice.title) transcripts require reinstalling this model.")
+                Text("Completed transcripts stay on this device. New Whisper transcripts require reinstalling this model.")
             }
     }
 
@@ -153,17 +130,6 @@ struct SettingsWhisperModelSection: View {
             "clock"
         case .unknown, .notInstalled:
             "waveform"
-        }
-    }
-
-    private func updateSelectedChoice(_ choice: TranscriptionModelChoice) {
-        guard choice != appModel.transcriptionModels.selectedChoice else {
-            return
-        }
-
-        guard appModel.setTranscriptionModelChoice(choice, modelContext: modelContext) else {
-            selectedChoice = appModel.transcriptionModels.selectedChoice
-            return
         }
     }
 
@@ -222,28 +188,23 @@ struct SettingsWhisperModelSection: View {
     }
 
     private var installButtonTitle: String {
-        "Install \(selectedChoice.title) Model"
+        "Install Model"
     }
 
     private var deleteButtonTitle: String {
-        "Delete \(selectedChoice.title) Model"
+        "Delete Model"
     }
 
     private var installConfirmationTitle: String {
-        "Install \(selectedChoice.title.lowercased()) speech model?"
+        "Install speech model?"
     }
 
     private var deleteConfirmationTitle: String {
-        "Delete \(selectedChoice.title.lowercased()) speech model?"
+        "Delete speech model?"
     }
 
     private var installConfirmationMessage: String {
-        switch selectedChoice {
-        case .fastTinyEnglish:
-            "The tiny English model is about 50 MB and keeps transcription fastest."
-        case .accurateLargeV3:
-            "The large-v3 model is about 600 MB and improves transcript accuracy."
-        }
+        "The large-v3 model is about 630 MB and stays on this device."
     }
 
     private func byteCount(_ bytes: Int64) -> String {

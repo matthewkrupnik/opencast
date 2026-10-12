@@ -12,7 +12,7 @@ struct OnboardingView: View {
 
     @State private var selectedPage: OnboardingPage
     /// Every case shows, in declaration order. The current revision
-    /// (2026-07-07): the Tiny Whisper step always shows. Whisper is
+    /// (2026-07-07): the Whisper step always shows. Whisper is
     /// load-bearing — it's the ad-free-pass engine on devices without
     /// background GPU and the fallback everywhere
     /// else — so onboarding fronts its download for everyone. Apple speech
@@ -154,9 +154,8 @@ struct OnboardingView: View {
             )
         case .transcriptionModelSetup:
             OnboardingTranscriptionModelSetupPage(
-                selectedChoice: appModel.transcriptionModels.selectedChoice,
                 modelState: appModel.transcriptionModels.state,
-                onInstall: installTinyWhisperModel
+                onInstall: installWhisperModel
             )
         case .notificationSetup:
             OnboardingNotificationSetupPage(
@@ -305,13 +304,7 @@ struct OnboardingView: View {
         }
     }
 
-    private func installTinyWhisperModel() {
-        if appModel.transcriptionModels.selectedChoice != .fastTinyEnglish {
-            guard appModel.setTranscriptionModelChoice(.fastTinyEnglish, modelContext: modelContext) else {
-                return
-            }
-        }
-
+    private func installWhisperModel() {
         guard appModel.installTranscriptionModel() else {
             return
         }

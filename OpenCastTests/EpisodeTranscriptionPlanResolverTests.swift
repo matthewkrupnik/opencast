@@ -55,9 +55,9 @@ struct EpisodeTranscriptionPlanResolverTests {
         #expect(harness.provider.installRequests == ["en_US"])
     }
 
-    @Test("Durable preference pins product default to whisper tiny even when Apple is installed")
+    @Test("Durable preference pins product default to whisper even when Apple is installed")
     func durablePreferencePinsWhisperTiny() async throws {
-        let harness = Harness(tinyInstalled: true, prefersRevocationDurableEngine: true)
+        let harness = Harness(whisperInstalled: true, prefersRevocationDurableEngine: true)
 
         let plan = try await harness.resolver.resolve(requestedEngine: .productDefault, podcastLanguageCode: "en-US")
 
@@ -68,9 +68,9 @@ struct EpisodeTranscriptionPlanResolverTests {
         #expect(harness.provider.installRequests.isEmpty)
     }
 
-    @Test("Durable preference without an installed tiny model routes to consent")
+    @Test("Durable preference without an installed Whisper model routes to consent")
     func durablePreferenceWithoutTinyThrowsMissingSpeechModel() async throws {
-        let harness = Harness(tinyInstalled: false, prefersRevocationDurableEngine: true)
+        let harness = Harness(whisperInstalled: false, prefersRevocationDurableEngine: true)
 
         await #expect(throws: EpisodeTranscriptionError.missingSpeechModel) {
             _ = try await harness.resolver.resolve(requestedEngine: .productDefault, podcastLanguageCode: "en-US")
@@ -79,7 +79,7 @@ struct EpisodeTranscriptionPlanResolverTests {
 
     @Test("Durable preference keeps explicit Apple overrides strict")
     func durablePreferenceKeepsExplicitAppleStrict() async throws {
-        let harness = Harness(tinyInstalled: true, prefersRevocationDurableEngine: true)
+        let harness = Harness(whisperInstalled: true, prefersRevocationDurableEngine: true)
 
         let plan = try await harness.resolver.resolve(requestedEngine: .appleSpeech, podcastLanguageCode: "en-US")
 
@@ -87,14 +87,14 @@ struct EpisodeTranscriptionPlanResolverTests {
         #expect(plan.isEngineStrict)
     }
 
-    @Test("Product default falls back to whisper tiny when the transcriber is unavailable")
+    @Test("Product default falls back to whisper when the transcriber is unavailable")
     func productDefaultFallsBackWhenUnavailable() async throws {
-        let harness = Harness(isTranscriberAvailable: false, tinyInstalled: true)
+        let harness = Harness(isTranscriberAvailable: false, whisperInstalled: true)
 
         let plan = try await harness.resolver.resolve(requestedEngine: .productDefault, podcastLanguageCode: "en-US")
 
         #expect(plan.runEngine == .whisper)
-        #expect(plan.modelIdentity.modelIdentifier == OpenCastWhisperModel.tinyEnglish.rawValue)
+        #expect(plan.modelIdentity.modelIdentifier == OpenCastWhisperModel.largeV3.rawValue)
         #expect(plan.runLanguageCode == "en")
         #expect(!plan.isEngineStrict)
         #expect(plan.requiresInstalledWhisperModel)
@@ -102,7 +102,7 @@ struct EpisodeTranscriptionPlanResolverTests {
 
     @Test("Unsupported locale falls back to whisper with the honest language code")
     func unsupportedLocaleFallsBackWithHonestLanguage() async throws {
-        let harness = Harness(tinyInstalled: true)
+        let harness = Harness(whisperInstalled: true)
 
         let plan = try await harness.resolver.resolve(requestedEngine: .productDefault, podcastLanguageCode: "xx-YY")
 
@@ -111,23 +111,23 @@ struct EpisodeTranscriptionPlanResolverTests {
         #expect(plan.runLanguageCode == "en")
     }
 
-    @Test("Asset install failure falls back to whisper tiny")
+    @Test("Asset install failure falls back to whisper")
     func installFailureFallsBackToWhisper() async throws {
         let harness = Harness(
             statusesByLocaleIdentifier: ["en_US": .supported],
-            tinyInstalled: true
+            whisperInstalled: true
         )
         harness.provider.installError = FakeAppleSpeechAssetProviderError.installFailed
 
         let plan = try await harness.resolver.resolve(requestedEngine: .productDefault, podcastLanguageCode: "en-US")
 
         #expect(plan.runEngine == .whisper)
-        #expect(plan.modelIdentity.modelIdentifier == OpenCastWhisperModel.tinyEnglish.rawValue)
+        #expect(plan.modelIdentity.modelIdentifier == OpenCastWhisperModel.largeV3.rawValue)
     }
 
-    @Test("Fallback without an installed tiny model throws missingSpeechModel")
+    @Test("Fallback without an installed Whisper model throws missingSpeechModel")
     func fallbackWithoutTinyThrowsMissingModel() async {
-        let harness = Harness(isTranscriberAvailable: false, tinyInstalled: false)
+        let harness = Harness(isTranscriberAvailable: false, whisperInstalled: false)
 
         await #expect(throws: EpisodeTranscriptionError.missingSpeechModel) {
             _ = try await harness.resolver.resolve(requestedEngine: .productDefault, podcastLanguageCode: nil)
@@ -148,15 +148,16 @@ struct EpisodeTranscriptionPlanResolverTests {
         #expect(supportedOnlyHarness.provider.installRequests.isEmpty)
     }
 
-    @Test("Explicit whisper tiny override stays strict")
-    func whisperTinyOverrideStaysStrict() async throws {
-        let harness = Harness(tinyInstalled: true)
+    @Test("Explicit whisper override stays strict")
+    func whisperOverrideStaysStrict() async throws {
+        let harness = Harness(whisperInstalled: true)
+        harness.transcriptionModels.loadLocalStatus()
 
-        let plan = try await harness.resolver.resolve(requestedEngine: .whisperTiny, podcastLanguageCode: "de-DE")
+        let plan = try await harness.resolver.resolve(requestedEngine: .selectedWhisperModel, podcastLanguageCode: "de-DE")
 
         #expect(plan.runEngine == .whisper)
         #expect(plan.isEngineStrict)
-        #expect(plan.modelIdentity.modelIdentifier == OpenCastWhisperModel.tinyEnglish.rawValue)
+        #expect(plan.modelIdentity.modelIdentifier == OpenCastWhisperModel.largeV3.rawValue)
         #expect(plan.languageCode == "en")
     }
 
@@ -170,7 +171,7 @@ struct EpisodeTranscriptionPlanResolverTests {
             isTranscriberAvailable: Bool = true,
             resolvedLocalesByLanguage: [String: String] = ["en-us": "en_US"],
             statusesByLocaleIdentifier: [String: AppleSpeechAssetLocaleStatus] = ["en_US": .installed],
-            tinyInstalled: Bool = false,
+            whisperInstalled: Bool = false,
             prefersRevocationDurableEngine: Bool = false
         ) {
             provider = FakeAppleSpeechAssetProvider(
@@ -179,7 +180,7 @@ struct EpisodeTranscriptionPlanResolverTests {
                 statusesByLocaleIdentifier: statusesByLocaleIdentifier
             )
             transcriptionModels = TranscriptionModelStore(
-                installer: FakeResolverModelInstaller(isInstalled: tinyInstalled)
+                installer: FakeResolverModelInstaller(isInstalled: whisperInstalled)
             )
             let suiteName = "plan-resolver-tests-\(UUID().uuidString)"
             let userDefaults = UserDefaults(suiteName: suiteName) ?? .standard
@@ -196,8 +197,8 @@ struct EpisodeTranscriptionPlanResolverTests {
 private final class FakeResolverModelInstaller: TranscriptionModelInstalling, @unchecked Sendable {
     var isInstalled: Bool
     private let summary = OpenCastWhisperModelInstalledSummary(
-        modelIdentifier: OpenCastWhisperModel.tinyEnglish.rawValue,
-        version: OpenCastWhisperModel.tinyEnglish.defaultRemoteVersion,
+        modelIdentifier: OpenCastWhisperModel.largeV3.rawValue,
+        version: OpenCastWhisperModel.largeV3.defaultRemoteVersion,
         totalByteCount: 10,
         treeSHA256: String(repeating: "a", count: 64)
     )

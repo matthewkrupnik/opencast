@@ -5,11 +5,11 @@ import SwiftData
 
 @Observable
 final class TranscriptionModelStore {
-    static let modelChoicePreferenceKey = "transcription.model.choice"
+    /// The one Whisper model the app installs and runs.
+    static let model = OpenCastWhisperModel.largeV3
 
     @ObservationIgnored private let stateChanges = StoreChangeNotifier()
 
-    private(set) var selectedChoice: TranscriptionModelChoice = .defaultChoice
     private(set) var state: TranscriptionModelState = .unknown {
         didSet {
             guard oldValue != state else {
@@ -38,8 +38,10 @@ final class TranscriptionModelStore {
         }
     }
 
-    func installedSummary(for choice: TranscriptionModelChoice) throws -> OpenCastWhisperModelInstalledSummary {
-        try installer.installedSummary(model: choice.model, version: choice.defaultVersion)
+    /// Reads the install receipt directly rather than the last published
+    /// `state`, so callers can resolve before the store has loaded.
+    func installedModelSummary() throws -> OpenCastWhisperModelInstalledSummary {
+        try installer.installedSummary(model: selectedModel, version: selectedVersion)
     }
 
     var isBusy: Bool {
@@ -74,42 +76,7 @@ final class TranscriptionModelStore {
     }
 
     func load(modelContext: ModelContext) {
-        do {
-            selectedChoice = try storedChoice(modelContext: modelContext)
-            state = localStatus()
-        } catch {
-            selectedChoice = .defaultChoice
-            state = .failed("Unable to load transcript model choice: \(error.localizedDescription)")
-        }
-    }
-
-    @discardableResult
-    func setSelectedChoice(
-        _ choice: TranscriptionModelChoice,
-        modelContext: ModelContext
-    ) -> Bool {
-        guard operationTask == nil else {
-            state = .failed("Wait for the current speech model operation to finish.")
-            return false
-        }
-
-        let previousChoice = selectedChoice
-        selectedChoice = choice
         state = localStatus()
-
-        do {
-            try LocalPreferenceRecord.upsert(
-                key: Self.modelChoicePreferenceKey,
-                value: choice.rawValue,
-                modelContext: modelContext
-            )
-            try modelContext.save()
-            return true
-        } catch {
-            selectedChoice = previousChoice
-            state = .failed("Unable to update transcript model: \(error.localizedDescription)")
-            return false
-        }
     }
 
     @discardableResult
@@ -172,7 +139,6 @@ final class TranscriptionModelStore {
         operationTask = nil
         activeInstallOperationID = nil
         try performDeleteInstalledModel()
-        selectedChoice = .defaultChoice
         state = localStatus()
     }
 
@@ -196,7 +162,6 @@ final class TranscriptionModelStore {
         operationTask?.cancel()
         operationTask = nil
         activeInstallOperationID = nil
-        selectedChoice = .defaultChoice
         state = localStatus()
     }
 
@@ -298,23 +263,12 @@ final class TranscriptionModelStore {
         }
     }
 
-    private func storedChoice(modelContext: ModelContext) throws -> TranscriptionModelChoice {
-        guard let rawValue = try LocalPreferenceRecord.preference(
-            forKey: Self.modelChoicePreferenceKey,
-            modelContext: modelContext
-        )?.value else {
-            return .defaultChoice
-        }
-
-        return TranscriptionModelChoice(rawValue: rawValue) ?? .defaultChoice
-    }
-
     private var selectedModel: OpenCastWhisperModel {
-        selectedChoice.model
+        Self.model
     }
 
     private var selectedVersion: String {
-        selectedChoice.defaultVersion
+        Self.model.defaultRemoteVersion
     }
 
     private func remoteModel(

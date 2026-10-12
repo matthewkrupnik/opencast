@@ -3,7 +3,6 @@ import SwiftUI
 struct OnboardingTranscriptionModelSetupPage: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
-    let selectedChoice: TranscriptionModelChoice
     let modelState: TranscriptionModelState
     let onInstall: () -> Void
 
@@ -11,11 +10,11 @@ struct OnboardingTranscriptionModelSetupPage: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 18) {
                 VStack(alignment: .leading, spacing: 10) {
-                    Text("Tiny Whisper Model")
+                    Text("Whisper Model")
                         .font(.largeTitle)
                         .bold()
 
-                    Text("Install the tiny English speech model now so transcripts and promo/ad tools are ready later. It is about 50 MB and stays on this device.")
+                    Text("Install the Whisper large-v3 speech model now so transcripts and promo/ad tools are ready later. It is about 630 MB and stays on this device.")
                         .font(.body)
                         .foregroundStyle(.secondary)
                 }
@@ -46,7 +45,7 @@ struct OnboardingTranscriptionModelSetupPage: View {
                         }
                         .buttonStyle(.glassProminent)
                         .controlSize(.large)
-                        .accessibilityIdentifier("Install Tiny Whisper Model")
+                        .accessibilityIdentifier("Install Whisper Model")
                     }
                 }
                 .padding(16)
@@ -55,9 +54,9 @@ struct OnboardingTranscriptionModelSetupPage: View {
 
                 VStack(alignment: .leading, spacing: 12) {
                     OnboardingPitchRow(
-                        systemImage: "bolt.fill",
-                        title: "Fast setup",
-                        message: "Small download, quick first transcripts."
+                        systemImage: "wifi",
+                        title: "Download once",
+                        message: "Best on Wi-Fi. You can keep going while it downloads."
                     )
 
                     OnboardingPitchRow(
@@ -74,7 +73,7 @@ struct OnboardingTranscriptionModelSetupPage: View {
         }
         .scrollIndicators(.hidden)
         .scrollContentBackground(.visible)
-        .accessibilityIdentifier("Tiny Whisper Onboarding")
+        .accessibilityIdentifier("Whisper Onboarding")
     }
 
     private var statusTitle: String {
@@ -88,7 +87,7 @@ struct OnboardingTranscriptionModelSetupPage: View {
         case .installing:
             "Installing in the background"
         case .installed:
-            selectedChoice == .fastTinyEnglish ? "Tiny model ready" : "\(selectedChoice.title) model ready"
+            "Model ready"
         case .repairAvailable:
             "Model needs repair"
         case .deleting:
@@ -103,9 +102,9 @@ struct OnboardingTranscriptionModelSetupPage: View {
         case .unknown:
             "Install checks will run before the download starts."
         case .notInstalled:
-            "Tap install to start the Tiny Whisper download, then keep going."
+            "Tap install to start the Whisper download, then keep going."
         case .checking:
-            "opencast is checking the signed model manifest."
+            "opencast is checking the pinned model files."
         case .installing:
             "You can continue onboarding while the speech model downloads."
         case .installed:
@@ -132,17 +131,17 @@ struct OnboardingTranscriptionModelSetupPage: View {
         case .checking, .installing, .deleting:
             false
         case .installed:
-            selectedChoice != .fastTinyEnglish
+            false
         case .unknown, .notInstalled, .repairAvailable, .failed:
             true
         }
     }
 
     private var installButtonTitle: String {
-        if case .repairAvailable = modelState, selectedChoice == .fastTinyEnglish {
-            return "Repair Tiny Model"
+        if case .repairAvailable = modelState {
+            return "Repair Model"
         }
 
-        return "Install Tiny Model"
+        return "Install Model"
     }
 }

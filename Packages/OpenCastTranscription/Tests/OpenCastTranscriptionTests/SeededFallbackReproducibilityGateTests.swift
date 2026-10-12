@@ -29,7 +29,7 @@ struct SeededFallbackReproducibilityGateTests {
         // OPENCAST_GATE_MODEL_VERSION selects a
         // sideloaded candidate tree; unset runs the shipped default.
         let location = try DownloadedWhisperModelLocator(
-            model: .tinyEnglish,
+            model: .largeV3,
             version: environment["OPENCAST_GATE_MODEL_VERSION"]
         ).modelLocation()
         let config = WhisperKitConfig(

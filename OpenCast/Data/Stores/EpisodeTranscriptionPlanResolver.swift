@@ -3,7 +3,7 @@ import OpenCastTranscription
 
 /// Product engine resolution: Apple Speech whenever the device
 /// and the podcast's locale support it — installing assets on demand — with
-/// whisper tiny.en as the automatic fallback. Explicit DEBUG overrides stay
+/// Whisper large-v3 as the automatic fallback. Explicit DEBUG overrides stay
 /// engine-strict.
 struct EpisodeTranscriptionPlanResolver {
     static let fallbackLanguageCode = "en-US"
@@ -16,7 +16,7 @@ struct EpisodeTranscriptionPlanResolver {
     /// documented budget, no background resubmission (DTS-confirmed). Apple
     /// Speech restarts from zero after revocation, so on devices without
     /// background GPU an armed pass could lose the whole transcript every
-    /// revocation. Callers on that path set this to prefer whisper tiny,
+    /// revocation. Callers on that path set this to prefer Whisper,
     /// whose window checkpoints survive revocation.
     var prefersRevocationDurableEngine = false
 
@@ -39,13 +39,6 @@ struct EpisodeTranscriptionPlanResolver {
                 languageCode: Self.whisperRunLanguageCode,
                 isEngineStrict: true
             )
-        case .whisperTiny:
-            let modelSummary = try transcriptionModels.installedSummary(for: .fastTinyEnglish)
-            return whisperPlan(
-                summary: modelSummary,
-                languageCode: Self.whisperRunLanguageCode,
-                isEngineStrict: true
-            )
         case .appleSpeech:
             return try await strictApplePlan(podcastLanguageCode: podcastLanguageCode)
         }
@@ -57,15 +50,15 @@ struct EpisodeTranscriptionPlanResolver {
         let languageCode = podcastLanguageCode ?? Self.fallbackLanguageCode
 
         if prefersRevocationDurableEngine {
-            guard let tinySummary = try? transcriptionModels.installedSummary(for: .fastTinyEnglish) else {
+            guard let whisperSummary = try? transcriptionModels.installedModelSummary() else {
                 // Routes into the existing model-consent/install stage.
                 throw EpisodeTranscriptionError.missingSpeechModel
             }
             AdFreePassBackgroundRunLog.record(
-                "engine resolution durable whisperTiny language=\(languageCode)"
+                "engine resolution durable whisper language=\(languageCode)"
             )
             return whisperPlan(
-                summary: tinySummary,
+                summary: whisperSummary,
                 languageCode: languageCode,
                 isEngineStrict: false
             )
@@ -83,23 +76,23 @@ struct EpisodeTranscriptionPlanResolver {
                 )
             } catch {
                 AdFreePassBackgroundRunLog.record(
-                    "engine resolution apple failed language=\(languageCode) fallback=whisperTiny error=\(error.localizedDescription)"
+                    "engine resolution apple failed language=\(languageCode) fallback=whisper error=\(error.localizedDescription)"
                 )
             }
         } else {
             AdFreePassBackgroundRunLog.record(
-                "engine resolution apple transcriber unavailable fallback=whisperTiny"
+                "engine resolution apple transcriber unavailable fallback=whisper"
             )
         }
 
-        guard let tinySummary = try? transcriptionModels.installedSummary(for: .fastTinyEnglish) else {
+        guard let whisperSummary = try? transcriptionModels.installedModelSummary() else {
             throw EpisodeTranscriptionError.missingSpeechModel
         }
 
-        // Fallback documents keep the honest podcast language while tiny.en
+        // Fallback documents keep the honest podcast language while Whisper
         // decodes as English.
         return whisperPlan(
-            summary: tinySummary,
+            summary: whisperSummary,
             languageCode: languageCode,
             isEngineStrict: false
         )

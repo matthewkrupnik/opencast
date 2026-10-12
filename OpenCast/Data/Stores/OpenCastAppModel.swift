@@ -1462,19 +1462,6 @@ final class OpenCastAppModel {
     }
 
     @discardableResult
-    func setTranscriptionModelChoice(
-        _ choice: TranscriptionModelChoice,
-        modelContext: ModelContext
-    ) -> Bool {
-        guard !transcriptions.hasActiveJob else {
-            transcriptionModels.fail("Finish or cancel the active transcript before changing the speech model.")
-            return false
-        }
-
-        return transcriptionModels.setSelectedChoice(choice, modelContext: modelContext)
-    }
-
-    @discardableResult
     func installTranscriptionModel() -> Bool {
         guard !transcriptions.hasActiveJob else {
             transcriptionModels.fail("Finish or cancel the active transcript before installing the speech model.")

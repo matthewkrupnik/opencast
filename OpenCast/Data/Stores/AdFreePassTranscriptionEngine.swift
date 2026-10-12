@@ -7,7 +7,6 @@ import Foundation
 enum AdFreePassTranscriptionEngine: String, Sendable, Equatable {
     case productDefault
     case selectedWhisperModel
-    case whisperTiny
     case appleSpeech
 
     var isExplicitOverride: Bool {
@@ -26,8 +25,6 @@ enum AdFreePassTranscriptionEngine: String, Sendable, Equatable {
         switch value.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() {
         case "apple", "apple-speech", "applespeech", "speech":
             return .appleSpeech
-        case "tiny", "whisper-tiny", "whispertiny", "whisper_tiny":
-            return .whisperTiny
         case "selected", "selected-whisper", "selectedwhispermodel":
             return .selectedWhisperModel
         default:

@@ -289,7 +289,7 @@ final class EpisodeTranscriptionRequestCoordinator {
         requestID: UUID,
         modelContext: ModelContext
     ) async throws -> EpisodeTranscriptionPlan {
-        var didEnsureTinyModel = false
+        var didEnsureWhisperModel = false
         while true {
             try ensureCurrentRequest(id: requestID)
             updatePhase(.preparingWhisper, requestID: requestID)
@@ -313,30 +313,23 @@ final class EpisodeTranscriptionRequestCoordinator {
                 // store then reports installed but resolution still cannot
                 // see the model, retrying cannot converge — and this loop
                 // never suspends, so spinning would hang the main actor.
-                guard !didEnsureTinyModel else {
+                guard !didEnsureWhisperModel else {
                     throw EpisodeTranscriptionRequestError.operationFailed(
                         "The Whisper model install did not produce a usable model."
                     )
                 }
-                try await ensureTinyWhisperModel(requestID: requestID, modelContext: modelContext)
-                didEnsureTinyModel = true
+                try await ensureWhisperModel(requestID: requestID, modelContext: modelContext)
+                didEnsureWhisperModel = true
             }
         }
     }
 
-    private func ensureTinyWhisperModel(
+    private func ensureWhisperModel(
         requestID: UUID,
         modelContext: ModelContext
     ) async throws {
         try ensureCurrentRequest(id: requestID)
         updatePhase(.preparingWhisper, requestID: requestID)
-        if transcriptionModels.selectedChoice != .fastTinyEnglish {
-            guard transcriptionModels.setSelectedChoice(.fastTinyEnglish, modelContext: modelContext) else {
-                throw EpisodeTranscriptionRequestError.operationFailed(
-                    "Unable to select the Whisper model."
-                )
-            }
-        }
 
         var didStartInstall = false
         while true {

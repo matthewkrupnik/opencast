@@ -5,7 +5,7 @@ public struct OpenCastWhisperModelInstaller: Sendable {
     public var installStore: OpenCastWhisperModelInstallStore
     public var limits: OpenCastWhisperModelInstallLimits
     private var transport: any OpenCastRemoteModelTransport
-    private var manifestVerifier: any OpenCastRemoteModelManifestVerifying
+    private var manifest: RemoteWhisperModelManifest
 
     public init(
         configuration: OpenCastRemoteModelGatewayConfiguration = OpenCastRemoteModelGatewayConfiguration(),
@@ -17,7 +17,7 @@ public struct OpenCastWhisperModelInstaller: Sendable {
             installStore: installStore,
             limits: limits,
             transport: URLSessionRemoteModelTransport(),
-            manifestVerifier: OpenCastRemoteModelManifestVerifier.pinned
+            manifest: OpenCastPinnedWhisperModelManifest.current
         )
     }
 
@@ -26,36 +26,18 @@ public struct OpenCastWhisperModelInstaller: Sendable {
         installStore: OpenCastWhisperModelInstallStore = OpenCastWhisperModelInstallStore(),
         limits: OpenCastWhisperModelInstallLimits = .largeV3,
         transport: any OpenCastRemoteModelTransport,
-        manifestVerifier: any OpenCastRemoteModelManifestVerifying
+        manifest: RemoteWhisperModelManifest = OpenCastPinnedWhisperModelManifest.current
     ) {
         self.configuration = configuration
         self.installStore = installStore
         self.limits = limits
         self.transport = transport
-        self.manifestVerifier = manifestVerifier
+        self.manifest = manifest
     }
 
+    /// The manifest is compiled into the app (pinned revisions and hashes),
+    /// so there is nothing to fetch or signature-check before installing.
     public func fetchManifest() async throws -> RemoteWhisperModelManifest {
-        let manifestURL = try configuration.manifestURL()
-        let signatureURL = try configuration.manifestSignatureURL()
-
-        async let manifestResult = transport.data(from: manifestURL)
-        async let signatureResult = transport.data(from: signatureURL)
-        let manifestResponse = try await manifestResult
-        let signatureResponse = try await signatureResult
-
-        guard manifestResponse.response.isSuccessfulHTTPResponse else {
-            throw OpenCastTranscriptionError.remoteManifestUnavailable(manifestURL)
-        }
-        guard signatureResponse.response.isSuccessfulHTTPResponse else {
-            throw OpenCastTranscriptionError.remoteManifestSignatureUnavailable(signatureURL)
-        }
-        try manifestVerifier.verify(
-            manifestData: manifestResponse.data,
-            signatureData: signatureResponse.data
-        )
-
-        let manifest = try JSONDecoder().decode(RemoteWhisperModelManifest.self, from: manifestResponse.data)
         try validate(manifest: manifest)
         return manifest
     }

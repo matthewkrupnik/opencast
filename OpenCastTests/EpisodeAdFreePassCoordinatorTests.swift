@@ -962,7 +962,7 @@ struct EpisodeAdFreePassCoordinatorTests {
         #expect(transcriber.requestCount == 1)
         #expect(fixture.transcriptions.record(for: episode.episodeID)?.modelIdentifier == "apple-speech-transcriber.en_US")
 
-        fixture.enqueue(episode, engine: .whisperTiny, refreshSkipZones: {
+        fixture.enqueue(episode, engine: .selectedWhisperModel, refreshSkipZones: {
             refreshCount += 1
             return 1
         })
@@ -971,7 +971,7 @@ struct EpisodeAdFreePassCoordinatorTests {
         })
 
         #expect(transcriber.requestCount == 2)
-        #expect(fixture.transcriptions.record(for: episode.episodeID)?.modelIdentifier == OpenCastWhisperModel.tinyEnglish.rawValue)
+        #expect(fixture.transcriptions.record(for: episode.episodeID)?.modelIdentifier == OpenCastWhisperModel.largeV3.rawValue)
     }
 
     @Test("A queue of one publishes the stage sequence with single-item queue context")
@@ -1486,8 +1486,8 @@ private final class AdFreePassTranscriptionModelInstaller: TranscriptionModelIns
     init(isInstalled: Bool, byteCount: Int64 = 78_900_000) {
         self.isInstalled = isInstalled
         summary = OpenCastWhisperModelInstalledSummary(
-            modelIdentifier: OpenCastWhisperModel.tinyEnglish.rawValue,
-            version: OpenCastWhisperModel.tinyEnglish.defaultRemoteVersion,
+            modelIdentifier: OpenCastWhisperModel.largeV3.rawValue,
+            version: OpenCastWhisperModel.largeV3.defaultRemoteVersion,
             totalByteCount: byteCount,
             treeSHA256: String(repeating: "d", count: 64)
         )
@@ -1495,8 +1495,8 @@ private final class AdFreePassTranscriptionModelInstaller: TranscriptionModelIns
 
     func installedSummary(model: OpenCastWhisperModel, version: String) throws -> OpenCastWhisperModelInstalledSummary {
         guard isInstalled,
-              model == .tinyEnglish,
-              version == OpenCastWhisperModel.tinyEnglish.defaultRemoteVersion else {
+              model == .largeV3,
+              version == OpenCastWhisperModel.largeV3.defaultRemoteVersion else {
             throw OpenCastTranscriptionError.modelNotInstalled(
                 modelIdentifier: model.rawValue,
                 version: version

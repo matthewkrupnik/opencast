@@ -78,7 +78,7 @@ nonisolated struct TranscriptionBenchmarkRunner: Sendable {
         let runner = TranscriptionBenchmarkRunner(
             feedURL: value(feedURLArgument, feedURLEnvironmentKey).flatMap(URL.init(string:)) ?? defaultFeedURL,
             preferredEpisodeTitle: value(episodeTitleArgument, episodeTitleEnvironmentKey),
-            model: value(modelArgument, modelEnvironmentKey).flatMap(OpenCastWhisperModel.init(commandLineValue:)) ?? .tinyEnglish,
+            model: value(modelArgument, modelEnvironmentKey).flatMap(OpenCastWhisperModel.init(commandLineValue:)) ?? .largeV3,
             modelVersion: value(modelVersionArgument, modelVersionEnvironmentKey),
             computeProfile: value(computeArgument, computeEnvironmentKey).flatMap(OpenCastTranscriptionComputeProfile.init(rawValue:)) ?? .backgroundSafe,
             clipStart: value(clipStartArgument, clipStartEnvironmentKey).flatMap(TimeInterval.init),

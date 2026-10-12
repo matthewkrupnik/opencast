@@ -72,7 +72,7 @@
         },
         {
           "type": "paragraph",
-          "text": "**Fast** uses a small English-only model (about 50 MB) that keeps transcription quick. **Accurate** downloads the large-v3 model (about 600 MB) for better results at the cost of speed and battery. Either model is stored on this device and can be deleted from Settings › Transcription."
+          "text": "opencast uses Whisper large-v3 (about 630 MB), downloaded from Hugging Face at a pinned version and checked file by file before it is installed. The model is stored on this device and can be deleted from Settings › Transcription."
         },
         {
           "type": "heading",

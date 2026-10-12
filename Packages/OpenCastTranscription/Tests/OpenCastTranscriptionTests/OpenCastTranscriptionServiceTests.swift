@@ -223,18 +223,18 @@ struct OpenCastTranscriptionServiceTests {
         }
     }
 
-    @Test("Explicit tiny injection still transcribes through provided runtime")
-    func explicitTinyInjectionStillTranscribesThroughProvidedRuntime() async throws {
+    @Test("Explicit model injection still transcribes through provided runtime")
+    func explicitModelInjectionStillTranscribesThroughProvidedRuntime() async throws {
         let audioURL = try temporaryAudioPlaceholder()
         let service = OpenCastTranscriptionService(
-            modelLocator: RecordingModelLocator(modelIdentifier: OpenCastWhisperModel.tinyEnglish.rawValue),
+            modelLocator: RecordingModelLocator(modelIdentifier: OpenCastWhisperModel.largeV3.rawValue),
             runtimeLoader: RecordingRuntimeLoader(log: TranscriptionEventLog()),
             audioLoader: ImmediateAudioLoader(samples: oneSecondSamples())
         )
 
         let result = try await service.transcribe(OpenCastTranscriptionRequest(audioFileURL: audioURL))
 
-        #expect(result.modelIdentifier == OpenCastWhisperModel.tinyEnglish.rawValue)
+        #expect(result.modelIdentifier == OpenCastWhisperModel.largeV3.rawValue)
     }
 
     @Test("Segment mapping preserves already global seek timestamps")
@@ -290,32 +290,6 @@ struct OpenCastTranscriptionServiceTests {
         #expect(abs(mapped.start - 0.5) < 0.001)
         #expect(abs(mapped.end - (seekStart + 0.1)) < 0.001)
         #expect(mapped.end > mapped.start)
-    }
-
-    @Test(
-        "Optional downloaded tiny-model transcription probe",
-        .enabled(if: ProcessInfo.processInfo.environment["OPENCAST_TRANSCRIPTION_RUN_TINY"] == "1"
-            && ProcessInfo.processInfo.environment["OPENCAST_TRANSCRIPTION_AUDIO"] != nil)
-    )
-    func optionalDownloadedTinyModelTranscriptionProbe() async throws {
-        let audioPath = try #require(ProcessInfo.processInfo.environment["OPENCAST_TRANSCRIPTION_AUDIO"])
-
-        let service = OpenCastTranscriptionService(
-            modelLocator: DownloadedWhisperModelLocator(model: .tinyEnglish)
-        )
-        let result = try await service.transcribe(
-            OpenCastTranscriptionRequest(
-                audioFileURL: URL(fileURLWithPath: audioPath),
-                clipDuration: 30,
-                languageCode: "en"
-            )
-        )
-        await service.unload()
-
-        #expect(result.modelIdentifier == OpenCastWhisperModel.tinyEnglish.rawValue)
-        #expect(!result.text.isEmpty)
-        #expect(result.timings.audioDuration <= 30.1)
-        print("OpenCast tiny transcription probe timings: \(result.timings)")
     }
 
     @Test(

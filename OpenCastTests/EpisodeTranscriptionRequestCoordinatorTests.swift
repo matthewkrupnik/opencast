@@ -699,8 +699,8 @@ struct EpisodeTranscriptionRequestCoordinatorTests {
 
     private func modelSummary() -> OpenCastWhisperModelInstalledSummary {
         OpenCastWhisperModelInstalledSummary(
-            modelIdentifier: OpenCastWhisperModel.tinyEnglish.rawValue,
-            version: OpenCastWhisperModel.tinyEnglish.defaultRemoteVersion,
+            modelIdentifier: OpenCastWhisperModel.largeV3.rawValue,
+            version: OpenCastWhisperModel.largeV3.defaultRemoteVersion,
             totalByteCount: 10,
             treeSHA256: String(repeating: "b", count: 64)
         )

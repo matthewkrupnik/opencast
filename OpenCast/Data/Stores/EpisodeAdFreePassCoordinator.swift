@@ -1263,7 +1263,7 @@ final class EpisodeAdFreePassCoordinator {
         )
 
         switch engine {
-        case .selectedWhisperModel, .whisperTiny:
+        case .selectedWhisperModel:
             try await ensureModelReady(transcriptionModels)
         case .productDefault, .appleSpeech:
             break
@@ -1282,12 +1282,8 @@ final class EpisodeAdFreePassCoordinator {
                 podcastLanguageCode: podcastLanguageCode
             )
         } catch EpisodeTranscriptionError.missingSpeechModel where engine == .productDefault {
-            // Whisper fallback with no installed model: pin the tiny model
-            // (the fallback target) and run the existing
+            // Whisper fallback with no installed model: run the existing
             // consent/install flow, then re-resolve.
-            if transcriptionModels.selectedChoice != .fastTinyEnglish {
-                _ = transcriptionModels.setSelectedChoice(.fastTinyEnglish, modelContext: modelContext)
-            }
             try await ensureModelReady(transcriptionModels)
             return try await resolver.resolve(
                 requestedEngine: engine,
@@ -1595,7 +1591,7 @@ final class EpisodeAdFreePassCoordinator {
         switch engine {
         case .productDefault:
             !appleSpeechAssets.isTranscriberAvailable
-        case .selectedWhisperModel, .whisperTiny:
+        case .selectedWhisperModel:
             true
         case .appleSpeech:
             false

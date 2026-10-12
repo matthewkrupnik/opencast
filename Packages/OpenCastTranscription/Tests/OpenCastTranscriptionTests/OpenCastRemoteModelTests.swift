@@ -1,5 +1,4 @@
 import Foundation
-import CryptoKit
 @testable import OpenCastTranscription
 import Testing
 
@@ -140,13 +139,12 @@ struct OpenCastRemoteModelTests {
         }
     }
 
-    @Test("Gateway configuration builds explicit unescaped URLs")
-    func gatewayConfigurationBuildsExplicitUnescapedURLs() throws {
+    @Test("Source configuration builds explicit unescaped URLs")
+    func sourceConfigurationBuildsExplicitUnescapedURLs() throws {
         let configuration = OpenCastRemoteModelGatewayConfiguration(
             baseURL: URL(string: "https://models.example.test/base?ignored=true")!
         )
 
-        #expect(try configuration.manifestURL().absoluteString == "https://models.example.test/v1/models/manifest")
         #expect(
             try configuration.assetURL(forPath: "/v1/models/assets/model/v1/model/config.json").absoluteString
                 == "https://models.example.test/v1/models/assets/model/v1/model/config.json"
@@ -156,6 +154,39 @@ struct OpenCastRemoteModelTests {
         }
         #expect(throws: OpenCastTranscriptionError.self) {
             _ = try configuration.assetURL(forPath: "/v1/models/assets/model/v1/model/%63onfig.json")
+        }
+    }
+
+    @Test("Pinned manifest is internally consistent")
+    func pinnedManifestIsInternallyConsistent() async throws {
+        let model = OpenCastPinnedWhisperModelManifest.largeV3
+
+        #expect(model.modelID == OpenCastWhisperModel.largeV3.rawValue)
+        #expect(model.version == OpenCastWhisperModel.largeV3.defaultRemoteVersion)
+        #expect(OpenCastRemoteModelTreeHash.hash(files: model.files) == model.treeSHA256)
+        #expect(model.files.reduce(0) { $0 + $1.byteCount } == model.totalByteCount)
+        #expect(model.files.allSatisfy { $0.sha256.count == 64 })
+        #expect(try await OpenCastWhisperModelInstaller().fetchManifest() == OpenCastPinnedWhisperModelManifest.current)
+    }
+
+    @Test("Pinned manifest downloads from commit-pinned Hugging Face paths")
+    func pinnedManifestDownloadsFromCommitPinnedHuggingFacePaths() throws {
+        let configuration = OpenCastRemoteModelGatewayConfiguration()
+        let whisperKitPrefix = "https://huggingface.co/argmaxinc/whisperkit-coreml/resolve/"
+            + OpenCastPinnedWhisperModelManifest.whisperKitRevision
+            + "/openai_whisper-large-v3-v20240930_626MB/"
+        let tokenizerPrefix = "https://huggingface.co/openai/whisper-large-v3/resolve/"
+            + OpenCastPinnedWhisperModelManifest.tokenizerRevision + "/"
+
+        #expect(OpenCastPinnedWhisperModelManifest.whisperKitRevision.count == 40)
+        #expect(OpenCastPinnedWhisperModelManifest.tokenizerRevision.count == 40)
+        for file in OpenCastPinnedWhisperModelManifest.largeV3.files {
+            let url = try configuration.assetURL(forPath: file.urlPath).absoluteString
+            if file.path.hasPrefix("model/") {
+                #expect(url == whisperKitPrefix + file.path.dropFirst("model/".count))
+            } else {
+                #expect(url == tokenizerPrefix + file.path.dropFirst("tokenizer/".count))
+            }
         }
     }
 
@@ -171,8 +202,7 @@ struct OpenCastRemoteModelTests {
             configuration: fixture.configuration,
             installStore: installStore,
             limits: OpenCastWhisperModelInstallLimits(maximumFileByteCount: 1_024, maximumTotalByteCount: 2_048),
-            transport: DictionaryRemoteModelTransport(downloadBodies: fixture.downloads),
-            manifestVerifier: AcceptingManifestVerifier()
+            transport: DictionaryRemoteModelTransport(downloadBodies: fixture.downloads)
         )
 
         let location = try await installer.install(manifest: fixture.manifest)
@@ -196,8 +226,7 @@ struct OpenCastRemoteModelTests {
             configuration: fixture.configuration,
             installStore: installStore,
             limits: OpenCastWhisperModelInstallLimits(maximumFileByteCount: 1_024, maximumTotalByteCount: 2_048),
-            transport: DictionaryRemoteModelTransport(downloadBodies: fixture.downloads),
-            manifestVerifier: AcceptingManifestVerifier()
+            transport: DictionaryRemoteModelTransport(downloadBodies: fixture.downloads)
         )
 
         #expect(throws: OpenCastTranscriptionError.self) {
@@ -299,74 +328,11 @@ struct OpenCastRemoteModelTests {
         }
     }
 
-    @Test("Fetch manifest verifies detached signature before decoding")
-    func fetchManifestVerifiesDetachedSignatureBeforeDecoding() async throws {
-        let fixture = try RemoteModelFixture()
-        let manifestData = try JSONEncoder().encode(fixture.manifest)
-        let privateKey = Curve25519.Signing.PrivateKey()
-        let keyID = "test-key"
-        let signatureData = try signatureEnvelopeData(
-            manifestData: manifestData,
-            privateKey: privateKey,
-            keyID: keyID
-        )
-        let transport = DictionaryRemoteModelTransport(
-            dataResponses: [
-                try fixture.configuration.manifestURL(): OpenCastRemoteModelDataResponse(
-                    data: manifestData,
-                    response: OpenCastRemoteModelResponse(statusCode: 200)
-                ),
-                try fixture.configuration.manifestSignatureURL(): OpenCastRemoteModelDataResponse(
-                    data: signatureData,
-                    response: OpenCastRemoteModelResponse(statusCode: 200)
-                )
-            ]
-        )
-        let verifier = OpenCastRemoteModelManifestVerifier(
-            publicKeyHex: hexString(privateKey.publicKey.rawRepresentation),
-            keyID: keyID
-        )
-        let installer = OpenCastWhisperModelInstaller(
-            configuration: fixture.configuration,
-            transport: transport,
-            manifestVerifier: verifier
-        )
-
-        let manifest = try await installer.fetchManifest()
-
-        #expect(manifest == fixture.manifest)
-    }
-
-    @Test("Pinned verifier validates checked-in gateway manifest signature")
-    func pinnedVerifierValidatesCheckedInGatewayManifestSignature() throws {
-        let repoRoot = URL(fileURLWithPath: #filePath)
-            .deletingLastPathComponent()
-            .deletingLastPathComponent()
-            .deletingLastPathComponent()
-            .deletingLastPathComponent()
-            .deletingLastPathComponent()
-        let manifestURL = repoRoot
-            .appending(path: "Server")
-            .appending(path: "ModelGatewayWorker")
-            .appending(path: "manifests")
-            .appending(path: "current.json")
-        let signatureURL = repoRoot
-            .appending(path: "Server")
-            .appending(path: "ModelGatewayWorker")
-            .appending(path: "manifests")
-            .appending(path: "current.json.sig")
-
-        try OpenCastRemoteModelManifestVerifier.pinned.verify(
-            manifestData: try Data(contentsOf: manifestURL),
-            signatureData: try Data(contentsOf: signatureURL)
-        )
-    }
-
     @Test(
-        "Optional large-v3 signed remote install probe",
+        "Optional large-v3 pinned Hugging Face install probe",
         .enabled(if: ProcessInfo.processInfo.environment["OPENCAST_TRANSCRIPTION_INSTALL_LARGE_V3"] == "1")
     )
-    func optionalLargeV3SignedRemoteInstallProbe() async throws {
+    func optionalLargeV3PinnedHuggingFaceInstallProbe() async throws {
 
         let installer = OpenCastWhisperModelInstaller()
         let start = ContinuousClock().now
@@ -389,76 +355,6 @@ struct OpenCastRemoteModelTests {
         #expect(summary.totalByteCount > 0)
     }
 
-    @Test(
-        "Optional tiny signed remote install probe",
-        .enabled(if: ProcessInfo.processInfo.environment["OPENCAST_TRANSCRIPTION_INSTALL_TINY"] == "1")
-    )
-    func optionalTinySignedRemoteInstallProbe() async throws {
-
-        let installer = OpenCastWhisperModelInstaller()
-        let start = ContinuousClock().now
-        let location = try await installer.install(model: .tinyEnglish) { progress in
-            print(
-                "tiny install progress: \(progress.completedByteCount)/\(progress.totalByteCount) bytes, file \(progress.completedFileCount)/\(progress.totalFileCount)"
-            )
-        }
-        let elapsed = start.duration(to: ContinuousClock().now).timeInterval
-        let summary = try installer.installStore.installedSummary(
-            modelIdentifier: OpenCastWhisperModel.tinyEnglish.rawValue,
-            version: OpenCastWhisperModel.tinyEnglish.defaultRemoteVersion
-        )
-
-        print(
-            "tiny install complete: model=\(location.modelIdentifier) bytes=\(summary.totalByteCount) tree=\(summary.treeSHA256) elapsed=\(elapsed)"
-        )
-
-        #expect(location.modelIdentifier == OpenCastWhisperModel.tinyEnglish.rawValue)
-        #expect(summary.totalByteCount > 0)
-    }
-
-    @Test("Fetch manifest rejects invalid signature")
-    func fetchManifestRejectsInvalidSignature() async throws {
-        let fixture = try RemoteModelFixture()
-        let manifestData = try JSONEncoder().encode(fixture.manifest)
-        let signatureData = Data(
-            """
-            {"schema_version":1,"algorithm":"ed25519","key_id":"test-key","signature":"00"}
-            """.utf8
-        )
-        let transport = DictionaryRemoteModelTransport(
-            dataResponses: [
-                try fixture.configuration.manifestURL(): OpenCastRemoteModelDataResponse(
-                    data: manifestData,
-                    response: OpenCastRemoteModelResponse(statusCode: 200)
-                ),
-                try fixture.configuration.manifestSignatureURL(): OpenCastRemoteModelDataResponse(
-                    data: signatureData,
-                    response: OpenCastRemoteModelResponse(statusCode: 200)
-                )
-            ]
-        )
-        let installer = OpenCastWhisperModelInstaller(
-            configuration: fixture.configuration,
-            transport: transport,
-            manifestVerifier: OpenCastRemoteModelManifestVerifier(
-                publicKeyHex: hexString(Curve25519.Signing.PrivateKey().publicKey.rawRepresentation),
-                keyID: "test-key"
-            )
-        )
-
-        do {
-            _ = try await installer.fetchManifest()
-            Issue.record("Expected invalid signature")
-        } catch let error as OpenCastTranscriptionError {
-            guard case .invalidRemoteManifestSignature = error else {
-                Issue.record("Expected invalidRemoteManifestSignature, got \(error)")
-                return
-            }
-        } catch {
-            Issue.record("Expected invalidRemoteManifestSignature, got \(error)")
-        }
-    }
-
     private func temporaryInstallRoot() -> URL {
         FileManager.default.temporaryDirectory
             .appending(path: UUID().uuidString)
@@ -473,8 +369,7 @@ struct OpenCastRemoteModelTests {
             configuration: fixture.configuration,
             installStore: OpenCastWhisperModelInstallStore(rootDirectory: temporaryInstallRoot()),
             limits: OpenCastWhisperModelInstallLimits(maximumFileByteCount: 1_024, maximumTotalByteCount: 2_048),
-            transport: DictionaryRemoteModelTransport(downloadBodies: downloads ?? fixture.downloads),
-            manifestVerifier: AcceptingManifestVerifier()
+            transport: DictionaryRemoteModelTransport(downloadBodies: downloads ?? fixture.downloads)
         )
     }
 
@@ -492,31 +387,5 @@ struct OpenCastRemoteModelTests {
         } catch {
             Issue.record("Expected invalidRemoteManifest, got \(error)")
         }
-    }
-
-    private func signatureEnvelopeData(
-        manifestData: Data,
-        privateKey: Curve25519.Signing.PrivateKey,
-        keyID: String
-    ) throws -> Data {
-        let signature = try privateKey.signature(for: manifestData)
-        let envelope = OpenCastRemoteModelManifestSignature(
-            schemaVersion: 1,
-            algorithm: "ed25519",
-            keyID: keyID,
-            signature: hexString(signature)
-        )
-        return try JSONEncoder().encode(envelope)
-    }
-
-    private func hexString(_ data: Data) -> String {
-        let alphabet = Array("0123456789abcdef".utf8)
-        var output = [UInt8]()
-        output.reserveCapacity(data.count * 2)
-        for byte in data {
-            output.append(alphabet[Int(byte >> 4)])
-            output.append(alphabet[Int(byte & 0x0f)])
-        }
-        return String(decoding: output, as: UTF8.self)
     }
 }

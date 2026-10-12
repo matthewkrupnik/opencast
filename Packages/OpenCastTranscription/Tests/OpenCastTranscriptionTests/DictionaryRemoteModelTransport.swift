@@ -2,22 +2,10 @@ import Foundation
 @testable import OpenCastTranscription
 
 final class DictionaryRemoteModelTransport: OpenCastRemoteModelTransport, @unchecked Sendable {
-    private let dataResponses: [URL: OpenCastRemoteModelDataResponse]
     private let downloadBodies: [URL: Data]
 
-    init(
-        dataResponses: [URL: OpenCastRemoteModelDataResponse] = [:],
-        downloadBodies: [URL: Data] = [:]
-    ) {
-        self.dataResponses = dataResponses
+    init(downloadBodies: [URL: Data] = [:]) {
         self.downloadBodies = downloadBodies
-    }
-
-    func data(from url: URL) async throws -> OpenCastRemoteModelDataResponse {
-        dataResponses[url] ?? OpenCastRemoteModelDataResponse(
-            data: Data(),
-            response: OpenCastRemoteModelResponse(statusCode: 404)
-        )
     }
 
     func download(

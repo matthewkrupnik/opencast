@@ -840,8 +840,8 @@ struct EpisodeTranscriptionStoreTests {
         #expect(idleTimerChanges == [true, false])
 
         let tinySummary = OpenCastWhisperModelInstalledSummary(
-            modelIdentifier: OpenCastWhisperModel.tinyEnglish.rawValue,
-            version: OpenCastWhisperModel.tinyEnglish.defaultRemoteVersion,
+            modelIdentifier: OpenCastWhisperModel.largeV3.rawValue,
+            version: OpenCastWhisperModel.largeV3.defaultRemoteVersion,
             totalByteCount: 10,
             treeSHA256: String(repeating: "c", count: 64)
         )

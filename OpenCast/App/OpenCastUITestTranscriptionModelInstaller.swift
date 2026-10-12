@@ -50,13 +50,6 @@ final class OpenCastUITestTranscriptionModelInstaller: TranscriptionModelInstall
 
     private func summary(for model: OpenCastWhisperModel) -> OpenCastWhisperModelInstalledSummary {
         switch model {
-        case .tinyEnglish:
-            OpenCastWhisperModelInstalledSummary(
-                modelIdentifier: model.rawValue,
-                version: model.defaultRemoteVersion,
-                totalByteCount: 78_900_000,
-                treeSHA256: String(repeating: "b", count: 64)
-            )
         case .largeV3:
             OpenCastWhisperModelInstalledSummary(
                 modelIdentifier: model.rawValue,

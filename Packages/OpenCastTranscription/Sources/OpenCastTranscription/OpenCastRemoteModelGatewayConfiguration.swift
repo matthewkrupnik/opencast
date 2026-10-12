@@ -1,29 +1,14 @@
 import Foundation
 
+/// Host the manifest's absolute `url_path` values resolve against.
 public struct OpenCastRemoteModelGatewayConfiguration: Sendable, Equatable {
     public var baseURL: URL
-    public var manifestPath: String
-    public var manifestSignaturePath: String
 
-    public init(
-        baseURL: URL = Self.defaultBaseURL,
-        manifestPath: String = "/v1/models/manifest",
-        manifestSignaturePath: String = "/v1/models/manifest.sig"
-    ) {
+    public init(baseURL: URL = Self.defaultBaseURL) {
         self.baseURL = baseURL
-        self.manifestPath = manifestPath
-        self.manifestSignaturePath = manifestSignaturePath
     }
 
-    public static let defaultBaseURL = URL(string: "https://models.example.com")!
-
-    public func manifestURL() throws -> URL {
-        try url(forPath: manifestPath, pathKind: "manifest")
-    }
-
-    public func manifestSignatureURL() throws -> URL {
-        try url(forPath: manifestSignaturePath, pathKind: "manifest signature")
-    }
+    public static let defaultBaseURL = OpenCastPinnedWhisperModelManifest.baseURL
 
     public func assetURL(forPath path: String) throws -> URL {
         try url(forPath: path, pathKind: "asset")

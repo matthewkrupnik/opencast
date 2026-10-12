@@ -17,7 +17,7 @@ struct AlignmentPathProbeTests {
     func wordTimestampsStillWork() async throws {
         let audioPath = try #require(ProcessInfo.processInfo.environment["OPENCAST_TRANSCRIPTION_AUDIO"])
 
-        let location = try DownloadedWhisperModelLocator(model: .tinyEnglish).modelLocation()
+        let location = try DownloadedWhisperModelLocator(model: .largeV3).modelLocation()
         let config = WhisperKitConfig(
             modelFolder: location.modelFolder.path,
             tokenizerFolder: location.tokenizerFolder,
