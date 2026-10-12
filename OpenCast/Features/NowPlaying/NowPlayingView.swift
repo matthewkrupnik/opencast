@@ -1,6 +1,5 @@
 import SwiftData
 import SwiftUI
-import OpenCastPlayback
 
 struct NowPlayingView: View {
     @Environment(OpenCastAppModel.self) private var appModel
@@ -9,14 +8,12 @@ struct NowPlayingView: View {
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @Environment(\.verticalSizeClass) private var verticalSizeClass
     @Environment(\.modelContext) private var modelContext
-    @Environment(\.pinsAppStoreAutoSkipPill) private var pinsAutoSkipPill
     @State private var playPauseFeedback = 0
     @State private var skipFeedback = 0
-    @State private var autoSkipFeedback = 0
     @State private var utilitySheet: PlayerUtilitySheet?
     @State private var isVoiceBoostEnabled = true
-    @State private var showsAutoSkipPill = false
-    @State private var displayedAutoSkipEventSequence = 0
+    @State private var naturalContentHeight: CGFloat?
+    @State private var scrollPosition = ScrollPosition(edge: .top)
 
     let bottomContentPadding: CGFloat
     let topContentPadding: CGFloat
@@ -64,11 +61,6 @@ struct NowPlayingView: View {
                         }
 
                         VStack(spacing: metrics.metadataSpacing) {
-                            if showsSourcePill, let source = appModel.currentPlaylistSource {
-                                NowPlayingSourcePill(name: source.name, action: openPlaylist)
-                                    .padding(.bottom, 4)
-                            }
-
                             Button(action: openEpisode) {
                                 Text(episode.title)
                                     .font(metrics.titleFont)
@@ -102,11 +94,8 @@ struct NowPlayingView: View {
                             NowPlayingProgressSection()
                                 .padding(.top, accessibilityReduceMotion ? 30 : 0)
 
-                            if showsAutoSkipPill || pinsAutoSkipPill {
-                                NowPlayingAutoSkipPill(onUndo: undoLastAutoSkip)
-                                    .transition(.opacity)
-                                    .offset(y: accessibilityReduceMotion ? 0 : -28)
-                            }
+                            NowPlayingAutoSkipFeedbackView()
+                                .id(episode.id)
                         }
                         .padding(.top, 4)
                         .layoutPriority(2)
@@ -156,8 +145,25 @@ struct NowPlayingView: View {
                     .padding(.horizontal, metrics.horizontalPadding)
                     .padding(.top, metrics.topContentPadding)
                     .padding(.bottom, metrics.bottomContentPadding)
+                    // Measured before the min-height frame and without the
+                    // source pill, so showing the pill never moves this value.
+                    .onGeometryChange(for: CGFloat.self) { geometry in
+                        geometry.size.height
+                    } action: { height in
+                        updateNaturalContentHeight(height)
+                    }
                     .frame(maxWidth: .infinity)
                     .frame(minHeight: metrics.containerHeight, alignment: .top)
+                    .overlay(alignment: .bottom) {
+                        if let source = appModel.currentPlaylistSource,
+                           showsSourcePill(containerHeight: metrics.containerHeight) {
+                            NowPlayingSourcePill(name: source.name, action: openPlaylist)
+                                .frame(maxWidth: metrics.contentWidth)
+                                .padding(.horizontal, metrics.horizontalPadding)
+                                .padding(.bottom, metrics.bottomContentPadding)
+                                .transition(.opacity)
+                        }
+                    }
                     .animation(
                         accessibilityReduceMotion ? nil : .easeOut(duration: 0.2),
                         value: isPlaybackFailed
@@ -175,11 +181,12 @@ struct NowPlayingView: View {
                 }
             }
             .scrollIndicators(.hidden)
+            .scrollPosition($scrollPosition)
             .scrollDisabled(isTrackingDismissDrag)
             .overlay(alignment: .topTrailing) {
                 if appModel.playback.currentEpisode != nil {
                     NowPlayingMoreMenu(
-                        episode: currentEpisodeID.flatMap(appModel.episodeSnapshot(for:)),
+                        episode: presentedEpisodeSnapshot,
                         hasTranscript: hasCompletedTranscript,
                         canShowDescription: canOpenCurrentEpisode,
                         canShowShow: canOpenCurrentPodcast,
@@ -229,7 +236,6 @@ struct NowPlayingView: View {
             .foregroundStyle(.primary)
             .sensoryFeedback(.impact(flexibility: .soft), trigger: playPauseFeedback)
             .sensoryFeedback(.selection, trigger: skipFeedback)
-            .sensoryFeedback(.impact(flexibility: .soft), trigger: autoSkipFeedback)
             .accessibilityAction(.escape) {
                 onDismiss()
             }
@@ -267,39 +273,22 @@ struct NowPlayingView: View {
                     .presentationDragIndicator(.visible)
                 }
             }
-            .onAppear {
-                showAutoSkipPillIfNeeded(for: appModel.playback.lastAutoSkipEvent)
+            .onChange(of: appModel.isNowPlayingPresented) { _, isPresented in
+                if !isPresented { resetPresentation() }
             }
             .onChange(of: appModel.playbackSettings.isVoiceBoostEnabled) { _, _ in
                 syncVoiceBoostEnabledFromStore()
             }
-            .onChange(of: appModel.playback.lastAutoSkipEvent) { _, event in
-                showAutoSkipPillIfNeeded(for: event)
-            }
             .onChange(of: isVoiceBoostEnabled) { _, newValue in
                 applyVoiceBoostEnabled(newValue)
-            }
-            .onChange(of: currentEpisodeID) { _, _ in
-                showsAutoSkipPill = false
-                displayedAutoSkipEventSequence = 0
-                showAutoSkipPillIfNeeded(for: appModel.playback.lastAutoSkipEvent)
             }
             .task(id: currentEpisodeID) {
                 syncVoiceBoostEnabledFromStore()
             }
-            .task(id: displayedAutoSkipEventSequence) {
-                await dismissAutoSkipPillAfterDelay()
-            }
-            // The alert API needs a Bool binding because the presented String is not Identifiable.
             .alert(
                 "Sound Lab Error",
-                isPresented: Binding(
-                    get: { appModel.playbackSettings.lastErrorMessage != nil },
-                    set: { if !$0 { appModel.playbackSettings.clearLastError() } }
-                ),
-                presenting: appModel.playbackSettings.lastErrorMessage
+                item: soundLabError
             ) { _ in
-                Button("OK", role: .cancel) {}
             } message: { message in
                 Text(message)
             }
@@ -327,7 +316,7 @@ struct NowPlayingView: View {
     }
 
     private var canOpenCurrentEpisode: Bool {
-        guard let currentEpisodeID else {
+        guard appModel.isNowPlayingPresented, let currentEpisodeID else {
             return false
         }
         return appModel.library.episode(with: currentEpisodeID) != nil
@@ -335,20 +324,42 @@ struct NowPlayingView: View {
     }
 
     private var canOpenCurrentPodcast: Bool {
-        guard let currentPodcastID else {
+        guard appModel.isNowPlayingPresented, let currentPodcastID else {
             return false
         }
         return appModel.library.isActivelySubscribed(to: currentPodcastID)
     }
 
-    /// At accessibility sizes and in compact height the More menu's
-    /// "Show <playlist>" item is the route back to the source instead.
-    private var showsSourcePill: Bool {
-        !dynamicTypeSize.isAccessibilitySize && verticalSizeClass != .compact
+    /// The source pill is extra information, so it only takes room the
+    /// controls leave free below the utility row. Otherwise, and always at
+    /// accessibility sizes and in compact height, the More menu's
+    /// "Show <playlist>" item is the route back to the source.
+    private func showsSourcePill(containerHeight: CGFloat) -> Bool {
+        guard !dynamicTypeSize.isAccessibilitySize,
+              verticalSizeClass != .compact,
+              let naturalContentHeight
+        else {
+            return false
+        }
+        return containerHeight - naturalContentHeight >= NowPlayingSourcePill.minimumSpareHeight
+    }
+
+    /// The first measurement lands while the card is still presenting, so the
+    /// pill arrives with it; later changes (Dynamic Type, rotation, a failure
+    /// message) fade it in or out.
+    private func updateNaturalContentHeight(_ height: CGFloat) {
+        guard naturalContentHeight != nil else {
+            naturalContentHeight = height
+            return
+        }
+        withAnimation(.easeOut(duration: 0.2)) {
+            naturalContentHeight = height
+        }
     }
 
     private var hasCompletedTranscript: Bool {
-        guard let currentEpisodeID,
+        guard appModel.isNowPlayingPresented,
+              let currentEpisodeID,
               let record = appModel.transcriptions.record(for: currentEpisodeID)
         else {
             return false
@@ -356,8 +367,21 @@ struct NowPlayingView: View {
         return record.state == .completed && record.transcriptRelativePath != nil
     }
 
+    private var presentedEpisodeSnapshot: EpisodeListItemSnapshot? {
+        guard appModel.isNowPlayingPresented, let currentEpisodeID else { return nil }
+        return appModel.episodeSnapshot(for: currentEpisodeID)
+    }
+
+    private var soundLabError: Binding<String?> {
+        Binding(
+            get: { appModel.isNowPlayingPresented ? appModel.playbackSettings.lastErrorMessage : nil },
+            set: { if $0 == nil { appModel.playbackSettings.clearLastError() } }
+        )
+    }
+
     private var transcriptionRequest: EpisodeTranscriptionRequest? {
-        guard appModel.transcriptionRequests.isPresented,
+        guard appModel.isNowPlayingPresented,
+              appModel.transcriptionRequests.isPresented,
               let request = appModel.transcriptionRequests.request,
               request.episodeID == currentEpisodeID
         else {
@@ -482,45 +506,10 @@ struct NowPlayingView: View {
         #endif
     }
 
-    private func undoLastAutoSkip() {
-        appModel.undoLastAutoSkip()
-        withAnimation(.easeOut(duration: 0.2)) {
-            showsAutoSkipPill = false
-        }
-    }
-
-    private func showAutoSkipPillIfNeeded(for event: PlaybackAutoSkipEvent?) {
-        guard let event, event.sequence > displayedAutoSkipEventSequence else {
-            return
-        }
-
-        displayedAutoSkipEventSequence = event.sequence
-        showAutoSkipPill()
-    }
-
-    private func showAutoSkipPill() {
-        autoSkipFeedback += 1
-        AccessibilityNotification.Announcement("Skipped promo").post()
-        withAnimation(.easeOut(duration: 0.16)) {
-            showsAutoSkipPill = true
-        }
-    }
-
-    private func dismissAutoSkipPillAfterDelay() async {
-        guard displayedAutoSkipEventSequence > 0 else {
-            return
-        }
-
-        do {
-            try await Task.sleep(for: .milliseconds(2500))
-        } catch is CancellationError {
-            return
-        } catch {
-            return
-        }
-
-        withAnimation(.easeOut(duration: 0.2)) {
-            showsAutoSkipPill = false
+    private func resetPresentation() {
+        withTransaction(\.disablesAnimations, true) {
+            scrollPosition.scrollTo(edge: .top)
+            utilitySheet = nil
         }
     }
 

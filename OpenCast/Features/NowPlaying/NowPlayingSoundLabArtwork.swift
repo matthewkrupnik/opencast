@@ -1,6 +1,7 @@
 import SwiftUI
 
 struct NowPlayingSoundLabArtwork: View {
+    @Environment(OpenCastAppModel.self) private var appModel
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.displayScale) private var displayScale
@@ -27,6 +28,7 @@ struct NowPlayingSoundLabArtwork: View {
 
     var body: some View {
         let request = artworkRequest
+        let loadingRequest = appModel.isNowPlayingPresented ? request : nil
         let artworkImage = loadedArtworkImage(for: request)
 
         ZStack {
@@ -80,8 +82,24 @@ struct NowPlayingSoundLabArtwork: View {
         }
         .sensoryFeedback(.selection, trigger: feedbackTrigger)
         .onAppear(perform: applyPinnedReveal)
-        .task(id: request) {
-            _ = await imageState.loadArtwork(for: request, cacheKind: .episode)
+        .onChange(of: appModel.isNowPlayingPresented) { _, isPresented in
+            if !isPresented { resetInteraction() }
+        }
+        .task(id: loadingRequest) {
+            // Dismissal pauses loading without dropping the displayed bitmap.
+            // Reopening can render it even after the shared cache evicts it.
+            guard let loadingRequest else { return }
+            _ = await imageState.loadArtwork(for: loadingRequest, cacheKind: .episode)
+        }
+    }
+
+    private func resetInteraction() {
+        withTransaction(\.disablesAnimations, true) {
+            interactionState = .closed
+            revealProgress = 0
+            ignoresCurrentDrag = false
+            isSoundLabInteractionActive = false
+            applyPinnedReveal()
         }
     }
 
@@ -201,9 +219,7 @@ struct NowPlayingSoundLabArtwork: View {
         let baseProgress: CGFloat = isOpen ? 1 : 0
         let verticalAssist = max(0, -translation.height) / (revealDistance * 4)
         let nextProgress = (baseProgress - translation.width / revealDistance + verticalAssist).clamped01
-        var transaction = Transaction()
-        transaction.disablesAnimations = true
-        withTransaction(transaction) {
+        withTransaction(\.disablesAnimations, true) {
             revealProgress = nextProgress
         }
     }

@@ -10,9 +10,11 @@ struct LibraryView: View {
     @State private var sampleSubscriptionErrorMessage: String?
     @State private var isSubscribingSample = false
     @State private var namePromptRequest: PlaylistNamePromptRequest?
+    @State private var pendingOpenPlaylistID: String?
 
     let onAdd: () -> Void
     let onOpenUpNext: () -> Void
+    let onOpenPlaylist: (String) -> Void
 
     private var displaySettings: LibraryDisplaySettingsStore {
         appModel.libraryDisplaySettings
@@ -34,6 +36,7 @@ struct LibraryView: View {
             .animation(reduceMotion ? nil : .default, value: appModel.library.state)
             .animation(reduceMotion ? nil : .default, value: subscriptions.map(\.feedURL))
             .animation(reduceMotion ? nil : .default, value: layout)
+            .animation(reduceMotion ? nil : .default, value: appModel.library.lastRefreshWasOffline)
             .safeAreaInset(edge: .top, spacing: 0) {
                 SettingsErrorBanner(message: displaySettings.lastErrorMessage)
             }
@@ -61,6 +64,12 @@ struct LibraryView: View {
                 }
             }
             .playlistNamePrompt($namePromptRequest, onCommit: createPlaylist)
+            .onChange(of: namePromptRequest) {
+                openPendingPlaylistAfterPrompt()
+            }
+            .onChange(of: pendingOpenPlaylistID) {
+                openPendingPlaylistAfterPrompt()
+            }
             .onAppear(perform: appModel.library.advanceNewEpisodeReferenceDate)
             .onChange(of: scenePhase) { _, scenePhase in
                 if scenePhase == .active {
@@ -107,22 +116,20 @@ struct LibraryView: View {
                     subscriptions: subscriptions,
                     showsNewEpisodeCount: displaySettings.showsNewEpisodeBadges
                 ) {
-                    VStack(alignment: .leading, spacing: 12) {
-                        collectionsHeader
-
-                        Text("Shows")
-                            .font(.title3)
-                            .bold()
-                            .accessibilityAddTraits(.isHeader)
+                    if appModel.library.lastRefreshWasOffline {
+                        LibraryOfflineNotice()
                     }
-                    .padding(.top, 4)
+                    collectionsHeader
+                        .padding(.vertical, 4)
                 }
                 .transition(.opacity)
             } else {
                 List {
+                    offlineNoticeSection
+
                     collectionsSection
 
-                    Section("Shows") {
+                    Section {
                         ForEach(subscriptions) { subscription in
                             LibrarySubscriptionRowView(
                                 subscription: subscription,
@@ -131,8 +138,21 @@ struct LibraryView: View {
                         }
                     }
                 }
+                .listSectionSpacing(12)
                 .accessibilityIdentifier("Library List")
                 .transition(.opacity)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var offlineNoticeSection: some View {
+        if appModel.library.lastRefreshWasOffline {
+            Section {
+                LibraryOfflineNotice()
+                    .listRowInsets(EdgeInsets(top: 0, leading: 20, bottom: 0, trailing: 20))
+                    .listRowSeparator(.hidden)
+                    .listRowBackground(Color.clear)
             }
         }
     }
@@ -163,9 +183,21 @@ struct LibraryView: View {
     }
 
     private func createPlaylist(_ request: PlaylistNamePromptRequest, name: String) {
-        appModel.performPlaylistMutation {
+        let summary = appModel.performPlaylistMutation {
             appModel.playlists.create(name: name, kind: .manual, modelContext: modelContext)
         }
+        pendingOpenPlaylistID = summary?.playlistID
+    }
+
+    /// Pushing from the alert's own action would race its dismissal, so the
+    /// new playlist opens once the prompt's request has cleared. Both orders
+    /// of the two state changes end here.
+    private func openPendingPlaylistAfterPrompt() {
+        guard namePromptRequest == nil, let playlistID = pendingOpenPlaylistID else {
+            return
+        }
+        pendingOpenPlaylistID = nil
+        onOpenPlaylist(playlistID)
     }
 
     private func subscribeToSample() {

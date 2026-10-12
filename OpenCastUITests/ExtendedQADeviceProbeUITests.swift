@@ -524,14 +524,6 @@ final class ExtendedQADeviceProbeUITests: XCTestCase {
         button.tap()
     }
 
-    @MainActor
-    private func frameSummaryValue(in app: XCUIApplication) -> String {
-        let element = app.descendants(matching: .any)["Frame Pacing Summary"]
-        guard element.existsOrWait(timeout: 10) else {
-            return "frame probe element missing"
-        }
-        return (element.value as? String) ?? ""
-    }
 
     @MainActor
     private func attach(_ value: String, named name: String) {

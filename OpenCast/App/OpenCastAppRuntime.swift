@@ -1,6 +1,7 @@
 import Foundation
 import OpenCastCore
 import OpenCastPlayback
+import OSLog
 import SwiftData
 
 final class OpenCastAppRuntime {
@@ -16,9 +17,12 @@ final class OpenCastAppRuntime {
         do {
             let launchConfiguration = OpenCastLaunchConfiguration.current
             self.launchConfiguration = launchConfiguration
-            #if DEBUG
+            #if DEBUG || OPENCAST_PERFORMANCE_PROBES
             NowPlayingFramePacingProbe.shared.enableIfRequested()
             #endif
+            // Read before the container opens, so the copy never depends on
+            // what that open does to the playlist tables it no longer maps.
+            let legacyLocalPlaylists = Self.legacyLocalPlaylists(launchConfiguration: launchConfiguration)
             modelContainer = try OpenCastModelContainerFactory.make(
                 inMemory: launchConfiguration.usesInMemoryStore
             )
@@ -114,7 +118,8 @@ final class OpenCastAppRuntime {
                 syncStatus: syncStatus,
                 allowsAutomaticFeedRefresh: !launchConfiguration.usesInMemoryStore,
                 adFreePassPresentationOverride: launchConfiguration.adFreePassPresentationOverride,
-                adFreePassQueueOverride: launchConfiguration.adFreePassQueueOverride
+                adFreePassQueueOverride: launchConfiguration.adFreePassQueueOverride,
+                legacyLocalPlaylists: legacyLocalPlaylists
             )
             #if DEBUG
             if launchConfiguration.seedsUITestData {
@@ -126,6 +131,29 @@ final class OpenCastAppRuntime {
             #endif
         } catch {
             fatalError("Unable to create OpenCast model container: \(error)")
+        }
+    }
+
+    /// nil for an in-memory launch and once the copy has completed. A store
+    /// with nothing to copy yields an empty snapshot so the migration records
+    /// itself as done and later launches skip the file check. A failed read
+    /// must never reach the launch's `fatalError`: it is logged, yields nil,
+    /// and the next launch tries again.
+    private static func legacyLocalPlaylists(
+        launchConfiguration: OpenCastLaunchConfiguration
+    ) -> LegacyLocalPlaylistSnapshot? {
+        guard !launchConfiguration.usesInMemoryStore,
+              !UserDefaults.standard.bool(forKey: PlaylistLocalStoreMigration.completedDefaultsKey)
+        else {
+            return nil
+        }
+        do {
+            return try LegacyLocalPlaylistReader.read(storeURL: OpenCastModelContainerFactory.localStoreURL)
+                ?? LegacyLocalPlaylistSnapshot()
+        } catch {
+            Logger(subsystem: "mk.lan.opencast", category: "PlaylistMigration")
+                .error("legacy playlist read failed: \(error.localizedDescription, privacy: .public)")
+            return nil
         }
     }
 
@@ -190,15 +218,18 @@ final class OpenCastAppRuntime {
         launchConfiguration: OpenCastLaunchConfiguration,
         localCacheStore: (any LocalLibraryCacheStore)?
     ) -> LibraryStore? {
-        guard launchConfiguration.usesUITestSeedFeedRefreshService,
-              let localCacheStore
-        else {
+        guard let localCacheStore else {
             return nil
         }
-        return LibraryStore(
-            feedService: OpenCastUITestSeedFeedRefreshService(),
-            localCache: localCacheStore
-        )
+        let feedService: any FeedService
+        if let failureCode = launchConfiguration.uiTestFeedTransportFailure {
+            feedService = OpenCastUITestFeedTransportFailureService(code: failureCode)
+        } else if launchConfiguration.usesUITestSeedFeedRefreshService {
+            feedService = OpenCastUITestSeedFeedRefreshService()
+        } else {
+            return nil
+        }
+        return LibraryStore(feedService: feedService, localCache: localCacheStore)
     }
 
     private static func syncStatusStore(

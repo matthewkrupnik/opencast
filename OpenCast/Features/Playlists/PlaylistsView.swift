@@ -19,6 +19,8 @@ struct PlaylistsView: View {
     /// Bumped each time the collection reappears, so a drain that finished
     /// while a playlist was pushed still shows its brief finished state.
     @State private var adDetectionIndicatorAppearance = 0
+    @State private var sheetDestination: SheetDestination?
+    @State private var pendingOrganizerPodcastID: String?
 
     var onOpenPlaylist: (String) -> Void = { _ in }
     /// Shows the ad-detection queue indicator; only the Playlists tab root
@@ -61,6 +63,13 @@ struct PlaylistsView: View {
                 }
             }
             .playlistNamePrompt($namePromptRequest, onCommit: commitName)
+            .sheet(item: $sheetDestination, onDismiss: presentPendingOrganizer) { destination in
+                SheetDestinationView(
+                    destination: destination,
+                    onDismiss: dismissSheet,
+                    onChooseOrganizerShow: chooseOrganizerShow
+                )
+            }
             .onChange(of: namePromptRequest) {
                 openPendingPlaylistAfterPrompt()
             }
@@ -83,6 +92,15 @@ struct PlaylistsView: View {
             } actions: {
                 Button("New Playlist…", action: promptNewPlaylist)
                     .buttonStyle(.glassProminent)
+                    .accessibilityIdentifier("Playlists Empty New Playlist")
+                if canMakePlaylist {
+                    Button(
+                        PlaylistOrganizerCopy.menuItemTitle,
+                        systemImage: "apple.intelligence",
+                        action: showOrganizerShowPicker
+                    )
+                    .accessibilityIdentifier("Playlists Empty Make a Playlist")
+                }
             }
         } else if layout == .grid {
             grid(playlists: playlists)
@@ -142,6 +160,16 @@ struct PlaylistsView: View {
                 .accessibilityIdentifier("New Playlist")
             Button("New Smart Playlist…", systemImage: "sparkles", action: promptNewSmartPlaylist)
                 .accessibilityIdentifier("New Smart Playlist")
+            if canMakePlaylist {
+                Section(PlaylistOrganizerCopy.menuSectionTitle) {
+                    Button(
+                        PlaylistOrganizerCopy.menuItemTitle,
+                        systemImage: "apple.intelligence",
+                        action: showOrganizerShowPicker
+                    )
+                    .accessibilityIdentifier("Make a Playlist")
+                }
+            }
         } label: {
             Label("Add", systemImage: "plus")
         }
@@ -239,5 +267,33 @@ struct PlaylistsView: View {
         }
         pendingOpenPlaylistID = nil
         onOpenPlaylist(playlistID)
+    }
+
+    private var canMakePlaylist: Bool {
+        appModel.transcriptIntelligence.isVisible && PlaylistOrganizerFeatureFlags.isEnabledForProcess
+    }
+
+    private func showOrganizerShowPicker() {
+        sheetDestination = .playlistOrganizerShowPicker
+    }
+
+    private func chooseOrganizerShow(_ podcastID: String) {
+        pendingOrganizerPodcastID = podcastID
+        sheetDestination = nil
+    }
+
+    /// Presenting from the picker's own action would race its dismissal, so the
+    /// organizer opens from the sheet's `onDismiss`, which also runs for the
+    /// organizer itself and then finds nothing pending.
+    private func presentPendingOrganizer() {
+        guard let podcastID = pendingOrganizerPodcastID else {
+            return
+        }
+        pendingOrganizerPodcastID = nil
+        sheetDestination = .playlistOrganizer(podcastID: podcastID)
+    }
+
+    private func dismissSheet() {
+        sheetDestination = nil
     }
 }

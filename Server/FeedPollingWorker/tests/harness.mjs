@@ -42,18 +42,18 @@ export async function harness(outbound, options = {}) {
       outboundService: async request => { fetches.push(request.url); if (request.url === ALERT_WEBHOOK_URL) alerts.push({ headers: Object.fromEntries(request.headers), body: await request.clone().json() }); return outbound(request); },
     },
     { name: 'delivery-runtime', modulesRoot: root, modules: modules('NotificationsWorker', 'tests/observation-entry.mjs'),
-      compatibilityDate: '2026-09-18', compatibilityFlags: ['enable_request_signal'],
+      compatibilityDate: '2026-09-30', compatibilityFlags: ['enable_request_signal'],
       d1Databases: { APP_ATTEST_DB: 'isolated-polling' }, r2Buckets: { FEED_SNAPSHOTS: 'isolated-snapshots' },
       queueProducers: { EVENT_QUEUE: 'isolated-event', EPISODE_DELIVERY_QUEUE: 'isolated-episode', JOB_DELIVERY_QUEUE: 'isolated-job' },
       bindings: { NOTIFICATION_ENVIRONMENT: 'development', NOTIFICATION_EPISODE_ACTIVATION: 'true', NOTIFICATION_EPISODE_SEND: 'true', APPLE_TEAM_ID: 'EXAMPLETEAM', APPLE_BUNDLE_ID: 'com.example.opencast', APP_ATTEST_ENVIRONMENT: 'development', APNS_ENVIRONMENT: 'development', PUBLIC_NOTIFICATIONS_ENABLED: 'false',...options.deliveryBindings },
       serviceBindings: { APNS_CERT: async request => { sends.push(await request.json()); return new Response(null, { status: 200 }); } },
-      outboundService: async request => { fetches.push(request.url); return outbound(request); },
+      outboundService: async request => { fetches.push(request.url); if (request.url === ALERT_WEBHOOK_URL) alerts.push({ headers: Object.fromEntries(request.headers), body: await request.clone().json() }); return outbound(request); },
     },
   ];
   for(let i=1;i<(options.replicas??1);i++) workers.push({...workers[0],name:`polling-runtime-${i}`});
   // `persist` keeps D1 and R2 on disk, so rollback.mjs can switch packaged
   // binaries on one database and bucket.
-  instance = new Miniflare(convertV4MiniflareOptions({ cf: false, inspectorPort: 0, ...(options.persist ? { resourcePersistencePath: options.persist } : {}), workers }));
+  instance = new Miniflare(convertV4MiniflareOptions({ cf: false, unsafeTriggerHandlers: true, inspectorPort: 0, ...(options.persist ? { resourcePersistencePath: options.persist } : {}), workers }));
   await instance.ready;
   const db = await instance.getD1Database('APP_ATTEST_DB', 'polling-runtime');
   const fresh = !(await db.prepare("SELECT 1 FROM sqlite_master WHERE name='n_feed'").first());
@@ -126,5 +126,6 @@ export async function harness(outbound, options = {}) {
   }
   return { instance, db, run, first, rows, invoke, add, consume, polls, drain, deliver, sends, fetches, events, alerts, now };
 }
-export const item = (id, at, title = `Episode ${id}`) => `<item><guid>${id}</guid><title>${title}</title>${at == null ? '' : `<pubDate>${new Date(at * 1000).toUTCString()}</pubDate>`}<enclosure url="https://audio.example.com/${id}.mp3"/></item>`;
+// `description` is emitted verbatim (wrap markup in CDATA); omitted, the item is unchanged.
+export const item = (id, at, title = `Episode ${id}`, description) => `<item><guid>${id}</guid><title>${title}</title>${description == null ? '' : `<description>${description}</description>`}${at == null ? '' : `<pubDate>${new Date(at * 1000).toUTCString()}</pubDate>`}<enclosure url="https://audio.example.com/${id}.mp3"/></item>`;
 export const rss = items => `<rss><channel><title>Fixture</title>${items.join('')}</channel></rss>`;

@@ -8,28 +8,38 @@ globalThis.Date = class extends NativeDate {
   static now() { return (frozen ?? NativeDate.now()) + offset; }
 };
 const wakeups = [], controllers = new Map();
-const COUNTERS = ['d1', 'rows_read', 'rows_written', 'get', 'put', 'head', 'delete', 'list', 'multipart', 'queue_messages'];
-const totals = { outcomes: {}, logged: {}, calls: 0, log_events: 0, ...Object.fromEntries(COUNTERS.map(name => [name, 0])), max_d1: 0, max_r2: 0, scratch_peak_bytes: 0, recent: [] };
+// `rollup_rows_read` is the dispatcher rollup's own D1 reads: the statement
+// carrying `AS completed_last_5min` (both the subquery and single-pass forms).
+// `multipart` is every Class A multipart call; the `multipart_*` split and the
+// `scratch_*` reads and deletes say which scratch lifecycle a scan took.
+const COUNTERS = ['d1', 'rows_read', 'rows_written', 'rollup_rows_read', 'get', 'put', 'head', 'delete', 'list', 'multipart', 'multipart_create', 'multipart_part', 'multipart_complete', 'multipart_abort', 'scratch_get', 'scratch_delete', 'queue_messages'];
+const ROLLUP = 'AS completed_last_5min';
+const totals = { deliveries: [], cleanup: [], cron: [], outcomes: {}, passes: {}, logged: {}, calls: 0, log_events: 0, ...Object.fromEntries(COUNTERS.map(name => [name, 0])), max_d1: 0, max_r2: 0, scratch_peak_bytes: 0, recent: [] };
 for(const method of ['log','warn','error']){const native=console[method].bind(console);console[method]=(...args)=>{
   totals.log_events++;
   // Failures are always logged; healthy polls are only sampled. Exact outcome
   // counts come from the consume results, failure classes from these events.
-  try { const event=JSON.parse(args[0]);if(event.event==='poll_outcome'){const key=`${event.outcome}:${event.reason??''}`;totals.logged[key]=(totals.logged[key]??0)+1;} } catch {}
+  try { const event=JSON.parse(args[0]);if(event.event==='poll_delivery'){totals.deliveries.push(event);if(totals.deliveries.length>100)totals.deliveries.shift();}if(event.event==='poll_cleanup')totals.cleanup.push(event);if(event.event==='poll_outcome'){const key=`${event.outcome}:${event.reason??''}`;totals.logged[key]=(totals.logged[key]??0)+1;} } catch {}
   native(...args);
 };}
 function fail(point) { if (fault === `always:${point}`) throw Error(`fixture:${point}`); if (fault === point) { fault = undefined; throw Error(`fixture:${point}`); } }
 function instrument(env, trace) {
   const raw = new WeakMap(), sqls = new WeakMap();
   const count = n => { trace.d1 += n; if (trace.d1 > 1000) throw Error('D1 invocation limit'); };
-  const result = value => { for (const r of Array.isArray(value) ? value : [value]) { trace.rows_read += r?.meta?.rows_read ?? 0; trace.rows_written += r?.meta?.rows_written ?? 0; } return value; };
+  const result = (value, sql) => { (Array.isArray(value) ? value : [value]).forEach((r, i) => { trace.rows_read += r?.meta?.rows_read ?? 0; trace.rows_written += r?.meta?.rows_written ?? 0; if ((Array.isArray(sql) ? sql[i] : sql)?.includes(ROLLUP)) trace.rollup_rows_read += r?.meta?.rows_read ?? 0; }); return value; };
   const prepared = (s, sql) => {
     const proxy = new Proxy(s, { get(target, key) {
       if (key === 'constructor') return target.constructor;
       if (key === 'bind') return (...args) => prepared(target.bind(...args), sql);
       if (['run', 'all', 'first', 'raw'].includes(key)) return async (...args) => {
-        count(1); fail('d1'); if(sql.includes('INSERT INTO n_poll_origin'))fail('origin_status_d1');
-        if(key==='first'){const value=result(await target.all());const row=value.results[0]??null;return args[0]&&row?row[args[0]]:row;}
-        return result(await target[key](...args));
+        count(1); fail('d1');
+        if(sql.startsWith('SELECT f.origin_key,f.due_at') && fault==='hang_claim'){fault='claim_active';await new Promise(resolve=>releaseHang=resolve);}
+        if(sql.startsWith('SELECT f.origin_key,f.due_at') && fault==='hang_bookkeeping'){fault='bookkeeping_active';throw Error('fixture:claim_failed');}
+        if(sql.startsWith('INSERT INTO n_poll_stat') && fault==='bookkeeping_active'){await new Promise(resolve=>releaseHang=resolve);}
+        if(sql.startsWith('INSERT INTO n_poll_stat(bucket,redeliveries)') && fault==='hang_redelivery_stat'){fault='redelivery_stat_active';await new Promise(resolve=>releaseHang=resolve);}
+ if(sql.includes('INSERT INTO n_poll_origin'))fail('origin_status_d1');
+        if(key==='first'){const value=result(await target.all(),sql);const row=value.results[0]??null;return args[0]&&row?row[args[0]]:row;}
+        return result(await target[key](...args),sql);
       };
       const value = Reflect.get(target, key); return typeof value === 'function' ? value.bind(target) : value;
     } }); raw.set(proxy, s); sqls.set(proxy, sql); return proxy;
@@ -53,20 +63,20 @@ function instrument(env, trace) {
       const value = await target.batch(statements.map(s => raw.get(s) ?? s));
       if (sql.includes('UPDATE n_feed SET last_success_at=')) fail('after_settle');
       if (sql.includes('UPDATE n_feed SET observation_generation=')) fail('after_publish');
-      return result(value);
+      return result(value, statements.map(s => sqls.get(s)));
     };
     const value = Reflect.get(target, key); return typeof value === 'function' ? value.bind(target) : value;
   } });
   const bucket = new Proxy(env.FEED_SNAPSHOTS, { get(target, key) {
     if (key === 'constructor') return target.constructor;
-    if (['get', 'put', 'head', 'delete', 'list'].includes(key)) return async (...args) => { trace[key]++; if(key==='get'&&fault==='slow_get'){fault=undefined;await new Promise(resolve=>setTimeout(resolve,16000));} if(key==='get'&&fault==='hang_get'){fault='hang_get_active';await new Promise(resolve=>releaseHang=resolve);} fail(`before_${key}`); const value = await target[key](...args); fail(`after_${key}`); return value; };
+    if (['get', 'put', 'head', 'delete', 'list'].includes(key)) return async (...args) => { trace[key]++; if (['get', 'delete'].includes(key) && typeof args[0] === 'string' && args[0].startsWith('scratch/')) trace[`scratch_${key}`]++; if(key==='delete'&&fault==='cleanup_budget'){offset+=26000;fault=undefined;} if(key==='get'&&fault==='slow_get'){fault=undefined;await new Promise(resolve=>setTimeout(resolve,16000));} if(key==='get'&&fault==='hang_get'){fault='hang_get_active';await new Promise(resolve=>releaseHang=resolve);} fail(`before_${key}`); const value = await target[key](...args); fail(`after_${key}`); return value; };
     // Scratch is one multipart upload: count every Class A call and its bytes.
     if (key === 'createMultipartUpload') return async (...args) => {
-      trace.multipart++; const upload = await target.createMultipartUpload(...args); let bytes = 0;
+      trace.multipart++; trace.multipart_create++; const upload = await target.createMultipartUpload(...args); let bytes = 0;
       return new Proxy(upload, { get(inner, name) {
         if (name === 'constructor') return inner.constructor;
         if (['uploadPart', 'complete', 'abort'].includes(name)) return async (...parts) => {
-          trace.multipart++; fail(`scratch_${name}`);
+          trace.multipart++; trace[name === 'uploadPart' ? 'multipart_part' : `multipart_${name}`]++; fail(`scratch_${name}`);
           if (name === 'uploadPart') { bytes += parts[1].byteLength ?? parts[1].length ?? 0; totals.scratch_peak_bytes = Math.max(totals.scratch_peak_bytes, bytes); }
           return inner[name](...parts);
         };
@@ -93,6 +103,13 @@ function instrument(env, trace) {
   return instrumented;
 }
 export default class extends Worker {
+  async scheduled(controller) {
+    const trace = { path: '/scheduled', ...Object.fromEntries(COUNTERS.map(name => [name, 0])) };
+    totals.cron.push(controller.cron);
+    await Worker.prototype.scheduled.call({ctx:this.ctx,env:instrument(this.env,trace)},controller);
+    for(const name of COUNTERS)totals[name]+=trace[name];
+    totals.max_d1=Math.max(totals.max_d1,trace.d1);
+  }
   // The real Queue path runs the shipped consumer adapter unchanged, against
   // the same fault-injecting bindings. Only its retry delay is shortened.
   async queue(batch) {
@@ -107,6 +124,7 @@ export default class extends Worker {
     const path = new URL(request.url).pathname;
     if (path === '/clock') { offset = Number(await request.text()) * 1000; return new Response('ok'); }
     if (path === '/fault') { fault = await request.text(); return new Response('ok'); }
+    if (path === '/fault-state') return new Response(fault??'');
     if (path === '/release-hang') { releaseHang?.(); releaseHang = undefined; fault = undefined; return new Response('ok'); }
     if (path === '/freeze') { const at = await request.text(); frozen = at ? Number(at) * 1000 : undefined; return new Response('ok'); }
     if (path === '/wakeups') {
@@ -131,7 +149,9 @@ export default class extends Worker {
       const input = new Request(request.url.replace('/test', ''), request);
       const response = await new PollingControl(this.ctx, instrument(this.env, trace)).fetch(controller ? new Request(input, { signal: controller.signal }) : input);
       // Healthy polls are only sampled in logs; the consume result is exact.
-      if (path === '/test/consume' && response.ok) { try { const { outcome } = await response.clone().json(); trace.outcome = outcome; totals.outcomes[outcome] = (totals.outcomes[outcome] ?? 0) + 1; } catch {} }
+      // `passes` is how many times a scan parsed its one response body; steps
+      // that parsed nothing (304s, continuations) are not counted.
+      if (path === '/test/consume' && response.ok) { try { const { outcome, passes } = await response.clone().json(); trace.outcome = outcome; totals.outcomes[outcome] = (totals.outcomes[outcome] ?? 0) + 1; if (passes > 0) { trace.passes = passes; totals.passes[passes] = (totals.passes[passes] ?? 0) + 1; } } catch {} }
       return response;
     } finally {
       cancellation.finished=true;controllers.delete(key);if(watching)await watching;

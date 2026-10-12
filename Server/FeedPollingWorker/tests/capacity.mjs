@@ -1,8 +1,8 @@
 // Sustained real packaged work with a virtual dispatcher clock. No publisher
 // network traffic: every RSS body, delay, status and APNs response is controlled.
-// This is the bounded fixture experiment for the disabled five-minute switch:
-// it drives every feed at the fastest cadence to measure throughput and outage
-// recovery, not the production schedule.
+// The default 2,000-feed workload uses the fastest production cadence. The
+// 1,000-feed shared-isolate variants retain the disabled five-minute experiment.
+// Both stay within 200 admissions/minute; overload is tested by livelock.mjs.
 import assert from 'node:assert/strict';
 import { writeFile } from 'node:fs/promises';
 import { setTimeout } from 'node:timers/promises';
@@ -10,8 +10,9 @@ import { harness, item, rss } from './harness.mjs';
 import { sampleRuntimeMemory } from '../../NotificationsWorker/tests/runtime-memory.mjs';
 
 const count=Number(process.env.OPENCAST_POLL_FEEDS??2000);
+const cadenceMinutes=count>1000?15:5;
 const ticks=Number(process.env.OPENCAST_POLL_TICKS??30);
-assert.ok(ticks>0&&ticks%5===0,'measure whole five-minute cycles');
+assert.ok(ticks>0&&ticks%cadenceMinutes===0,'measure whole cadence cycles');
 const concurrency=Number(process.env.OPENCAST_POLL_CONCURRENCY??2);
 const replicas=process.env.OPENCAST_POLL_SHARED==='1'?1:concurrency;
 const deadlines=process.env.OPENCAST_POLL_DEADLINES==='1';
@@ -59,7 +60,7 @@ const h=await harness(async request=>{
     const body=rss(items);bytes+=Buffer.byteLength(body);
     return new Response(body,{headers:{etag:tag,'content-type':'application/rss+xml'}});
   }finally{if(!streaming)active.set(origin,active.get(origin)-1);}
-},{replicas,fiveMinute:true});
+},{replicas,fiveMinute:cadenceMinutes===5});
 logicalNow=h.now;
 let stopMemory,clockAnchor=performance.now();
 const samples=[],lag=[],deliveryLag=[];
@@ -113,16 +114,16 @@ try{
   assert.equal((await h.first('SELECT COUNT(*) AS n FROM n_event')).n,0);
   // Stabilize all phases after baseline admission before measured recurrence.
   const initial=await h.first('SELECT MIN(due_at) AS at FROM n_feed');
-  for(let tick=0;tick<5;tick++){await clock(initial.at+tick*60);await h.invoke('test/dispatch');await pump();}
-  const start=initial.at+300;
+  for(let tick=0;tick<cadenceMinutes;tick++){await clock(initial.at+tick*60);await h.invoke('test/dispatch');await pump();}
+  const start=initial.at+cadenceMinutes*60;
   const beforeMetrics=await Promise.all(Array.from({length:replicas},(_,i)=>h.invoke('metrics',undefined,undefined,i)));
   const beforeRequests=requests;measuring=true;
   const wallStart=performance.now(),cpuStart=process.cpuUsage();
   for(let tick=0;tick<ticks;tick++){
-    cycle=Math.floor(tick/5)+1;await clock(start+tick*60);
+    cycle=Math.floor(tick/cadenceMinutes)+1;await clock(start+tick*60);
     // Publisher availability exists independently of whether a consumer sees
     // that cycle. A delayed scan must recover each earlier immutable release.
-    for(let index=0;index<count;index+=10)if(!releaseTimes.has(`${index}:${cycle}`))releaseTimes.set(`${index}:${cycle}`,start+(cycle-1)*300-1);
+    for(let index=0;index<count;index+=10)if(!releaseTimes.has(`${index}:${cycle}`))releaseTimes.set(`${index}:${cycle}`,start+(cycle-1)*cadenceMinutes*60-1);
     const tickStart=performance.now();await h.invoke('test/dispatch');const invocations=await pump();await h.deliver(true);
     // Every generation admitted this minute settled before the next tick.
     const outstanding=await h.first('SELECT COUNT(*) AS n FROM n_feed WHERE dispatch_until>0 AND poll_failures=0');
@@ -146,21 +147,24 @@ try{
   assert.ok(maximumOriginRequests()<=2,'publisher concurrency');
   if(replicas===1)assert.ok(Object.values(transport.activeByOrigin).every(n=>n===0),'native transports released after steady work');
   // Pause executors for 30 simulated minutes while dispatch continues. A
-  // reservation expires every five minutes, so each feed is re-dispatched under
-  // a newer generation. Schedules must coalesce, and every retained message of
-  // a superseded generation must be rejected without a fetch.
+  // lapsed reservation is repaired with the same generation. Retained wakeups
+  // stay useful and duplicate copies cannot publish twice.
   const outageStart=start+ticks*60;
   const outageWakeups=[];
   for(let tick=0;tick<30;tick++){await clock(outageStart+tick*60);await h.invoke('test/dispatch');for(let i=0;i<replicas;i++)outageWakeups.push(...await h.invoke('wakeups',undefined,undefined,i));}
   assert.ok((await h.first('SELECT COUNT(*) AS n FROM n_feed WHERE dispatch_until>0')).n<=count);
   const live=new Map((await h.rows('SELECT feed_id,schedule_generation FROM n_feed')).map(f=>[f.feed_id,f.schedule_generation]));
   const superseded=outageWakeups.filter(w=>w.kind==='poll'&&w.generation<live.get(w.feed_id)).length,replayRequests=requests;
+  assert.equal(superseded,0,'outage wakeups retain the unsettled generation');
+  const obligations=new Set(outageWakeups.filter(w=>w.kind==='poll').map(w=>w.feed_id));
+  const eventsBeforeReplay=(await h.first('SELECT COUNT(*) AS n FROM n_event')).n;
   const recoverWall=performance.now();let recoveryTicks=0;
   // Replay retained duplicates as well as reconciling lost wakeups.
   await clock(outageStart+1800);
   let replay=0;
   await Promise.all(Array.from({length:concurrency},async(_,i)=>{while(replay<outageWakeups.length)await deliverWake(outageWakeups[replay++],i%replicas);}));
-  assert.ok(requests-replayRequests<=outageWakeups.length-superseded,'a superseded generation never fetches');
+  assert.ok(requests-replayRequests<=obligations.size*2,'at most one fetch plus a duplicate conditional fetch per obligation');
+  assert.equal((await h.first('SELECT COUNT(*) AS n FROM n_event')).n,eventsBeforeReplay,'outage replay publishes no duplicate event');
   for(;recoveryTicks<15;recoveryTicks++){
     await clock(outageStart+1800+recoveryTicks*60);await h.invoke('test/dispatch');await pump();await h.deliver(true);
     const remaining=await h.first("SELECT COUNT(*) AS n FROM n_feed WHERE last_success_at<? AND poll_failures=0",outageStart+1800);

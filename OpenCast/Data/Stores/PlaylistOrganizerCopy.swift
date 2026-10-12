@@ -10,7 +10,9 @@ nonisolated enum PlaylistOrganizerCopy {
     static let featureName = "Make a Playlist"
     static let fieldTitle = "What kind of playlist?"
     static let fieldPlaceholder = "Civil War episodes"
-    static let suggestToggleTitle = "Suggest groups instead"
+    static let suggestSectionTitle = "Or let it suggest"
+    static let suggestButtonTitle = "Suggest Groups"
+    static let suggestExplanation = "Groups episodes by topic, series or story arc."
     static let askButtonTitle = "Ask"
     static let progress = "Asking Apple Intelligence…"
     static let stillWorking = "Still working…"
@@ -19,6 +21,10 @@ nonisolated enum PlaylistOrganizerCopy {
     static let tryAgain = "Try Again"
     static let suggestGroupsInstead = "Suggest Groups Instead"
     static let askForPlaylistInstead = "Ask for a Playlist Instead"
+    static let editRequest = "Edit Request"
+    static let retrySimpler = "Try a Simpler Answer"
+    static let simplerRetryFootnote = "Experimental: asks only for episodes. Results may vary."
+    static let simplerResult = "From a simpler answer. Results may vary."
     static let generatedFooter = "Generated with Apple Intelligence."
     static let helpLinkTitle = "How Make a Playlist works"
     static let sortEpisodes = "Sort Episodes"
@@ -29,6 +35,26 @@ nonisolated enum PlaylistOrganizerCopy {
     static let keepEditing = "Keep Editing"
     static let saveErrorTitle = "Playlist Error"
     static let proposalTitlePlaceholder = "Playlist name"
+    static let showPickerTitle = "Choose a Show"
+    static let showPickerSubtitle = "Make a Playlist · Beta"
+    static let showPickerSearchPrompt = "Shows"
+    static let showPickerFooter = "Playlists are drafted from one show’s episodes. A show needs at least \(PlaylistOrganizerFeatureFlags.minimumEpisodeCount) episodes."
+    static let showPickerEmptyTitle = "No Shows"
+    static let showPickerEmptyMessage = "Subscribe to a show, then make a playlist from its episodes."
+    static let ineligibleShowHint = "Needs at least \(PlaylistOrganizerFeatureFlags.minimumEpisodeCount) episodes"
+
+    /// The organizer's subtitle names its show, the shape Recap and Ask use.
+    static func subtitle(showTitle: String?) -> String {
+        let trimmed = showTitle?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        guard !trimmed.isEmpty else {
+            return betaSubtitle
+        }
+        return "\(trimmed) · Beta"
+    }
+
+    static func episodeCount(_ count: Int) -> String {
+        String(AttributedString(localized: "^[\(count) episode](inflect: true)").characters)
+    }
 
     static func saveTitle(count: Int) -> String {
         guard count > 0 else {

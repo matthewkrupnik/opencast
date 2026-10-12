@@ -153,6 +153,9 @@ struct PodcastDetailView: View {
                                         )
                                     }
                                 }
+                                if appModel.library.lastRefreshWasOffline {
+                                    LibraryOfflineNotice()
+                                }
                                 if let suggestedFeedURL = appModel.library.suggestedFeedMigrationURLsByFeedURL[feedURL] {
                                     FeedAddressUpdateView(
                                         suggestedFeedURL: suggestedFeedURL,
@@ -168,7 +171,8 @@ struct PodcastDetailView: View {
                             }
                             .frame(maxWidth: 600)
                             .frame(maxWidth: .infinity)
-                            .padding(.vertical, 8)
+                            .padding(.bottom, 8)
+                            .listRowInsets(.top, 0)
                             .listRowBackground(Color.clear)
                             .listRowSeparator(.hidden)
                             .accessibilityIdentifier("Podcast Hero Header")
@@ -251,8 +255,11 @@ struct PodcastDetailView: View {
                 }
             }
         }
+        // The hero already shows the name, so the bar drops it; the title
+        // still names this screen for back navigation and accessibility.
         .navigationTitle(subscription?.title ?? "Podcast")
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar(removing: .title)
         .modifier(
             EpisodeSearchPresentationModifier(
                 isSearchVisible: isSearchVisible,

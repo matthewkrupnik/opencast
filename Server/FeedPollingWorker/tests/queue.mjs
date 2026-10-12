@@ -8,6 +8,7 @@ try{
   const feed=await h.add('https://queue.example.com/feed');
   await h.invoke('test/dispatch');await settle();
   assert.equal((await h.first('SELECT observation_generation FROM n_feed WHERE feed_id=?',feed)).observation_generation,1);
+  assert.ok((await h.invoke('metrics')).deliveries.some(log=>Number.isFinite(log.initial_queue_wait_ms)&&log.initial_queue_wait_ms>=0),'the shipped Queue adapter forwards its own timestamp');
   version=2;await h.run('UPDATE n_feed SET due_at=? WHERE feed_id=?',h.now,feed);
   await h.invoke('test/dispatch');await settle();await h.deliver(true);
   // The first on-phase slot may fall inside the early-admission window.
@@ -18,7 +19,8 @@ try{
   // the fenced commit: one crash, one redelivery, one logical poll.
   await h.run('UPDATE n_feed SET due_at=? WHERE feed_id=?',h.now,feed);
   await h.invoke('fault','before_settle');await h.invoke('test/dispatch');await settle();
-  assert.equal((await h.first('SELECT last_poll_outcome FROM n_feed WHERE feed_id=?',feed)).last_poll_outcome,'unchanged');
+  // The fixture ignores If-None-Match: a constant strong tag may settle as the strong-ETag shortcut.
+  assert.ok(['unchanged','not_modified'].includes((await h.first('SELECT last_poll_outcome FROM n_feed WHERE feed_id=?',feed)).last_poll_outcome));
   assert.ok((await h.invoke('test/stats')).redelivery_total>=1,'the Queue redelivered the unacknowledged message');
   assert.equal(h.sends.length,1,'redelivery sends nothing again');
   assert.equal((await h.first('SELECT COUNT(*) AS n FROM n_event')).n,1);

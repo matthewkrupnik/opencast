@@ -8,8 +8,12 @@ mod execute;
 #[cfg(target_arch = "wasm32")]
 pub(crate) mod origin;
 pub mod policy;
+#[cfg(any(target_arch = "wasm32", test))]
+mod rollup_sql;
 #[cfg(target_arch = "wasm32")]
 mod runtime;
+#[cfg(target_arch = "wasm32")]
+pub(crate) mod timing;
 #[cfg(target_arch = "wasm32")]
 pub(crate) use execute::fetch_failed;
 #[cfg(target_arch = "wasm32")]
@@ -27,3 +31,6 @@ pub(crate) async fn stat(db: &worker::D1Database, counter: &'static str) -> work
     run(db,&format!("INSERT INTO n_poll_stat(bucket,{counter}) VALUES(?1,1) ON CONFLICT(bucket) DO UPDATE SET {counter}={counter}+1"),&[serde_json::json!(now().div_euclid(3600))]).await?;
     Ok(())
 }
+
+#[cfg(target_arch = "wasm32")]
+pub(crate) mod watchdog;

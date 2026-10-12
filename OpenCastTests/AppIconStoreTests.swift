@@ -23,7 +23,8 @@ struct AppIconStoreTests {
 
         store.load()
 
-        #expect(store.selection == .ember)
+        #expect(store.selection == .primary)
+        #expect(application.appliedNames.isEmpty)
     }
 
     @Test("Unsupported devices report isSupported false")
@@ -34,7 +35,7 @@ struct AppIconStoreTests {
         store.load()
 
         #expect(!store.isSupported)
-        #expect(store.selection == .ember)
+        #expect(store.selection == .primary)
     }
 
     @Test("Selecting applies the name and updates the selection")
@@ -48,19 +49,19 @@ struct AppIconStoreTests {
         #expect(application.appliedNames == ["AppIconViolet"])
         #expect(store.lastErrorMessage == nil)
 
-        await store.select(.ember)
-        #expect(store.selection == .ember)
+        await store.select(.primary)
+        #expect(store.selection == .primary)
         #expect(application.appliedNames == ["AppIconViolet", nil])
         #expect(!store.isApplying)
     }
 
     @Test("Selecting the current option is a no-op")
     func selectingCurrentOptionIsNoOp() async {
-        let application = AlternateIconApplyingSpy(alternateIconName: "AppIconGraphite")
+        let application = AlternateIconApplyingSpy(alternateIconName: "AppIconFern")
         let store = AppIconStore(application: application)
         store.load()
 
-        await store.select(.graphite)
+        await store.select(.fern)
 
         #expect(application.appliedNames.isEmpty)
     }
@@ -71,9 +72,9 @@ struct AppIconStoreTests {
         let store = AppIconStore(application: application)
         store.load()
 
-        await store.select(.graphite)
+        await store.select(.fern)
 
-        #expect(store.selection == .ember)
+        #expect(store.selection == .primary)
         #expect(store.lastErrorMessage?.hasPrefix("Unable to change the app icon") == true)
         #expect(application.appliedNames.isEmpty)
 

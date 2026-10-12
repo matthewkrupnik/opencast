@@ -45,6 +45,8 @@ mod storage;
 mod subscription_admission;
 #[cfg(any(target_arch = "wasm32", test))]
 mod subscription_payloads;
+#[cfg(all(test, not(target_arch = "wasm32")))]
+mod test_schema;
 #[cfg(target_arch = "wasm32")]
 mod worker_app;
 #[cfg(target_arch = "wasm32")]
@@ -67,8 +69,9 @@ pub async fn fetch(req: Request, env: Env, _ctx: Context) -> Result<Response> {
 
 #[cfg(all(target_arch = "wasm32", feature = "notification-entrypoint"))]
 #[event(scheduled)]
-pub async fn scheduled(_event: ScheduledEvent, env: Env, _ctx: ScheduleContext) {
-    if let Err(error) = worker_app::handle_scheduled(env).await {
+pub async fn scheduled(event: ScheduledEvent, env: Env, _ctx: ScheduleContext) {
+    if let Err(error) = worker_app::handle_scheduled(env, (event.schedule() / 1000.0) as i64).await
+    {
         console_error!("scheduled notification maintenance failed: {:?}", error);
     }
 }

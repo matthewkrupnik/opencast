@@ -7,7 +7,6 @@ struct OpenCastTabRootView: View {
 
     @Binding var selectedTab: AppSection
     @Binding var navigationPaths: AppNavigationPaths
-    let isNowPlayingPresented: Bool
     let onAdd: () -> Void
     let onOpenUpNext: () -> Void
     let onPresentNowPlaying: () -> Void
@@ -18,7 +17,8 @@ struct OpenCastTabRootView: View {
                 NavigationStack(path: $navigationPaths[.library]) {
                     LibraryView(
                         onAdd: onAdd,
-                        onOpenUpNext: onOpenUpNext
+                        onOpenUpNext: onOpenUpNext,
+                        onOpenPlaylist: openPlaylist(on: .library)
                     )
                     .withOpenCastDestinations(
                         onOpenEpisode: openEpisode(on: .library),
@@ -98,7 +98,9 @@ struct OpenCastTabRootView: View {
             tabAccessory
         }
         .sensoryFeedback(.success, trigger: appModel.library.subscriptionAddedToken)
-        .sensoryFeedback(.success, trigger: appModel.library.refreshCompletedToken)
+        .sensoryFeedback(trigger: appModel.library.refreshCompletedToken) { _, _ in
+            appModel.library.lastRefreshWasOffline ? .warning : .success
+        }
         .onChange(of: selectedTab, initial: true) { _, selectedTab in
             isSearchPresented = selectedTab == .search
         }
@@ -127,12 +129,10 @@ struct OpenCastTabRootView: View {
     private var tabAccessory: some View {
         if appModel.playback.currentEpisode != nil {
             MiniPlayerView(
-                isNowPlayingPresented: isNowPlayingPresented,
                 onExpand: onPresentNowPlaying
             )
         } else {
             UpNextAccessoryView(
-                isNowPlayingPresented: isNowPlayingPresented,
                 onOpenQueue: onOpenUpNext
             )
         }

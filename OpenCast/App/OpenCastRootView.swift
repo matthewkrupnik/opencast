@@ -42,7 +42,6 @@ struct OpenCastRootView: View {
 
     var body: some View {
         OpenCastRootLayerView(
-            isNowPlayingPresented: appModel.isNowPlayingPresented,
             onDismissNowPlaying: dismissNowPlaying,
             onOpenCurrentEpisode: openCurrentEpisodeFromNowPlaying,
             onOpenCurrentPodcast: openCurrentPodcastFromNowPlaying,
@@ -52,7 +51,6 @@ struct OpenCastRootView: View {
             OpenCastTabRootView(
                 selectedTab: $selectedTab,
                 navigationPaths: $navigationPaths,
-                isNowPlayingPresented: appModel.isNowPlayingPresented,
                 onAdd: presentAddPodcast,
                 onOpenUpNext: presentUpNextQueue,
                 onPresentNowPlaying: presentNowPlaying
@@ -467,6 +465,9 @@ struct OpenCastRootView: View {
     private func refreshSyncedUserData() async {
         await initialSetupGate.wait()
         guard !Task.isCancelled else { return }
+        // Ahead of the library reload: a library failure or a batch with no
+        // subscription work must not keep imported playlist rows off screen.
+        let playlistChange = appModel.reloadPlaylistsAfterSyncedChange(modelContext: modelContext)
         let activePodcastIDsBeforeReload = appModel.library.activePodcastIDs
         let result: SyncedUserDataReloadResult
         do {
@@ -477,6 +478,15 @@ struct OpenCastRootView: View {
         }
 
         guard result.shouldProcessImportedSubscriptions else {
+            // Only when the rows hold a twin or a tombstoned row, and without
+            // the library activity: a playlist batch must not end the import
+            // wait or replace another flow's status.
+            if playlistChange.needsRepair {
+                await appModel.repairSyncDuplicates(modelContext: modelContext)
+                if let errorMessage = appModel.syncStatus.lastRepairErrorMessage {
+                    appModel.syncStatus.recordLibraryActivityFailure(errorMessage)
+                }
+            }
             return
         }
 
@@ -513,6 +523,7 @@ struct OpenCastRootView: View {
             appModel.syncStatus.recordLibraryActivityFailure(error.localizedDescription)
             return
         }
+        appModel.reloadPlaylistsAfterSyncedChange(modelContext: modelContext)
 
         guard await repairSyncDuplicatesAfterImportedData() else {
             return
@@ -561,10 +572,7 @@ struct OpenCastRootView: View {
 
     private func repairSyncDuplicatesAfterImportedData() async -> Bool {
         appModel.syncStatus.beginLibraryActivity(.repairingDuplicates)
-        await appModel.syncStatus.repairDuplicates(
-            modelContext: modelContext,
-            libraryStore: appModel.library
-        )
+        await appModel.repairSyncDuplicates(modelContext: modelContext)
 
         if let errorMessage = appModel.syncStatus.lastRepairErrorMessage {
             appModel.syncStatus.recordLibraryActivityFailure(errorMessage)

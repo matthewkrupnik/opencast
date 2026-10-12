@@ -477,22 +477,23 @@ struct CarPlayBrowseModelBuilderTests {
         #expect(continuation.snapshot.continuation == nil)
     }
 
-    @Test("Playlist rows carry the cover show's artwork or the smart symbol, with an inflected count")
+    @Test("Playlist rows carry the cover show's artwork, else their symbol, with an inflected count")
     func playlistRowsCarryShowArtworkOrSmartSymbol() throws {
         let summaries = [
             makePlaylistSummary(playlistID: "manual-cover", name: "Commute", kind: .manual),
             makePlaylistSummary(playlistID: "manual-bare", name: "Bare", kind: .manual),
             makePlaylistSummary(playlistID: "smart-default", name: "Fresh", kind: .smart),
-            makePlaylistSummary(playlistID: "smart-star", name: "Starred", kind: .smart, symbolName: "star")
+            makePlaylistSummary(playlistID: "smart-star", name: "Starred", kind: .smart)
         ]
         let counts = ["manual-cover": 3, "manual-bare": 0, "smart-default": 1, "smart-star": 12]
 
-        // The closure offers a cover to every playlist but the bare one, so the
-        // smart rows prove they keep their symbol instead.
+        // The closure offers a cover to one playlist of each kind, so the
+        // other two prove they fall back to their symbol.
+        let bare: Set = ["manual-bare", "smart-star"]
         let snapshot = CarPlayBrowseModelBuilder.playlists(
             summaries,
             episodeCount: { counts[$0.playlistID] ?? -1 },
-            artworkURL: { $0.playlistID == "manual-bare" ? nil : "https://example.com/cover.jpg" },
+            artworkURL: { bare.contains($0.playlistID) ? nil : "https://example.com/cover.jpg" },
             limits: Self.roomyLimits
         )
 
@@ -505,11 +506,11 @@ struct CarPlayBrowseModelBuilderTests {
         #expect(rows[1].artworkURL == nil)
         #expect(rows[1].symbolName == "music.note.list")
         #expect(rows[1].detailText == "No episodes")
-        #expect(rows[2].artworkURL == nil)
-        #expect(rows[2].symbolName == "sparkles")
+        #expect(rows[2].artworkURL == "https://example.com/cover.jpg")
+        #expect(rows[2].symbolName == nil)
         #expect(rows[2].detailText == "1 episode")
         #expect(rows[3].artworkURL == nil)
-        #expect(rows[3].symbolName == "star")
+        #expect(rows[3].symbolName == PlaylistSymbolCover.defaultSymbolName)
         #expect(rows[3].detailText == "12 episodes")
     }
 
@@ -694,8 +695,7 @@ struct CarPlayBrowseModelBuilderTests {
     private func makePlaylistSummary(
         playlistID: String,
         name: String,
-        kind: PlaylistKind,
-        symbolName: String? = nil
+        kind: PlaylistKind
     ) -> PlaylistSummary {
         PlaylistSummary(
             playlistID: playlistID,
@@ -703,7 +703,6 @@ struct CarPlayBrowseModelBuilderTests {
             kind: kind,
             rule: kind == .smart ? PlaylistRule.default : nil,
             hidesPlayed: false,
-            symbolName: symbolName,
             origin: .user,
             itemCount: 0,
             totalDuration: 0,

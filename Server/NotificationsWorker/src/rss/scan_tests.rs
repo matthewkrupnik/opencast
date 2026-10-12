@@ -113,6 +113,51 @@ fn complete_document_and_raw_item_limit() {
     ));
 }
 
+/// Serves `bytes`, then fails every later read with `error`.
+struct FailsAfter<'a> {
+    bytes: &'a [u8],
+    error: &'static str,
+}
+impl AsyncRead for FailsAfter<'_> {
+    fn poll_read(
+        mut self: Pin<&mut Self>,
+        _: &mut Context<'_>,
+        target: &mut ReadBuf<'_>,
+    ) -> Poll<io::Result<()>> {
+        if self.bytes.is_empty() {
+            return Poll::Ready(Err(io::Error::other(self.error)));
+        }
+        let count = self.bytes.len().min(target.remaining());
+        target.put_slice(&self.bytes[..count]);
+        self.bytes = &self.bytes[count..];
+        Poll::Ready(Ok(()))
+    }
+}
+
+#[test]
+fn a_retained_body_storage_failure_is_never_a_transfer_failure() {
+    // The probe's body reader fails its read when a scratch part cannot be
+    // written or read back; that is storage trouble, not the publisher's.
+    let head = b"<rss><channel><item><guid>1</guid></item>";
+    for (error, expected) in [
+        (
+            "observation_stage_failed",
+            RSSParseError::ResourceLimit("observation_stage_failed"),
+        ),
+        ("connection reset", RSSParseError::TransferInterrupted),
+    ] {
+        let reader = FailsAfter { bytes: head, error };
+        assert_eq!(
+            scan_rss(reader, FEED_URL)
+                .now_or_never()
+                .unwrap()
+                .unwrap_err(),
+            expected,
+            "{error}"
+        );
+    }
+}
+
 #[test]
 fn incomplete_documents_never_produce_notification_decisions() {
     for xml in [
@@ -210,4 +255,31 @@ fn pinned_large_captures_match_materialized_parser() {
                 .unwrap();
         compare(&xml, 65536);
     }
+}
+
+#[test]
+fn attribute_floods_cost_linear_time() {
+    // RUSTSEC-2026-0194: quick-xml's default duplicate-name check is
+    // quadratic in the attribute count of one start tag. A hostile feed can
+    // put tens of thousands of attributes on a single tag, so the scan must
+    // skip the check and stay linear.
+    let attributes: String = (0..50_000).map(|i| format!(" a{i}=\"\"")).collect();
+    let plain = "<rss><channel><title>Flood</title><item><guid>1</guid><title>One</title><enclosure url=\"https://example.com/1.mp3\"/></item></channel></rss>";
+    let flooded = plain.replace("<item>", &format!("<item{attributes}>"));
+    let started = std::time::Instant::now();
+    let mut sink = Collect::default();
+    let scanned = scan_rss_with_sink(flooded.as_bytes(), FEED_URL, &mut sink)
+        .now_or_never()
+        .unwrap()
+        .unwrap();
+    let elapsed = started.elapsed();
+    let expected = parse_rss(plain, FEED_URL).unwrap();
+    assert_eq!(scanned.title, expected.title);
+    assert_eq!(sink.0.len(), 1);
+    assert_eq!(sink.0[0].id, expected.episodes[0].id);
+    assert_eq!(sink.0[0].audio_url, expected.episodes[0].audio_url);
+    assert!(
+        elapsed < std::time::Duration::from_secs(5),
+        "attribute flood took {elapsed:?}"
+    );
 }
