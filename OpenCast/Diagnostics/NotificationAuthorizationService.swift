@@ -23,7 +23,7 @@ struct NotificationAuthorizationService {
         return await authorizationStatus()
     }
 
-    nonisolated static func allowsDelivery(_ status: UNAuthorizationStatus) -> Bool {
+    nonisolated static func allowsRemoteRegistration(_ status: UNAuthorizationStatus) -> Bool {
         switch status {
         case .authorized, .provisional, .ephemeral:
             true

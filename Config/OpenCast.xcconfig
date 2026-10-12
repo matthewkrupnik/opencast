@@ -5,4 +5,9 @@
 // from Config/Secrets.xcconfig.example). The key is embedded in the built app.
 GEMINI_API_KEY =
 
+// NOTIFICATIONS_WORKER is the host (and optional path) of your self-hosted
+// Server/NotificationsWorker, without "https://" because xcconfig treats "//"
+// as a comment. Blank keeps new-episode notifications on device.
+NOTIFICATIONS_WORKER =
+
 #include? "Secrets.xcconfig"

@@ -15,7 +15,6 @@ struct OpenCastRootLifecycleModifier: ViewModifier {
     @State private var connectivityRecoveryTask: Task<Void, Never>?
     @State private var hasPendingConnectivityRefresh = false
     @State private var deferredConnectivityRefreshTask: Task<Void, Never>?
-    @State private var playbackFeedRefreshTask: Task<Void, Never>?
 
     private static let postNowPlayingDismissMaintenanceDelay: TimeInterval = 0.75
     private static let inactiveTranscriptionInterruptionDelay: Duration = .seconds(2)
@@ -73,10 +72,7 @@ struct OpenCastRootLifecycleModifier: ViewModifier {
             }
             appModel.resetTranscriptAnalysisForegroundProbe()
             flushProgressForLifecycleExitIfNeeded()
-            startPlaybackFeedRefresh()
         case .active:
-            playbackFeedRefreshTask?.cancel()
-            playbackFeedRefreshTask = nil
             deferredTranscriptionInterruptionTask?.cancel()
             deferredTranscriptionInterruptionTask = nil
             hasFlushedProgressForLifecycleExit = false
@@ -88,30 +84,6 @@ struct OpenCastRootLifecycleModifier: ViewModifier {
             startConnectivityRecovery()
         @unknown default:
             break
-        }
-    }
-
-    /// New-episode checks while background playback keeps the app running,
-    /// on top of the system-scheduled background refresh.
-    private func startPlaybackFeedRefresh() {
-        playbackFeedRefreshTask?.cancel()
-        playbackFeedRefreshTask = nil
-        guard appModel.allowsAutomaticFeedRefresh else {
-            return
-        }
-
-        playbackFeedRefreshTask = Task {
-            await PlaybackFeedRefreshLoop.run(
-                shouldRefresh: {
-                    appModel.playback.state.showsPauseButton && appModel.notificationSettings.canDeliver
-                },
-                refresh: {
-                    await appModel.library.refreshAllIfStale(
-                        modelContext: modelContext,
-                        staleAfter: BackgroundFeedRefreshRunner.staleAfter
-                    )
-                }
-            )
         }
     }
 
@@ -210,6 +182,7 @@ struct OpenCastRootLifecycleModifier: ViewModifier {
                 return
             }
             await appModel.notificationSettings.refreshIfNeeded(
+                activePodcastIDs: appModel.library.activePodcastIDs,
                 modelContext: modelContext
             )
             guard !Task.isCancelled else {

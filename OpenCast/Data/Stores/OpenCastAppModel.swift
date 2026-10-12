@@ -4,7 +4,6 @@ import OpenCastCore
 import OpenCastPlayback
 import OpenCastTranscription
 import SwiftData
-import UIKit
 import UserNotifications
 
 @Observable
@@ -281,6 +280,9 @@ final class OpenCastAppModel {
             try resolvedLibrary.saveSyncedStore(modelContext)
         })
         resolvedLibrary.episodeSidecarMigrators = [downloads, transcriptions, adAnalyses, transcriptAnalyses, playlists]
+        notificationSettings.feedHealthRecorder = { [weak resolvedLibrary] records in
+            await resolvedLibrary?.recordNotificationFeedHealth(records)
+        }
         adFreePassEnqueueContext = AdFreePassEnqueueContext(
             downloads: downloads,
             transcriptionModels: transcriptionModels,
@@ -368,9 +370,6 @@ final class OpenCastAppModel {
         adFreePass.uiTestQueueOverride = adFreePassQueueOverride
         adFreePass.uiTestEpisodeSnapshotResolver = { [weak self] episodeID in
             self?.episodeSnapshot(for: episodeID)
-        }
-        self.library.onNewEpisodes = { [weak self] candidates in
-            await self?.notifyNewEpisodes(candidates)
         }
         dataNuke.prepareRuntime = { [weak self] in
             await self?.prepareRuntimeForDataNuke()
@@ -2176,20 +2175,6 @@ final class OpenCastAppModel {
         return notification
     }
 
-    /// Announces newly published episodes. Episodes found while the app is
-    /// active are recorded but not posted, so a later background check never
-    /// re-announces them.
-    private func notifyNewEpisodes(_ candidates: [NewEpisodeCandidate]) async {
-        guard notificationSettings.isEnabled else {
-            return
-        }
-        let admitted = await notificationSettings.ledger.admit(candidates)
-        await NewEpisodeNotificationScheduler().post(
-            admitted,
-            isSceneActive: UIApplication.shared.applicationState == .active
-        )
-    }
-
     func refreshLibraryIfStale(modelContext: ModelContext) async {
         guard allowsAutomaticFeedRefresh else {
             return
@@ -2213,6 +2198,7 @@ final class OpenCastAppModel {
     /// fresh network analysis mid-nuke.
     private func prepareRuntimeForDataNuke() async {
         transcriptionRequests.resetForDataNuke()
+        await notificationSettings.deleteInstallIfRegistered()
         library.prepareForDataNuke()
         await transcriptAnalysisQueue.cancelPending()
     }
@@ -2498,7 +2484,7 @@ final class OpenCastAppModel {
         playlists.sortOrder = playlistDisplaySettings.sortOrder
         recentSearches.load(modelContext: modelContext)
         playbackSettings.load(modelContext: modelContext, playback: playback)
-        await notificationSettings.resetAfterDataNuke()
+        notificationSettings.resetAfterDataNuke()
         onboardingState.load(modelContext: modelContext)
         coreStoresHydrated = true
         #if DEBUG

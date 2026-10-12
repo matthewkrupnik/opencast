@@ -209,21 +209,23 @@
       "id": "notifications",
       "title": "Notifications",
       "symbol": "bell",
-      "summary": "New-episode alerts, checked on your device.",
+      "summary": "New-episode alerts from opencast's own service.",
       "updatedAt": "2026-10-12T00:00:00Z",
       "related": [],
       "blocks": [
         {
           "type": "paragraph",
-          "text": "New Episode Notifications are produced on this device. opencast checks the feeds you follow in the background, including every 30 minutes while an episode plays, and posts a notification when a new episode appears. No push service is involved, and nothing about your library leaves the device."
+          "text": "New Episode Notifications are sent by opencast's own notification service, not by a third party. It checks the feeds you follow and sends a push when a new episode appears."
+        },
+        {
+          "type": "paragraph",
+          "text": "To do that it stores a push token for this device and the list of feeds you follow, tied to an anonymous install identity. Turning notifications off disables the token, and Delete Data removes the install entirely."
         },
         {
           "type": "bullets",
           "items": [
-            "iOS decides when background checks run, based on how you use the app. Alerts can arrive later than the publisher posted, and none arrive after you force-quit opencast or while Background App Refresh is off.",
-            "Episodes found while opencast is open are added to your library without a notification.",
             "If iOS permission was denied, use Open Settings to allow notifications for opencast.",
-            "Delete Data clears the list of episodes already announced."
+            "Delivery depends on how often the publisher updates its feed and on the service's polling schedule."
           ]
         }
       ]

@@ -92,6 +92,9 @@ struct OpenCastRootView: View {
             navigationPaths[.search] = []
             dismissNowPlaying()
         }
+        .onChange(of: appModel.library.activePodcastIDs) { _, activePodcastIDs in
+            appModel.notificationSettings.scheduleSubscriptionSyncIfEnabled(activePodcastIDs: activePodcastIDs)
+        }
         .onChange(of: appModel.onboardingState.isCompleted) { _, isCompleted in
             if isCompleted {
                 appModel.importedSubscriptionsNotification = nil
@@ -232,6 +235,7 @@ struct OpenCastRootView: View {
         appModel.cacheController.pruneIfNeeded()
         await runVoiceBoostDeviceProbeIfActive()
         await appModel.notificationSettings.refreshIfNeeded(
+            activePodcastIDs: appModel.library.activePodcastIDs,
             modelContext: modelContext
         )
     }
