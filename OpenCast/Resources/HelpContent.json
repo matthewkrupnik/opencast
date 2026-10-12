@@ -44,7 +44,7 @@
         },
         {
           "type": "paragraph",
-          "text": "Detect Ads transcribes the episode with the speech model on your device. The transcript text is then sent directly from your device to Google's Gemini API to find the breaks. The audio itself never leaves your device."
+          "text": "Detect Ads transcribes the episode with the speech model on your device. The transcript text is then sent to Apple's Private Cloud Compute to find the breaks, which needs Apple Intelligence turned on and counts toward its daily usage limit. If Apple's model is unavailable or at its limit, the transcript goes directly from your device to Google's Gemini API instead, when this build has a Gemini key. The audio itself never leaves your device."
         },
         {
           "type": "paragraph",

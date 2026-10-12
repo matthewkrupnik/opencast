@@ -6,6 +6,7 @@ import Foundation
 /// unavailable.
 nonisolated struct GeminiConfiguration: Sendable, Equatable {
     static let infoPlistKey = "OpenCastGeminiAPIKey"
+    static let apiKeyEnvironmentKey = "OPENCAST_GEMINI_API_KEY"
     static let defaultBaseURL = URL(string: "https://generativelanguage.googleapis.com")!
     static let missingKeyMessage =
         "Gemini API key not configured. Set GEMINI_API_KEY in Config/Secrets.xcconfig and rebuild."
@@ -23,7 +24,7 @@ nonisolated struct GeminiConfiguration: Sendable, Equatable {
         #if DEBUG
         let environment = ProcessInfo.processInfo.environment
         let baseURL = environment["OPENCAST_GEMINI_BASE_URL"].flatMap(URL.init(string:)) ?? defaultBaseURL
-        return GeminiConfiguration(apiKey: environment["OPENCAST_GEMINI_API_KEY"] ?? bundledKey, baseURL: baseURL)
+        return GeminiConfiguration(apiKey: environment[apiKeyEnvironmentKey] ?? bundledKey, baseURL: baseURL)
         #else
         return GeminiConfiguration(apiKey: bundledKey)
         #endif

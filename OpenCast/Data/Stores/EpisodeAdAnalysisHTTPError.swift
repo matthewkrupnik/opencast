@@ -47,6 +47,10 @@ struct EpisodeAdAnalysisHTTPError: LocalizedError, Sendable, Equatable {
             return "Gemini quota for this API key is exhausted. Try again later."
         case "gemini_api_key_rejected":
             return "Gemini rejected the configured API key."
+        case "apple_intelligence_limit_reached":
+            return "Apple Intelligence usage limit reached. Try again later."
+        case "apple_intelligence_unavailable":
+            return detail ?? "Apple Intelligence couldn’t detect ads."
         case "global_capacity_exhausted":
             return "Promo/ad analysis is at capacity today. Try again tomorrow."
         case "daily_request_cap_exceeded", "daily_input_token_cap_exceeded":

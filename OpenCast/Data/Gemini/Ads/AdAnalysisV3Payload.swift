@@ -84,11 +84,7 @@ nonisolated enum AdAnalysisV3Payload {
         previous: AdAnalysisV3Output?,
         issues: [String]
     ) throws -> [String: Any] {
-        guard issues.count <= AdAnalysisV3Validator.maximumBreaksPerWindow * 4,
-              issues.allSatisfy({ $0.utf8.count <= 256 })
-        else {
-            throw AdAnalysisV3Failure.repairFeedbackExceeded
-        }
+        let text = try repairFeedback(request: request, previous: previous, issues: issues)
         let previousJSON: String
         if let previous {
             previousJSON = String(decoding: try JSONEncoder.sortedKeys.encode(previous), as: UTF8.self)
@@ -96,6 +92,27 @@ nonisolated enum AdAnalysisV3Payload {
             previousJSON = #"{"unusable_previous_output":true}"#
         }
         guard previousJSON.utf8.count <= GeminiResponse.maximumAnswerByteCount else {
+            throw AdAnalysisV3Failure.repairFeedbackExceeded
+        }
+
+        var repaired = payload
+        var contents = payload["contents"] as? [[String: Any]] ?? []
+        contents.append(["role": "model", "parts": [["text": previousJSON]]])
+        contents.append(["role": "user", "parts": [["text": text]]])
+        repaired["contents"] = contents
+        return repaired
+    }
+
+    /// The corrective user turn: the validation issues plus each failing
+    /// boundary's actual source text. Shared by every engine.
+    static func repairFeedback(
+        request: EpisodeAdAnalysisAPIRequest,
+        previous: AdAnalysisV3Output?,
+        issues: [String]
+    ) throws -> String {
+        guard issues.count <= AdAnalysisV3Validator.maximumBreaksPerWindow * 4,
+              issues.allSatisfy({ $0.utf8.count <= 256 })
+        else {
             throw AdAnalysisV3Failure.repairFeedbackExceeded
         }
 
@@ -142,13 +159,7 @@ nonisolated enum AdAnalysisV3Payload {
         guard text.utf8.count <= maximumRepairFeedbackByteCount else {
             throw AdAnalysisV3Failure.repairFeedbackExceeded
         }
-
-        var repaired = payload
-        var contents = payload["contents"] as? [[String: Any]] ?? []
-        contents.append(["role": "model", "parts": [["text": previousJSON]]])
-        contents.append(["role": "user", "parts": [["text": text]]])
-        repaired["contents"] = contents
-        return repaired
+        return text
     }
 
     static func jsonString(_ object: Any) throws -> String {

@@ -45,7 +45,7 @@ Select the `OpenCast` scheme, choose an iPhone or iPad running iOS 27, and press
 
 New-episode notifications are pushed by your own deployment of [`Server/NotificationsWorker`](Server/NotificationsWorker/README.md) and [`Server/FeedPollingWorker`](Server/FeedPollingWorker/README.md). Set `NOTIFICATIONS_WORKER` (host and optional path, without `https://`) in `Config/Secrets.xcconfig`; the app registers with App Attest and APNs, which needs a physical device.
 
-Ad detection and Chapters & Summary call Google's Gemini API directly from the app. Copy `Config/Secrets.xcconfig.example` to `Config/Secrets.xcconfig` (git-ignored), set `GEMINI_API_KEY`, and rebuild. The key is embedded in the built app, so restrict it to your bundle identifier in Google Cloud. Whisper models download from Hugging Face at pinned revisions and are checked against pinned hashes.
+Ad detection runs on Apple's Private Cloud Compute (Apple Intelligence) and falls back to Google's Gemini API when Apple's model is unavailable or at its usage limit; Chapters & Summary call Gemini directly. Copy `Config/Secrets.xcconfig.example` to `Config/Secrets.xcconfig` (git-ignored), set `GEMINI_API_KEY`, and rebuild. The key is embedded in the built app, so restrict it to your bundle identifier in Google Cloud. Whisper models download from Hugging Face at pinned revisions and are checked against pinned hashes.
 
 <details>
 <summary><strong>Running on a physical device</strong></summary>

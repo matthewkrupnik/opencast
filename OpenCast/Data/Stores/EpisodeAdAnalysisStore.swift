@@ -30,9 +30,16 @@ final class EpisodeAdAnalysisStore {
         transport: any GeminiHTTPTransport = GeminiGenerateContentClient.sharedSession,
         preparationGate: @escaping @Sendable () async throws -> Void = {}
     ) {
-        client = GeminiAdAnalysisClient(configuration: configuration, transport: transport)
+        let usesApple = AppleFirstAdAnalysisClient.usesAppleForProcess
+        client = AppleFirstAdAnalysisClient(
+            gemini: GeminiAdAnalysisClient(configuration: configuration, transport: transport),
+            usesApple: usesApple
+        )
         self.fileStore = fileStore
-        analysisUnavailableMessage = configuration.unavailableMessage
+        analysisUnavailableMessage = AppleFirstAdAnalysisClient.unavailableMessage(
+            configuration: configuration,
+            usesApple: usesApple
+        )
         poller = Self.makePoller(timeout: .seconds(1_800)) { duration in
             try await Task.sleep(for: duration)
         }
