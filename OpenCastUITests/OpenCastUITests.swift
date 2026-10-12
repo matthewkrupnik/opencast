@@ -4500,11 +4500,9 @@ final class OpenCastUITests: XCTestCase {
             "Version row should show the marketing version and build, got \(versionRow.label)"
         )
 
-        // Never taps these: Website leaves the app and Rate may show the system sheet.
+        // Never taps Rate: it may show the system sheet.
         for identifier in [
-            "Settings Row Website",
             "Settings Row Rate opencast",
-            "Settings Row Share opencast",
             "Help Link siri",
         ] {
             // Links surface as links, the rest as buttons.

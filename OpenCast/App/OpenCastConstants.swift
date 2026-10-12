@@ -15,9 +15,6 @@ enum OpenCastConstants {
     }
 
     static let sourceCodeURL = URL(string: "https://github.com/connlark/opencast")!
-    static let websiteURL = URL(string: "https://opencast.mobile/")!
-    static let appStoreID = "6766770733"
-    static let appStoreURL = URL(string: "https://apps.apple.com/app/opencast/id\(appStoreID)")!
     static let applePodcastsOPMLShortcutURL = URL(
         string: "https://www.icloud.com/shortcuts/f1cc341b82494ad09166fd9133d16cf3"
     )!
