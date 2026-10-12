@@ -1,7 +1,7 @@
 import AVFoundation
 import QuartzCore
 
-extension AVAudioPCMBuffer: @unchecked Sendable {}
+extension AVAudioPCMBuffer: @retroactive @unchecked Sendable {}
 
 nonisolated final class SmartSpeedEngine: @unchecked Sendable {
     let engine = AVAudioEngine()
@@ -44,8 +44,8 @@ nonisolated final class SmartSpeedEngine: @unchecked Sendable {
         engine.attach(player)
         engine.attach(timePitch)
         
-        engine.connect(player, to: timePitch, format: decoder.format)
-        engine.connect(timePitch, to: engine.mainMixerNode, format: decoder.format)
+        try engine.connectNode(player, to: timePitch, format: decoder.format)
+        try engine.connectNode(timePitch, to: engine.mainMixerNode, format: decoder.format)
         
         engine.prepare()
         try engine.start()
@@ -62,7 +62,7 @@ nonisolated final class SmartSpeedEngine: @unchecked Sendable {
         }
         
         startScheduling()
-        player.play()
+        try player.playAudio()
         startControlLoop()
     }
     
@@ -75,9 +75,9 @@ nonisolated final class SmartSpeedEngine: @unchecked Sendable {
         controlTimer = nil
     }
     
-    func resumeWithSmartResume() {
+    func resumeWithSmartResume() throws {
         guard let state = resumeState else {
-            player.play()
+            try player.playAudio()
             startControlLoop()
             return
         }
@@ -93,7 +93,7 @@ nonisolated final class SmartSpeedEngine: @unchecked Sendable {
         // We need to flush the lookahead buffer here in a real implementation
         // and restart scheduling from `target`.
         startScheduling()
-        player.play()
+        try player.playAudio()
         
         resumeState = nil
         startControlLoop()
@@ -148,7 +148,10 @@ nonisolated final class SmartSpeedEngine: @unchecked Sendable {
         controlTimer?.invalidate()
         controlTimer = Timer.scheduledTimer(withTimeInterval: 1.0/60.0, repeats: true) { [weak self] _ in
             guard let self = self else { return }
-            self.rateController?.tick()
+            // Scheduled from the main run loop, so the timer fires on main.
+            MainActor.assumeIsolated {
+                self.rateController?.tick()
+            }
             
             if let frame = self.currentMediaFrame() {
                 let mediaSeconds = Double(frame) / self.decoder.format.sampleRate

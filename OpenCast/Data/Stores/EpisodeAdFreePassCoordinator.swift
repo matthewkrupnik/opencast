@@ -80,7 +80,6 @@ final class EpisodeAdFreePassCoordinator {
             activeEpisodeID: activeItem?.episodeID,
             activeEpisodeTitle: activeItem?.episode.title,
             activeArtworkURL: activeItem?.episode.artworkURL,
-            activeItemMode: activeItem?.mode,
             currentStage: activeItem != nil ? currentStage : nil,
             finishedItemCount: finishedItemCount,
             totalItemCount: drainTotalItemCount,
@@ -122,8 +121,6 @@ final class EpisodeAdFreePassCoordinator {
                 return .completed(zoneCount: zoneCount)
             case .failed(let message):
                 return .failed(message: message)
-            case .cloudUnavailable(let message):
-                return .cloudUnavailable(message: message)
             }
         }
 
@@ -154,7 +151,6 @@ final class EpisodeAdFreePassCoordinator {
             activeEpisodeID: override.activeEpisodeID,
             activeEpisodeTitle: activeEpisode?.title,
             activeArtworkURL: activeEpisode?.artworkURL,
-            activeItemMode: .onDevice,
             currentStage: override.stage,
             finishedItemCount: 0,
             totalItemCount: itemCount,
@@ -189,29 +185,6 @@ final class EpisodeAdFreePassCoordinator {
 
         if let queuedPresentation = queuedPresentation(for: episodeID) {
             return queuedPresentation
-        }
-
-        // Cloud stages live entirely in the coordinator (no local store
-        // reflects them), so the active cloud item presents from its stage.
-        if activeEpisodeID == episodeID, let currentStage {
-            switch currentStage {
-            case .cloudQueued:
-                return .cloudQueued
-            case .cloudTranscribing(let progress):
-                return .cloudTranscribing(progress)
-            case .cloudDetectingAds:
-                return .cloudDetectingAds
-            case .cloudUnavailable(let message):
-                return .cloudUnavailable(message)
-            default:
-                break
-            }
-        }
-
-        if activeEpisodeID == nil,
-           let outcome = drainOutcomes.last(where: { $0.episodeID == episodeID }),
-           case .cloudUnavailable(let message) = outcome.kind {
-            return .cloudUnavailable(message)
         }
 
         if activeEpisodeID == nil,
@@ -334,10 +307,6 @@ final class EpisodeAdFreePassCoordinator {
         modelContext: ModelContext,
         transcriptionEngine: AdFreePassTranscriptionEngine = .productDefault,
         podcastLanguageCode: String? = nil,
-        mode: AdDetectionMode = .onDevice,
-        remoteRunner: RemoteTranscriptionJobRunner? = nil,
-        remoteJobStore: RemoteTranscriptionJobStore? = nil,
-        remotePurchases: RemoteTranscriptionPurchaseStore? = nil,
         prepareBackgroundSession: @escaping @MainActor () -> Void = {},
         refreshSkipZones: @escaping @MainActor () async -> Int
     ) {
@@ -363,8 +332,7 @@ final class EpisodeAdFreePassCoordinator {
             episode: episode,
             origin: origin,
             enqueuedAt: .now,
-            sequence: nextSequence(front: insertsAtFront),
-            mode: mode
+            sequence: nextSequence(front: insertsAtFront)
         )
         let dependencies = PassDependencies(
             downloads: downloads,
@@ -376,10 +344,7 @@ final class EpisodeAdFreePassCoordinator {
             transcriptionEngine: transcriptionEngine,
             podcastLanguageCode: podcastLanguageCode,
             prepareBackgroundSession: prepareBackgroundSession,
-            refreshSkipZones: refreshSkipZones,
-            remoteRunner: remoteRunner,
-            remoteJobStore: remoteJobStore,
-            remotePurchases: remotePurchases
+            refreshSkipZones: refreshSkipZones
         )
         let launchPreparation = Task { [weak self] in
             await Task.yield()
@@ -426,9 +391,6 @@ final class EpisodeAdFreePassCoordinator {
         adAnalyses: EpisodeAdAnalysisStore,
         modelContext: ModelContext,
         podcastLanguageCode: (String) -> String?,
-        remoteRunner: RemoteTranscriptionJobRunner? = nil,
-        remoteJobStore: RemoteTranscriptionJobStore? = nil,
-        remotePurchases: RemoteTranscriptionPurchaseStore? = nil,
         refreshSkipZones: @escaping @MainActor (EpisodeListItemSnapshot) async -> Int
     ) {
         let records: [AdFreePassQueueItemRecord]
@@ -460,18 +422,14 @@ final class EpisodeAdFreePassCoordinator {
                 continue
             }
 
-            let mode = AdDetectionMode(rawValue: record.modeRawValue) ?? .onDevice
             let item = AdFreePassQueueItem(
                 episode: episode,
                 origin: origin,
                 enqueuedAt: record.enqueuedAt,
-                sequence: record.sequence,
-                mode: mode
+                sequence: record.sequence
             )
             // Restored items drain foreground-opportunistically; background
             // continuation always requires a fresh explicit tap.
-            // A restored cloud item re-attaches server-side through its
-            // stable purpose-keyed clientRequestID.
             let entry = QueueEntry(
                 item: item,
                 deps: PassDependencies(
@@ -484,10 +442,7 @@ final class EpisodeAdFreePassCoordinator {
                     transcriptionEngine: .productDefault,
                     podcastLanguageCode: podcastLanguageCode(episode.podcastID),
                     prepareBackgroundSession: {},
-                    refreshSkipZones: { await refreshSkipZones(episode) },
-                    remoteRunner: remoteRunner,
-                    remoteJobStore: remoteJobStore,
-                    remotePurchases: remotePurchases
+                    refreshSkipZones: { await refreshSkipZones(episode) }
                 ),
                 launchPreparation: nil
             )
@@ -635,10 +590,6 @@ final class EpisodeAdFreePassCoordinator {
         let podcastLanguageCode: String?
         let prepareBackgroundSession: @MainActor () -> Void
         let refreshSkipZones: @MainActor () async -> Int
-        // Cloud detect passes only; on-device items never touch these.
-        var remoteRunner: RemoteTranscriptionJobRunner?
-        var remoteJobStore: RemoteTranscriptionJobStore?
-        var remotePurchases: RemoteTranscriptionPurchaseStore?
     }
 
     private struct QueueEntry {
@@ -656,7 +607,6 @@ final class EpisodeAdFreePassCoordinator {
     private enum PassOutcome {
         case completed(zoneCount: Int)
         case failed(message: String)
-        case cloudUnavailable(message: String)
         case awaitingConsent
         case interrupted(environmental: Bool)
         case capDeferred
@@ -779,7 +729,7 @@ final class EpisodeAdFreePassCoordinator {
             episodeID: item.episodeID
         )
         AdFreePassBackgroundRunLog.record(
-            "queue enqueued episodeID=\(item.episodeID) origin=\(item.origin.rawValue) mode=\(item.mode.rawValue) pending=\(entries.count) state=\(queueState)"
+            "queue enqueued episodeID=\(item.episodeID) origin=\(item.origin.rawValue) pending=\(entries.count) state=\(queueState)"
         )
         return .ready
     }
@@ -898,15 +848,6 @@ final class EpisodeAdFreePassCoordinator {
                     kind: .failed(message: message)
                 ))
                 removePersistedItem(episodeID: entry.item.episodeID, modelContext: entry.deps.modelContext)
-            case .cloudUnavailable(let message):
-                drainFailedCount += 1
-                drainOutcomes.append(AdFreePassQueueItemOutcome(
-                    episodeID: entry.item.episodeID,
-                    episodeTitle: entry.item.episode.title,
-                    artworkURL: entry.item.episode.artworkURL,
-                    kind: .cloudUnavailable(message: message)
-                ))
-                removePersistedItem(episodeID: entry.item.episodeID, modelContext: entry.deps.modelContext)
             case .awaitingConsent:
                 entries.insert(entry, at: 0)
                 endDrain(state: .awaitingModelConsent, terminal: .awaitingConsent)
@@ -950,9 +891,6 @@ final class EpisodeAdFreePassCoordinator {
     }
 
     private func runPass(_ entry: QueueEntry) async -> PassOutcome {
-        if entry.item.mode == .cloud {
-            return await runCloudPass(entry)
-        }
         let episode = entry.item.episode
         let deps = entry.deps
 
@@ -1042,231 +980,6 @@ final class EpisodeAdFreePassCoordinator {
         }
     }
 
-    /// One cloud detect item: transcript reuse first (free), then a
-    /// viability precheck (never a silent mode switch), then one server job
-    /// with chained ad detection. The transcript always imports when the job
-    /// delivers; a failed/invalid ad block falls back to the on-device
-    /// analysis path over that imported transcript automatically.
-    private func runCloudPass(_ entry: QueueEntry) async -> PassOutcome {
-        let episode = entry.item.episode
-        let deps = entry.deps
-
-        do {
-            // A current completed local transcript never buys a
-            // cloud job — the analysis-only device path is free.
-            if let reusableDocument = await reusableCompletedTranscriptDocument(
-                for: episode.episodeID,
-                transcriptions: deps.transcriptions
-            ) {
-                AdFreePassBackgroundRunLog.record(
-                    "cloud pass transcript reuse episodeID=\(episode.episodeID)"
-                )
-                return try await finishCloudPassWithAnalysis(
-                    transcript: reusableDocument,
-                    entry: entry
-                )
-            }
-
-            guard let runner = deps.remoteRunner,
-                  let jobStore = deps.remoteJobStore,
-                  let purchases = deps.remotePurchases
-            else {
-                return cloudUnavailableOutcome(
-                    "Cloud detection isn't available right now.",
-                    episodeID: episode.episodeID
-                )
-            }
-            if case .unavailable(let reason) = purchases.availability {
-                // `.unknown` deliberately does not block: the job's own
-                // bootstrap is authoritative (and the only gate that exists
-                // in the dev lane).
-                return cloudUnavailableOutcome(reason, episodeID: episode.episodeID)
-            }
-            if let duration = episode.duration,
-               !purchases.estimate(durationSeconds: duration).fitsWithinHeadroom {
-                return cloudUnavailableOutcome(
-                    RemoteTranscriptionFailureCategory.serverRejected(.insufficientCredits).message,
-                    episodeID: episode.episodeID
-                )
-            }
-            guard let audioURL = episode.audioURL, !audioURL.isEmpty else {
-                throw PassFailure(
-                    RemoteTranscriptionFailureCategory.missingAudio.message
-                )
-            }
-            if jobStore.hasActiveRequest, jobStore.activeEpisodeID == episode.episodeID {
-                // A plain Transcribe Remotely job already owns this episode;
-                // it will deliver the transcript the free path can use.
-                return cloudUnavailableOutcome(
-                    "A remote transcription of this episode is already running.",
-                    episodeID: episode.episodeID
-                )
-            }
-
-            let outcome = try await runner.run(
-                episode: episode,
-                enclosureURL: audioURL,
-                purpose: .adDetection,
-                adAnalysis: RemoteTranscriptionJobRunner.AdAnalysisContext(
-                    podcastID: episode.podcastID,
-                    episodeTitle: episode.title,
-                    podcastTitle: episode.podcastTitle
-                ),
-                modelContext: deps.modelContext,
-                onEvent: { [weak self] event in
-                    self?.applyCloudEvent(event)
-                }
-            )
-
-            if case .completed(let success) = outcome.adAnalysis {
-                do {
-                    let analysisDocument = try await EpisodeRemoteAdAnalysisMapper.documentOffCaller(
-                        from: success,
-                        transcript: outcome.document,
-                        requestID: outcome.jobID
-                    )
-                    try Task.checkCancellation()
-                    try deps.adAnalyses.importCompletedAnalysis(
-                        analysisDocument,
-                        modelContext: deps.modelContext
-                    )
-                    let zoneCount = await deps.refreshSkipZones()
-                    clearFailure(episodeID: episode.episodeID)
-                    setStage(.completed(zoneCount: zoneCount))
-                    return .completed(zoneCount: zoneCount)
-                } catch {
-                    AdFreePassBackgroundRunLog.record(
-                        "cloud analysis import rejected episodeID=\(episode.episodeID); falling back to device analysis"
-                    )
-                }
-            }
-            if case .failed(let code, let failure) = outcome.adAnalysis {
-                let error = EpisodeAdAnalysisHTTPError(
-                    statusCode: code == "ad_analysis_capacity" ? 429 : 422,
-                    code: code ?? "ad_analysis_failed", detail: nil, failure: failure
-                )
-                if error.replayFailure?.suppressesAutomaticReplay == true {
-                    try await deps.adAnalyses.retainFailure(error, transcript: outcome.document)
-                    throw error
-                }
-                if error.isCapExceeded || code == "ad_analysis_capacity" { throw PassStop.capDeferred }
-            }
-            // Failure marker, missing block, or an import the mapper refused:
-            // the transcript is durably imported, so the existing on-device
-            // analysis path finishes the pass automatically.
-            return try await finishCloudPassWithAnalysis(
-                transcript: outcome.document,
-                entry: entry
-            )
-        } catch PassStop.capDeferred {
-            return .capDeferred
-        } catch PassStop.awaitingModelConsent {
-            return .awaitingConsent
-        } catch PassStop.interrupted {
-            setStage(.interrupted)
-            return .interrupted(environmental: false)
-        } catch is CancellationError {
-            // Local cancellation never cancels the server job by itself. A
-            // user request resolves it through the runner's user-cancel
-            // path; expiration and every other stop park the reference so
-            // the paid work re-attaches later.
-            if cancellationSource.lastCancellationReason == .userRequest, let runner = deps.remoteRunner {
-                Task {
-                    _ = await runner.cancelServerJob(episodeID: episode.episodeID, purpose: .adDetection)
-                }
-            } else {
-                deps.remoteJobStore?.recordExit(.parked, episodeID: episode.episodeID, purpose: .adDetection)
-            }
-            setStage(.interrupted)
-            return .interrupted(environmental: false)
-        } catch let error as RemoteTranscriptionJobRunError {
-            if Self.isCloudUnavailableRunError(error) {
-                return cloudUnavailableOutcome(
-                    Self.cloudFailureMessage(for: error),
-                    episodeID: episode.episodeID
-                )
-            }
-            let message = Self.cloudFailureMessage(for: error)
-            recordFailure(message, episodeID: episode.episodeID)
-            setStage(.failed(message: message))
-            return .failed(message: message)
-        } catch {
-            recordFailure(error.localizedDescription, episodeID: episode.episodeID)
-            setStage(.failed(message: error.localizedDescription))
-            return .failed(message: error.localizedDescription)
-        }
-    }
-
-    /// Shared tail of the cloud pass: run (or reuse) the on-device analysis
-    /// over a completed transcript, with cap-deferral semantics intact.
-    private func finishCloudPassWithAnalysis(
-        transcript: EpisodeTranscriptDocument,
-        entry: QueueEntry
-    ) async throws -> PassOutcome {
-        try await completedAnalysis(
-            for: transcript,
-            transcriptions: entry.deps.transcriptions,
-            adAnalyses: entry.deps.adAnalyses,
-            allowsExplicitRetry: entry.item.origin == .manual,
-            modelContext: entry.deps.modelContext
-        )
-        let zoneCount = await entry.deps.refreshSkipZones()
-        clearFailure(episodeID: entry.item.episodeID)
-        setStage(.completed(zoneCount: zoneCount))
-        return .completed(zoneCount: zoneCount)
-    }
-
-    private func cloudUnavailableOutcome(_ message: String, episodeID: String) -> PassOutcome {
-        recordFailure(message, episodeID: episodeID)
-        setStage(.cloudUnavailable(message: message))
-        return .cloudUnavailable(message: message)
-    }
-
-    private func applyCloudEvent(_ event: RemoteTranscriptionJobEvent) {
-        switch event {
-        case .downloading:
-            setStage(.downloadingEpisode)
-        case .verifying, .queuedRemotely, .waitingForCredits, .uploadingExactCopy:
-            setStage(.cloudQueued)
-        case .processing(let progress) where progress.stage == .finalizing:
-            // Finalization follows the ad phase on detect jobs; falling back
-            // to "Transcribing" copy here would read as a regression.
-            setStage(.cloudDetectingAds)
-        case .processing(let progress):
-            setStage(.cloudTranscribing(progress))
-        case .detectingAds, .saving:
-            setStage(.cloudDetectingAds)
-        }
-    }
-
-    /// Failures where "Detect on this device instead" is the honest recovery
-    /// (credits, capacity, kill switch, unreachable service) — never a
-    /// silent mode switch, always the explicit one-tap fallback.
-    private static func isCloudUnavailableRunError(_ error: RemoteTranscriptionJobRunError) -> Bool {
-        switch error {
-        case .serviceUnavailable, .connectionLost, .localRequestFailed:
-            true
-        case .serverRejected(let code):
-            code == .featureDisabled
-                || code == .insufficientCredits
-                || code == .rateLimited
-        case .downloadFailed, .remoteCancelled, .mismatchLocalFallback, .resultInvalid,
-             .acknowledgedWithoutLocalImport:
-            false
-        }
-    }
-
-    private static func cloudFailureMessage(for error: RemoteTranscriptionJobRunError) -> String {
-        switch error {
-        case .mismatchLocalFallback:
-            "The server's audio didn't match this device's copy."
-        case .remoteCancelled:
-            "The server ended the cloud detection job."
-        default:
-            error.failureCategory.message
-        }
-    }
-
     // MARK: - Presentation helpers
 
     private func queuedPresentation(for episodeID: String) -> EpisodeAdFreePassPresentation? {
@@ -1284,15 +997,6 @@ final class EpisodeAdFreePassCoordinator {
             // interrupted/consent copy and resume actions surface unchanged.
             return index == 0 ? nil : .queued(ahead: index)
         }
-    }
-
-    /// True while a cloud detect item is running or pending for the episode;
-    /// gates Transcribe Remotely (the cloud pass delivers the transcript).
-    func hasActiveOrQueuedCloudItem(for episodeID: String) -> Bool {
-        if let activeItem, activeItem.episodeID == episodeID, activeItem.mode == .cloud {
-            return true
-        }
-        return entries.contains { $0.item.episodeID == episodeID && $0.item.mode == .cloud }
     }
 
     func hasCurrentCompletedAnalysis(
@@ -1447,8 +1151,7 @@ final class EpisodeAdFreePassCoordinator {
             podcastID: item.episode.podcastID,
             originRawValue: item.origin.rawValue,
             enqueuedAt: item.enqueuedAt,
-            sequence: item.sequence,
-            modeRawValue: item.mode.rawValue
+            sequence: item.sequence
         )
         modelContext.insert(record)
         do {

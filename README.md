@@ -19,7 +19,7 @@ no account. no tracking. no ads of our own. **your listening is not a growth fun
 | :--- | :--- |
 | **Transcribed on your phone.** Download an episode and opencast transcribes it on device with Apple Speech or Whisper, then marks every promo and sponsor read on the timeline and in the transcript. | **No account, no tracking.** No opencast login, no analytics SDK, no ads of our own. Subscriptions and progress sync through your private iCloud when you turn it on. |
 | **Skipped, with an undo.** High-confidence breaks skip automatically and a small red pill says "Skipped promo. Tap to undo." Borderline sponsor reads are marked, never skipped. | **Any RSS feed.** Find a show in the directory or paste its feed URL. Nothing between you and your subscriptions rearranges them. |
-| **Reads the episode.** Tap-to-seek transcripts with follow-along highlighting, full-text search across everything ever said in your library, generated chapters and summaries (optional, paid), and Voice Boost. | **Native and small.** SwiftUI on iOS 27, CarPlay and Siri, Up Next, sleep timer, per-show intro and outro skip, OPML, downloads. About 10 MB. MIT-licensed. |
+| **Reads the episode.** Tap-to-seek transcripts with follow-along highlighting, full-text search across everything ever said in your library, generated chapters and summaries (optional), and Voice Boost. | **Native and small.** SwiftUI on iOS 27, CarPlay and Siri, Up Next, sleep timer, per-show intro and outro skip, OPML, downloads. About 10 MB. MIT-licensed. |
 
 ![Four opencast screens: Now Playing with a skipped promo, the Sound Lab, a transcript with a flagged sponsor read, and the Library](Screenshots/readme-showcase.png)
 
@@ -43,7 +43,7 @@ open opencast.xcodeproj
 
 Select the `OpenCast` scheme, choose an iPhone or iPad running iOS 27, and press Run. A simulator build does **not** require a Cloudflare deployment: RSS, the local library, playback, downloads, Voice Boost, and local persistence are all part of the app checkout.
 
-The public repository is deliberately sanitized. Server-backed features point to placeholder endpoints, so notifications, ad analysis, model delivery, purchases, and remote transcription require services you operate and configure yourself.
+The public repository is deliberately sanitized. Server-backed features point to placeholder endpoints, so notifications, ad analysis, and model delivery require services you operate and configure yourself.
 
 <details>
 <summary><strong>Running on a physical device</strong></summary>
@@ -77,8 +77,7 @@ Every public Worker configuration is a disabled, self-hostable template.
 | Transcript-based ad analysis | [`AdAnalysisWorker`](Server/AdAnalysisWorker/README.md) |
 | Transcript chapters and summaries | [`TranscriptAnalysisWorker`](Server/TranscriptAnalysisWorker/README.md) |
 | Whisper model manifests and assets | [`ModelGatewayWorker`](Server/ModelGatewayWorker/README.md) |
-| Remote transcription | [`RemoteTranscriptionWorker`](Server/RemoteTranscriptionWorker/README.md) and [`TranscriptionMediaWorker`](Server/TranscriptionMediaWorker/README.md) |
-| Remote-transcription purchases | [`PurchaseWorker`](Server/PurchaseWorker/README.md) |
+| Optional chapters-and-summaries billing | [`PurchaseWorker`](Server/PurchaseWorker/README.md) |
 | Marketing, support, and privacy site | [`Website`](Server/Website/README.md) |
 
 ## Contributing

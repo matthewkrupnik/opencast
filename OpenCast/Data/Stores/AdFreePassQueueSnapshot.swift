@@ -3,7 +3,6 @@ struct AdFreePassQueueSnapshot: Equatable {
     var activeEpisodeID: String?
     var activeEpisodeTitle: String?
     var activeArtworkURL: String?
-    var activeItemMode: AdDetectionMode?
     var currentStage: EpisodeAdFreePassStage?
     var finishedItemCount = 0
     var totalItemCount = 0

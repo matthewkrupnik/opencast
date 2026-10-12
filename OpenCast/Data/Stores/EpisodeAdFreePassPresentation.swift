@@ -96,45 +96,6 @@ struct EpisodeAdFreePassPresentation: Equatable {
         isPrimaryActionEnabled: false
     )
 
-    static let cloudQueued = EpisodeAdFreePassPresentation(
-        stage: .cloudQueued,
-        phase: .running,
-        statusText: "Detecting in the cloud...",
-        primaryActionTitle: "Working...",
-        isPrimaryActionEnabled: false
-    )
-
-    static func cloudTranscribing(
-        _ progress: RemoteTranscriptionActiveProgress?
-    ) -> EpisodeAdFreePassPresentation {
-        EpisodeAdFreePassPresentation(
-            stage: .cloudTranscribing(progress),
-            phase: .running,
-            statusText: progress?.estimate.map { "Transcribing on the server — \($0.displayText)" }
-                ?? "Transcribing on the server...",
-            primaryActionTitle: "Working...",
-            isPrimaryActionEnabled: false
-        )
-    }
-
-    static let cloudDetectingAds = EpisodeAdFreePassPresentation(
-        stage: .cloudDetectingAds,
-        phase: .running,
-        statusText: "Detecting promos and ads...",
-        primaryActionTitle: "Working...",
-        isPrimaryActionEnabled: false
-    )
-
-    static func cloudUnavailable(_ message: String) -> EpisodeAdFreePassPresentation {
-        EpisodeAdFreePassPresentation(
-            stage: .cloudUnavailable(message: message),
-            phase: .failed,
-            statusText: message,
-            primaryActionTitle: "Detect on Device",
-            isPrimaryActionEnabled: true
-        )
-    }
-
     static func completed(zoneCount: Int) -> EpisodeAdFreePassPresentation {
         let zoneText = zoneCount == 1 ? "1 zone marked." : "\(zoneCount) zones marked."
         return EpisodeAdFreePassPresentation(

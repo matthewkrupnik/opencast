@@ -37,28 +37,6 @@ struct EpisodeTranscriptFileStore: Sendable {
         return OpenCastSHA256.hash(Data(value.utf8))
     }
 
-    /// Fingerprint for remotely produced documents. Domain-separated from the
-    /// local fingerprint and keyed on the serving contract and pipeline so a
-    /// remote contract change never overwrites a local or prior remote
-    /// transcript file.
-    nonisolated func remoteFingerprint(
-        sourceFileSHA256: String,
-        provider: String,
-        providerModelIdentifier: String,
-        servingContractVersion: String,
-        pipelineVersion: String
-    ) -> String {
-        let value = [
-            "remote",
-            sourceFileSHA256,
-            provider,
-            providerModelIdentifier,
-            servingContractVersion,
-            pipelineVersion
-        ].joined(separator: "|")
-        return OpenCastSHA256.hash(Data(value.utf8))
-    }
-
     nonisolated func fileURL(relativePath: String) -> URL {
         baseDirectory.appending(path: relativePath)
     }

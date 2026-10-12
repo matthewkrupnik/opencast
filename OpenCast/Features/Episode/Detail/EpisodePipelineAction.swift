@@ -16,8 +16,6 @@ enum EpisodePipelineAction: Equatable {
     case retryTranscription
     case retryAnalysis
     case removeFromQueue
-    /// Cloud detection couldn't run; run the free on-device pass instead.
-    case detectOnDevice
 
     var title: String {
         switch self {
@@ -35,8 +33,6 @@ enum EpisodePipelineAction: Equatable {
             "Retry"
         case .removeFromQueue:
             "Remove from Queue"
-        case .detectOnDevice:
-            "Detect on This Device"
         }
     }
 }

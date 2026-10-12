@@ -10,7 +10,8 @@ final class AdFreePassQueueItemRecord {
     var originRawValue: String = ""
     var enqueuedAt: Date = Date()
     var sequence: Int = 0
-    /// Empty on records persisted before cloud detect existed ⇒ on-device.
+    /// Unused since cloud detection was removed; kept so the local store
+    /// schema stays stable.
     var modeRawValue: String = ""
 
     init(

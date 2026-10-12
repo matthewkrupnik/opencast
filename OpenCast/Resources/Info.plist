@@ -83,8 +83,6 @@
 	</dict>
 	<key>NSSiriUsageDescription</key>
 	<string>Siri lets you play your podcasts by voice — hands-free in the car.</string>
-	<key>SKIncludeConsumableInAppPurchaseHistory</key>
-	<true/>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>

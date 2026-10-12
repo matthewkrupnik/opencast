@@ -12,10 +12,6 @@ final class TranscriptAnalysisQueue {
         /// once-per-foreground-session probe — the scene-activation probe
         /// can fire before the store load and must still get its turn.
         case launch
-        /// A redeem credited the shared transcription balance: re-probe the
-        /// pay-gate deferrals (H8). Cap deferrals stay parked — new credit
-        /// cannot clear a daily cap.
-        case balanceIncreased
     }
 
     private let transcriptAnalyses: EpisodeTranscriptAnalysisStore
@@ -52,8 +48,7 @@ final class TranscriptAnalysisQueue {
     /// queue rather than fail (a transcription backlog can legitimately hit
     /// the per-key cap; a long episode can legitimately outprice the
     /// balance). The scene-activation trigger probes at most once per
-    /// foreground session, mirroring `AdFreePassCapDeferralPolicy`; a
-    /// balance increase sweeps only the pay-gate bucket. Consent rides on
+    /// foreground session, mirroring `AdFreePassCapDeferralPolicy`. Consent rides on
     /// the deferral buckets themselves: the store demotes any typed
     /// deferral that predates the generate disclosure acknowledgement at
     /// load, so these sweeps only ever re-upload manually started runs.
@@ -65,13 +60,8 @@ final class TranscriptAnalysisQueue {
         }
         self.modelContext = modelContext
 
-        let deferredCandidateIDs: [String] = switch trigger {
-        case .balanceIncreased:
-            transcriptAnalyses.insufficientSecondsDeferredEpisodeIDs
-        case .sceneActivated, .launch:
-            transcriptAnalyses.capDeferredEpisodeIDs
-                + transcriptAnalyses.insufficientSecondsDeferredEpisodeIDs
-        }
+        let deferredCandidateIDs = transcriptAnalyses.capDeferredEpisodeIDs
+            + transcriptAnalyses.insufficientSecondsDeferredEpisodeIDs
         // The probe flag is consumed only when something was actually
         // enqueued: the first activation can precede the store load, and an
         // empty sweep must not spend the session's one probe. A deferred
@@ -93,16 +83,6 @@ final class TranscriptAnalysisQueue {
 
     func resetForegroundProbe() {
         hasProbedDeferredThisForegroundSession = false
-    }
-
-    /// Balance top-ups re-probe pay-gate deferrals (H8): the purchase store
-    /// fires this after a redeem credits the shared balance. Before the
-    /// first store load there is no context and nothing deferred to sweep.
-    func retryDeferredAfterBalanceIncrease() {
-        guard let modelContext else {
-            return
-        }
-        retryDeferred(modelContext: modelContext, trigger: .balanceIncreased)
     }
 
     /// Stops the pending-analysis queue and waits for the drain to finish,

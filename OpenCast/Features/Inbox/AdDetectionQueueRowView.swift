@@ -2,7 +2,6 @@ import SwiftUI
 
 struct AdDetectionQueueRowView: View {
     let row: AdDetectionQueuePresentation.Row
-    var onDetectOnDevice: (() -> Void)?
 
     var body: some View {
         HStack(alignment: .center, spacing: 12) {
@@ -21,11 +20,6 @@ struct AdDetectionQueueRowView: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .lineLimit(2)
-                if case .cloudUnavailable = row.status, let onDetectOnDevice {
-                    Button("Detect on this device instead", action: onDetectOnDevice)
-                        .font(.caption)
-                        .buttonStyle(.borderless)
-                }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
 
@@ -57,9 +51,6 @@ struct AdDetectionQueueRowView: View {
                 .foregroundStyle(.green)
         case .failed:
             Image(systemName: "exclamationmark.circle")
-                .foregroundStyle(.orange)
-        case .cloudUnavailable:
-            Image(systemName: "icloud.slash")
                 .foregroundStyle(.orange)
         }
     }

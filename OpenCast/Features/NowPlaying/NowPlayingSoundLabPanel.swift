@@ -9,7 +9,6 @@ struct NowPlayingSoundLabPanel: View {
     let adFreePassRow: NowPlayingSoundLabAdFreePassRowModel
     let transcriptionRow: NowPlayingSoundLabTranscriptionRowModel?
     let onAdFreePassAction: () -> Void
-    let onTranscribeRemotely: () -> Void
     let onTranscriptAction: () -> Void
     let onAdFreePassBackgroundProbe: () -> Void
 
@@ -143,8 +142,6 @@ struct NowPlayingSoundLabPanel: View {
 
     private func performTranscriptionAction() {
         switch transcriptionRow?.action {
-        case .transcribe:
-            onTranscribeRemotely()
         case .transcribeLocally, .showTranscript:
             onTranscriptAction()
         case nil:

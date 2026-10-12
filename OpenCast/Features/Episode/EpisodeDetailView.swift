@@ -18,7 +18,6 @@ struct EpisodeDetailView: View {
     @State private var isConfirmingClearProgress = false
     @State private var isConfirmingGenerateDisclosure = false
     @State private var sheetDestination: SheetDestination?
-    @State private var adDetectionModePromptEpisode: EpisodeListItemSnapshot?
     @State private var episodeActionErrorTitle = "Couldn’t Complete Action"
     @State private var episodeActionErrorMessage = ""
     @State private var isShowingEpisodeActionError = false
@@ -80,11 +79,6 @@ struct EpisodeDetailView: View {
             Button("OK", role: .cancel) {}
         } message: {
             Text(episodeActionErrorMessage)
-        }
-        .sheet(item: remoteTranscriptionStartPreviewBinding) { request in
-            RemoteTranscriptionConsumptionPreviewSheet(request: request) {
-                startRemoteTranscript(request)
-            }
         }
         .sheet(item: $sheetDestination) { destination in
             SheetDestinationView(destination: destination, onDismiss: dismissSheet)
@@ -173,22 +167,6 @@ struct EpisodeDetailView: View {
                     onMakeAdFree: { makeAdFree(episode) }
                 )
 
-                // Remote flow surface (dev-flag gated): live phase while a
-                // request runs, and a visible terminal state with the
-                // on-device fallback when it ends — no silent endings.
-                if appModel.remoteTranscriptionPurchases.isSurfaceVisible,
-                   let remoteStatus = RemoteTranscriptionStatusPresentation.make(
-                       phase: appModel.remoteTranscription.store.phase(for: episode.episodeID)
-                   ) {
-                    RemoteTranscriptionStatusCard(
-                        presentation: remoteStatus,
-                        onTranscribeLocally: { transcribeLocallyAfterRemote(episode) },
-                        onResume: { resumeRemoteTranscript(episode) },
-                        onCancel: appModel.remoteTranscription.cancel,
-                        onDismiss: { dismissRemoteOutcome(episode) }
-                    )
-                }
-
                 if pipelineState != nil {
                     EpisodeDetailPipelineSection(
                         episodeID: episode.episodeID,
@@ -268,7 +246,6 @@ struct EpisodeDetailView: View {
             .padding()
             .animation(.smooth, value: pipelineState)
         }
-        .adDetectionModeDialog(episode: $adDetectionModePromptEpisode)
         .background(alignment: .top) {
             EpisodeArtworkGlowBackground(preview: episode.artworkPreview)
         }
@@ -313,9 +290,7 @@ struct EpisodeDetailView: View {
     }
 
     private func makeAdFree(_ episode: EpisodeListItemSnapshot) {
-        if appModel.startAdFreePassResolvingMode(for: episode, modelContext: modelContext) {
-            adDetectionModePromptEpisode = episode
-        }
+        appModel.startAdFreePass(for: episode, modelContext: modelContext)
     }
 
     private func perform(_ action: EpisodePipelineAction, episode: EpisodeListItemSnapshot) {
@@ -340,8 +315,6 @@ struct EpisodeDetailView: View {
             detectAds(episode)
         case .removeFromQueue:
             appModel.adFreePass.removePendingItem(episodeID: episode.episodeID, modelContext: modelContext)
-        case .detectOnDevice:
-            appModel.startAdFreePass(for: episode, modelContext: modelContext, mode: .onDevice)
         }
     }
 
@@ -353,35 +326,6 @@ struct EpisodeDetailView: View {
         appModel.transcribeDownloadedEpisode(episode, downloadRecord: downloadRecord, modelContext: modelContext)
     }
 
-    private var remoteTranscriptionStartPreviewBinding: Binding<RemoteTranscriptionStartPreviewRequest?> {
-        let store = appModel.remoteTranscription.store
-        return Binding {
-            RemoteTranscriptionStartPreviewRouting.presentedRequest(
-                store.startPreview,
-                for: episodeID
-            )
-        } set: { request in
-            guard request == nil,
-                  let presentedRequest = RemoteTranscriptionStartPreviewRouting.presentedRequest(
-                    store.startPreview,
-                    for: episodeID
-                  )
-            else {
-                return
-            }
-            store.dismissStartPreview(ifMatching: presentedRequest)
-        }
-    }
-
-    private func startRemoteTranscript(_ request: RemoteTranscriptionStartPreviewRequest) {
-        switch appModel.confirmRemoteTranscriptionStart(request, modelContext: modelContext) {
-        case .started:
-            break
-        case .unavailable(let message):
-            showEpisodeActionError(message, title: "Couldn’t Start Transcription")
-        }
-    }
-
     private func showEpisodeActionError(
         _ message: String,
         title: String = "Couldn’t Detect Ads"
@@ -389,26 +333,6 @@ struct EpisodeDetailView: View {
         episodeActionErrorTitle = title
         episodeActionErrorMessage = message
         isShowingEpisodeActionError = true
-    }
-
-    private func transcribeLocallyAfterRemote(_ episode: EpisodeListItemSnapshot) {
-        appModel.remoteTranscription.store.dismissTerminalPhase(for: episode.episodeID)
-        transcribe(episode)
-    }
-
-    private func dismissRemoteOutcome(_ episode: EpisodeListItemSnapshot) {
-        appModel.remoteTranscription.store.dismissTerminalPhase(for: episode.episodeID)
-    }
-
-    /// Resume and Try Again both re-attach the persisted reference; only a
-    /// conclusively cleared reference starts a fresh job.
-    private func resumeRemoteTranscript(_ episode: EpisodeListItemSnapshot) {
-        switch appModel.remoteTranscription.resume(episode: episode, modelContext: modelContext) {
-        case .started:
-            break
-        case .rejected(let message):
-            showEpisodeActionError(message, title: "Couldn’t Resume Remote Transcript")
-        }
     }
 
     private func detectAds(_ episode: EpisodeListItemSnapshot) {
@@ -534,8 +458,7 @@ struct EpisodeDetailView: View {
 
     /// Fail-open surface: failures render the ready state again (a manual tap
     /// re-probes, which is also the cap-deferral retry path) — never an
-    /// error. The pay gate's insufficient-balance denial is the deliberate
-    /// exception: it renders the needs-minutes state with a buy path (H8).
+    /// error.
     /// Offered for any episode with a completed transcript — generation is a
     /// per-episode manual action, with no show-wide setting gating it.
     private func chaptersSummaryControlsPresentation(
@@ -551,47 +474,11 @@ struct EpisodeDetailView: View {
         switch chaptersSection.jobState {
         case .running:
             return .running
-        case .failed(let record, _) where record.failureKind == .insufficientSeconds:
-            return .needsMinutes(chargeDescription: transcriptAnalysisNeedsMinutesDescription())
         case .ready, .completed, .failed:
-            return .ready(costDescription: transcriptAnalysisCostDescription())
+            return .ready
         case .unavailable:
             return nil
         }
-    }
-
-    /// Display-only estimate: the server recomputes the charge from its own
-    /// authoritative duration at reserve, so this can mis-display but never
-    /// mis-charge. Mirrors the server's duration basis (declared duration or
-    /// the last segment end, whichever is larger).
-    private var transcriptAnalysisChargeSeconds: Int64? {
-        guard let document = chaptersSection.transcriptDocument else {
-            return nil
-        }
-        let duration = max(document.audioDuration, document.segments.last?.end ?? 0)
-        return appModel.remoteTranscriptionPurchases
-            .analysisEstimate(durationSeconds: duration)?
-            .estimatedSeconds
-    }
-
-    private func transcriptAnalysisCostDescription() -> String? {
-        guard TranscriptAnalysisFeatureFlags.chargesTranscriptionMinutes,
-              let chargeSeconds = transcriptAnalysisChargeSeconds
-        else {
-            return nil
-        }
-        return String(
-            localized: "Uses ~\(RemoteTranscriptionBalanceFormatting.hours(chargeSeconds)) of transcription time."
-        )
-    }
-
-    private func transcriptAnalysisNeedsMinutesDescription() -> String {
-        guard let chargeSeconds = transcriptAnalysisChargeSeconds else {
-            return String(localized: "Not enough transcription time for this episode.")
-        }
-        return String(
-            localized: "Not enough transcription time — generating needs ~\(RemoteTranscriptionBalanceFormatting.hours(chargeSeconds))."
-        )
     }
 
     private func generateChaptersAndSummary(_ episode: EpisodeListItemSnapshot) {

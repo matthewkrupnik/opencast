@@ -83,13 +83,9 @@ struct AdBoundaryResolverTests {
                 ["straße", "strasse", "σ", "ς", "οσ", "i̇stanbul"])
     }
 
-    @Test func adjustedProvenanceSurvivesRemoteAndLocalCoding() throws {
-        let remote = try JSONDecoder().decode(OpenCastRemoteTranscriptSegment.self, from: Data(
-            #"{"id":37,"start":111.16,"end":117.6,"text":"ad","word_timings_adjusted":true}"#.utf8
-        ))
-        #expect(remote.wordTimingsAdjusted == true)
+    @Test func adjustedProvenanceSurvivesLocalCoding() throws {
         var value = segment()
-        value.wordTimingsAdjusted = remote.wordTimingsAdjusted
+        value.wordTimingsAdjusted = true
         let decoded = try JSONDecoder().decode(OpenCastTranscriptSegment.self, from: JSONEncoder().encode(value))
         let result = OpenCastAdBoundaryResolver.resolve(
             .init(segmentID: 37, quote: ".org."), in: decoded, isStart: false, fallback: 117.6
@@ -98,12 +94,10 @@ struct AdBoundaryResolverTests {
         #expect(result.fallbackReason == "adjusted_word_timing")
     }
 
-    @Test func publishedSegmentStartAdjustmentKeepsCoarseFallback() throws {
-        let url = URL(filePath: #filePath).deletingLastPathComponent().appending(path: "Fixtures/RemoteSegmentStartAdjustment.json")
-        let remote = try JSONDecoder().decode(OpenCastRemoteTranscriptSegment.self, from: Data(contentsOf: url))
-        let local = OpenCastTranscriptSegment(id: remote.id, start: remote.start, end: remote.end, text: remote.text,
+    @Test func segmentStartAdjustmentKeepsCoarseFallback() throws {
+        let local = OpenCastTranscriptSegment(id: 0, start: 2, end: 4, text: "Sponsor ends",
             avgLogProbability: 0, noSpeechProbability: 0,
-            words: remote.words?.map { .init(start: $0.start, end: $0.end, text: $0.text) }, wordTimingsAdjusted: remote.wordTimingsAdjusted)
+            words: [.init(start: 1, end: 2.5, text: "Sponsor"), .init(start: 2.5, end: 4, text: "ends")], wordTimingsAdjusted: true)
         let restored = try JSONDecoder().decode(OpenCastTranscriptSegment.self, from: JSONEncoder().encode(local))
         let result = OpenCastAdBoundaryResolver.resolve(.init(segmentID: 0, quote: "Sponsor"), in: restored, isStart: true, fallback: 2)
         #expect(restored.words?.first?.start == 1)

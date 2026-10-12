@@ -97,7 +97,7 @@ struct AdFreePassCompletionNotificationContentTests {
             switch outcome.kind {
             case .completed:
                 completedCount += 1
-            case .failed, .cloudUnavailable:
+            case .failed:
                 failedCount += 1
             }
         }

@@ -18,10 +18,8 @@ struct SettingsView: View {
         .contentMargins(.bottom, Self.compactMiniPlayerScrollMargin, for: .scrollContent)
         .task {
             appModel.appIcon.load()
-            async let prepared: Void = appModel.remoteTranscriptionPurchases.prepare()
             await appModel.syncStatus.refreshAccountStatus()
             appModel.cacheController.refreshSummaries()
-            await prepared
         }
     }
 }

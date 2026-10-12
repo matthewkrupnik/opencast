@@ -219,9 +219,7 @@ final class AppStoreScreenshotUITests: XCTestCase {
         app.launchArguments += [
             "--opencast-ui-testing",
             "--opencast-seed-app-store-screenshots",
-            appearanceArgument,
-            "-OPENCAST_REMOTE_TRANSCRIPTION_PURCHASE_FIXTURE",
-            "review-screenshot"
+            appearanceArgument
         ]
         app.launchEnvironment["OPENCAST_UI_TESTING"] = "1"
         app.launchEnvironment["OPENCAST_SEED_APP_STORE_SCREENSHOTS"] = "1"

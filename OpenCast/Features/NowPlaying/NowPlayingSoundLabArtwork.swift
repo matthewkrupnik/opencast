@@ -12,7 +12,6 @@ struct NowPlayingSoundLabArtwork: View {
     @Binding var voiceBoostEnabled: Bool
     let voiceBoostControlEnabled: Bool
     let onAdFreePassAction: () -> Void
-    let onTranscribeRemotely: () -> Void
     let onTranscriptAction: () -> Void
     let onAdFreePassBackgroundProbe: () -> Void
     @Binding var isSoundLabInteractionActive: Bool
@@ -37,7 +36,6 @@ struct NowPlayingSoundLabArtwork: View {
                     voiceBoostEnabled: $voiceBoostEnabled,
                     voiceBoostControlEnabled: voiceBoostControlEnabled,
                     onAdFreePassAction: onAdFreePassAction,
-                    onTranscribeRemotely: onTranscribeRemotely,
                     onTranscriptAction: onTranscriptAction,
                     onAdFreePassBackgroundProbe: onAdFreePassBackgroundProbe
                 )

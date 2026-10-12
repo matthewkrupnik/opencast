@@ -407,10 +407,9 @@ final class EpisodeAdAnalysisStore {
         )
     }
 
-    /// Durable import of a server-produced completed analysis (cloud detect
-    /// pass): writes the document and upserts a completed record through the
-    /// same path a device analysis uses. Mirror of
-    /// `EpisodeTranscriptionStore.importRemoteTranscript`.
+    /// Durable import of an already completed analysis: writes the document
+    /// and upserts a completed record through the same path a device
+    /// analysis uses.
     func importCompletedAnalysis(
         _ document: EpisodeAdAnalysisDocument,
         modelContext: ModelContext
@@ -914,7 +913,7 @@ final class EpisodeAdAnalysisStore {
             throw CancellationError()
         }
 
-        // Same philosophy as EpisodeRemoteAdAnalysisMapper: a span kind this
+        // A span kind this
         // build doesn't recognize means the response cannot be trusted to
         // skip audio. Fail cleanly so callers fall back to a fresh analysis.
         guard !response.spans.contains(where: { $0.kind == .unknown }) else {

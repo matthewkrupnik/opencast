@@ -8,7 +8,6 @@ extension EpisodeAdFreePassCoordinator {
         modelContext: ModelContext,
         transcriptionEngine: AdFreePassTranscriptionEngine = .productDefault,
         podcastLanguageCode: String?,
-        mode: AdDetectionMode,
         prepareBackgroundSession: @escaping @MainActor () -> Void = {},
         refreshSkipZones: @escaping @MainActor () async -> Int
     ) {
@@ -23,10 +22,6 @@ extension EpisodeAdFreePassCoordinator {
             modelContext: modelContext,
             transcriptionEngine: transcriptionEngine,
             podcastLanguageCode: podcastLanguageCode,
-            mode: mode,
-            remoteRunner: context.remoteRunner,
-            remoteJobStore: context.remoteJobStore,
-            remotePurchases: context.remotePurchases,
             prepareBackgroundSession: prepareBackgroundSession,
             refreshSkipZones: refreshSkipZones
         )
@@ -48,9 +43,6 @@ extension EpisodeAdFreePassCoordinator {
             adAnalyses: context.adAnalyses,
             modelContext: modelContext,
             podcastLanguageCode: podcastLanguageCode,
-            remoteRunner: context.remoteRunner,
-            remoteJobStore: context.remoteJobStore,
-            remotePurchases: context.remotePurchases,
             refreshSkipZones: refreshSkipZones
         )
     }

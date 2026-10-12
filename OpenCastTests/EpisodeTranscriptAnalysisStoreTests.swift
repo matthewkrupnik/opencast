@@ -438,35 +438,30 @@ struct EpisodeTranscriptAnalysisStoreTests {
         This episode’s transcript is sent to OpenCast to generate chapters and a summary. Your audio is never sent.
         Results are saved on this device.
         Chapters may be shared with other listeners of the same episode.
-        Uses transcription minutes.
         """
         #expect(
             TranscriptAnalysisGenerateDisclosureCopy.confirmationBody(
-                isSharingEnabled: true,
-                chargesTranscriptionMinutes: true
+                isSharingEnabled: true
             ) == pinnedBody
         )
 
-        // Both features dark composes down to the base disclosure alone.
+        // Sharing dark composes down to the base disclosure alone.
         let darkBody = TranscriptAnalysisGenerateDisclosureCopy.confirmationBody(
-            isSharingEnabled: false,
-            chargesTranscriptionMinutes: false
+            isSharingEnabled: false
         )
         #expect(!darkBody.contains("shared"))
-        #expect(!darkBody.contains("transcription minutes"))
         #expect(darkBody == """
         This episode’s transcript is sent to OpenCast to generate chapters and a summary. Your audio is never sent.
         Results are saved on this device.
         """)
 
-        // Shipping flags: the pay gate is lit, sharing stays dark — the
-        // minutes sentence appears, the sharing sentence must not.
+        // Shipping flags: sharing stays dark, so the sharing sentence must
+        // not appear.
         let shippingBody = TranscriptAnalysisGenerateDisclosureCopy.confirmationBody()
         #expect(!shippingBody.contains("shared"))
         #expect(shippingBody == """
         This episode’s transcript is sent to OpenCast to generate chapters and a summary. Your audio is never sent.
         Results are saved on this device.
-        Uses transcription minutes.
         """)
         #expect(TranscriptAnalysisGenerateDisclosureCopy.title == "Generate Chapters & Summary?")
         #expect(TranscriptAnalysisGenerateDisclosureCopy.confirmButtonTitle == "Generate")
@@ -597,136 +592,6 @@ struct EpisodeTranscriptAnalysisStoreTests {
         #expect(client.requests.map(\.episodeID) == [plainEpisodeID])
         #expect(transcriptAnalyses.record(for: untranscribedEpisodeID)?.failureKind == .capExceeded)
         #expect(transcriptAnalyses.record(for: chapteredEpisodeID)?.failureKind == .capExceeded)
-    }
-
-    @Test("Balance increase sweeps only insufficient-seconds deferrals; the probe stays intact")
-    func balanceIncreaseSweepsOnlyInsufficientDeferrals() async throws {
-        let container = try OpenCastModelContainerFactory.make(inMemory: true)
-        let context = ModelContext(container)
-        let localCache = SQLiteLocalLibraryCacheStore.inMemory()
-        let temporaryDirectory = try makeTemporaryDirectory()
-        let transcriptFileStore = EpisodeTranscriptFileStore(baseDirectory: temporaryDirectory)
-        let client = FakeEpisodeTranscriptAnalysisClient()
-        let transcriptAnalyses = EpisodeTranscriptAnalysisStore(
-            client: client,
-            fileStore: EpisodeTranscriptAnalysisFileStore(baseDirectory: temporaryDirectory)
-        )
-
-        let transcribedSnapshot = try RSSFeedParser().parse(
-            data: Data(
-                """
-                <?xml version="1.0" encoding="utf-8"?>
-                <rss version="2.0">
-                  <channel>
-                    <title>Balance Transcribed Show</title>
-                    <item>
-                      <title>Needs Minutes</title>
-                      <guid>balance-optin-needs</guid>
-                      <enclosure url="https://example.com/audio/balance-optin-needs.mp3" type="audio/mpeg" />
-                    </item>
-                    <item>
-                      <title>Cap Deferred</title>
-                      <guid>balance-optin-cap</guid>
-                      <enclosure url="https://example.com/audio/balance-optin-cap.mp3" type="audio/mpeg" />
-                    </item>
-                  </channel>
-                </rss>
-                """.utf8
-            ),
-            feedURL: URL(string: "https://example.com/balance-optin.xml")!
-        )
-        let untranscribedSnapshot = try RSSFeedParser().parse(
-            data: Data(
-                """
-                <?xml version="1.0" encoding="utf-8"?>
-                <rss version="2.0">
-                  <channel>
-                    <title>Balance Untranscribed Show</title>
-                    <item>
-                      <title>Untranscribed Needs Minutes</title>
-                      <guid>balance-optout-needs</guid>
-                      <enclosure url="https://example.com/audio/balance-optout-needs.mp3" type="audio/mpeg" />
-                    </item>
-                  </channel>
-                </rss>
-                """.utf8
-            ),
-            feedURL: URL(string: "https://example.com/balance-optout.xml")!
-        )
-        try await localCache.upsertCache(from: transcribedSnapshot, refreshedAt: .now)
-        try await localCache.upsertCache(from: untranscribedSnapshot, refreshedAt: .now)
-
-        let transcribedFeedURL = transcribedSnapshot.podcast.id.rawValue
-        let untranscribedFeedURL = untranscribedSnapshot.podcast.id.rawValue
-        let needsMinutesEpisodeID = transcribedSnapshot.episodes[0].id.rawValue
-        let capEpisodeID = transcribedSnapshot.episodes[1].id.rawValue
-        let untranscribedEpisodeID = untranscribedSnapshot.episodes[0].id.rawValue
-        context.insert(SubscriptionRecord(feedURL: transcribedFeedURL, title: "Balance Transcribed Show"))
-        context.insert(SubscriptionRecord(feedURL: untranscribedFeedURL, title: "Balance Untranscribed Show"))
-        for episodeID in [needsMinutesEpisodeID, capEpisodeID] {
-            try seedCompletedTranscript(
-                episodeID: episodeID,
-                podcastID: transcribedFeedURL,
-                fileStore: transcriptFileStore,
-                context: context
-            )
-        }
-        let base = Date(timeIntervalSince1970: 1_780_200_000)
-        insertDeferredRecord(
-            kind: .insufficientSeconds,
-            episodeID: needsMinutesEpisodeID,
-            podcastID: transcribedFeedURL,
-            updatedAt: base.addingTimeInterval(20),
-            context: context
-        )
-        insertDeferredRecord(
-            kind: .capExceeded,
-            episodeID: capEpisodeID,
-            podcastID: transcribedFeedURL,
-            updatedAt: base.addingTimeInterval(10),
-            context: context
-        )
-        insertDeferredRecord(
-            kind: .insufficientSeconds,
-            episodeID: untranscribedEpisodeID,
-            podcastID: untranscribedFeedURL,
-            updatedAt: base,
-            context: context
-        )
-        try context.save()
-
-        let appModel = OpenCastAppModel(
-            library: LibraryStore(localCache: localCache),
-            transcriptions: EpisodeTranscriptionStore(fileStore: transcriptFileStore),
-            transcriptAnalyses: transcriptAnalyses,
-            allowsAutomaticFeedRefresh: false
-        )
-        await appModel.library.load(modelContext: context)
-        appModel.transcriptions.load(modelContext: context)
-        // The deferrals model manually started runs, so consent is on file.
-        transcriptAnalyses.acknowledgeGenerateDisclosure(modelContext: context)
-        appModel.transcriptAnalyses.load(modelContext: context)
-        appModel.retryDeferredTranscriptAnalyses(modelContext: context, trigger: .balanceIncreased)
-
-        #expect(await waitUntil {
-            transcriptAnalyses.record(for: needsMinutesEpisodeID)?.state == .completed
-                && !transcriptAnalyses.hasActiveJob
-        })
-        // Only the transcribed pay-gate deferral ran: the cap deferral stays
-        // parked (credit can't clear a cap) and the untranscribed one skips
-        // on the eligibility gate without touching its record.
-        #expect(client.requests.map(\.episodeID) == [needsMinutesEpisodeID])
-        #expect(transcriptAnalyses.record(for: capEpisodeID)?.failureKind == .capExceeded)
-        #expect(transcriptAnalyses.record(for: untranscribedEpisodeID)?.failureKind == .insufficientSeconds)
-
-        // The balance sweep must not spend the foreground session's one
-        // scene-activation probe: the cap deferral still re-probes.
-        appModel.retryDeferredTranscriptAnalyses(modelContext: context, trigger: .sceneActivated)
-        #expect(await waitUntil {
-            transcriptAnalyses.record(for: capEpisodeID)?.state == .completed
-                && !transcriptAnalyses.hasActiveJob
-        })
-        #expect(client.requests.map(\.episodeID) == [needsMinutesEpisodeID, capEpisodeID])
     }
 
     @Test("A fresh insufficient-seconds denial halts the drain instead of burning the queue's admissions")

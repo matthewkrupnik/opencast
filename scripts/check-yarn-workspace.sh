@@ -1,10 +1,10 @@
 #!/bin/bash
-# The Yarn 4 workspace migration (2026-08-14) left the RemoteTranscription
-# provisioning scripts carrying Yarn 1 flags. CI never executes them (they
-# need live Cloudflare credentials, which the lane deliberately does not
-# hold), so the breakage would have surfaced only on the next real
-# provisioning run. Fail fast instead: syntax-check every shipped shell script
-# and enforce the workspace invariants that a Yarn 1 relapse would violate.
+# The Yarn 4 workspace migration (2026-08-14) left provisioning scripts
+# carrying Yarn 1 flags. CI never executes them (they need live Cloudflare
+# credentials, which the lane deliberately does not hold), so the breakage
+# would have surfaced only on the next real provisioning run. Fail fast
+# instead: syntax-check every shipped shell script and enforce the workspace
+# invariants that a Yarn 1 relapse would violate.
 set -euo pipefail
 
 repo_dir="$(cd "$(dirname "$0")/.." && pwd)"

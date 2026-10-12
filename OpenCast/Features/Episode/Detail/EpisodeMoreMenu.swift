@@ -88,29 +88,6 @@ struct EpisodeMoreMenu: View {
             }
             Button("Delete Partial Transcript", systemImage: "trash", role: .destructive, action: deleteTranscript)
         }
-
-        remoteTranscriptActions
-    }
-
-    /// Remote eligibility is independent of download and local-model state.
-    /// The purchase store still gates this to a resolved backend lane.
-    @ViewBuilder
-    private var remoteTranscriptActions: some View {
-        if appModel.remoteTranscriptionPurchases.isSurfaceVisible {
-            if let phase = appModel.remoteTranscription.store.phase(for: episode.episodeID),
-               !phase.isTerminal {
-                Label("Remote: \(phase.displayText)", systemImage: "cloud")
-                if phase.isParked {
-                    Button("Resume Remote Transcript", systemImage: "play.circle", action: resumeRemoteTranscript)
-                }
-                Button("Cancel Remote Transcript", systemImage: "xmark.circle", action: cancelRemoteTranscript)
-            } else {
-                // Disabled while a cloud detect pass owns this episode — it
-                // already delivers the transcript when it lands.
-                Button("Transcribe Remotely", systemImage: "cloud", action: requestRemoteTranscript)
-                    .disabled(appModel.adFreePass.hasActiveOrQueuedCloudItem(for: episode.episodeID))
-            }
-        }
     }
 
     @ViewBuilder
@@ -160,27 +137,6 @@ struct EpisodeMoreMenu: View {
 
     private func cancelTranscript() {
         appModel.cancelEpisodeTranscription(episodeID: episode.episodeID, modelContext: modelContext)
-    }
-
-    private func requestRemoteTranscript() {
-        // The consumption preview sheet (episode detail) owns the actual start.
-        appModel.remoteTranscription.store.startPreview = RemoteTranscriptionStartPreviewRequest(
-            episodeID: episode.episodeID,
-            durationSeconds: episode.duration
-        )
-    }
-
-    private func resumeRemoteTranscript() {
-        switch appModel.remoteTranscription.resume(episode: episode, modelContext: modelContext) {
-        case .started:
-            break
-        case .rejected(let message):
-            onActionError(message)
-        }
-    }
-
-    private func cancelRemoteTranscript() {
-        appModel.remoteTranscription.cancel()
     }
 
     private func deleteTranscript() {

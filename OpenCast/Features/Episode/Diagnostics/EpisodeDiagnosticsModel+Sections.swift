@@ -77,15 +77,6 @@ extension EpisodeDiagnosticsModel {
             rows.append(("Progress", "No progress record."))
         }
 
-        let detectionMode: String = switch appModel.adDetectionSettings.mode {
-        case .onDevice:
-            "On-Device"
-        case .cloud:
-            "Cloud"
-        case nil:
-            "Ask First Time"
-        }
-        rows.append(("Detection Mode", detectionMode))
         rows.append((
             "Auto-Skip Promos & Ads",
             EpisodeDiagnosticsFormatting.bool(appModel.playbackSettings.isAutoSkipPromosAndAdsEnabled)

@@ -6,8 +6,4 @@ struct AdFreePassEnqueueContext {
     let appleSpeechAssets: AppleSpeechAssetStore
     let transcriptions: EpisodeTranscriptionStore
     let adAnalyses: EpisodeAdAnalysisStore
-    // Cloud detect passes only; on-device items never touch these.
-    let remoteRunner: RemoteTranscriptionJobRunner
-    let remoteJobStore: RemoteTranscriptionJobStore
-    let remotePurchases: RemoteTranscriptionPurchaseStore
 }

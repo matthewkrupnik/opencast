@@ -16,10 +16,11 @@ struct SettingsAdSkippingView: View {
                         .foregroundStyle(.orange)
                 }
             } footer: {
-                Text("Skips detected promos and ads while an episode plays.")
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Skips detected promos and ads while an episode plays.")
+                    HelpFooterLink(title: "How ad detection works", topicID: HelpTopicID.adDetection)
+                }
             }
-
-            SettingsAdDetectionSection()
         }
         .settingsSubscreen(title: "Ad Skipping")
     }

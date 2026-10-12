@@ -39,7 +39,6 @@ enum OpenCastUITestSeedData {
     static let emptyPlaylistName = "Seeded Empty"
     static let smartPlaylistID = "ui-test-playlist-smart-unplayed"
     static let smartPlaylistName = "Seeded Unplayed"
-    private static let adDetectionModeEnvironmentKey = "OPENCAST_SEED_AD_DETECTION_MODE"
     private static let liveAdAnalysisTranscriptPathEnvironmentKey = "OPENCAST_SEED_LIVE_AD_ANALYSIS_TRANSCRIPT_PATH"
     private static let liveAdAnalysisResponsePathEnvironmentKey = "OPENCAST_SEED_LIVE_AD_ANALYSIS_RESPONSE_PATH"
     /// A v3 transcript fixture (`segments` of id/start/end/text) that replaces
@@ -328,16 +327,6 @@ enum OpenCastUITestSeedData {
             context.insert(LocalPreferenceRecord(
                 key: PlaybackSettingsStore.voiceBoostModePreferenceKey,
                 value: seededVoiceBoostMode
-            ))
-        }
-
-        let seededAdDetectionMode = ProcessInfo.processInfo.environment[
-            Self.adDetectionModeEnvironmentKey
-        ]
-        if let seededAdDetectionMode, AdDetectionMode(rawValue: seededAdDetectionMode) != nil {
-            context.insert(LocalPreferenceRecord(
-                key: AdDetectionSettingsStore.modePreferenceKey,
-                value: seededAdDetectionMode
             ))
         }
 

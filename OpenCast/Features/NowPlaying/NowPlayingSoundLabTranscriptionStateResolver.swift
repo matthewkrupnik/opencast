@@ -12,21 +12,4 @@ nonisolated enum NowPlayingSoundLabTranscriptionStateResolver {
         }
         return .none
     }
-
-    static func mode(
-        preference: AdDetectionMode?,
-        isRemoteSurfaceVisible: Bool,
-        isRemoteAvailabilityUnknown: Bool
-    ) -> NowPlayingSoundLabTranscriptionMode {
-        guard preference == .cloud else {
-            return .local
-        }
-        if isRemoteSurfaceVisible {
-            return .cloud
-        }
-        if isRemoteAvailabilityUnknown {
-            return .cloudResolving
-        }
-        return .local
-    }
 }

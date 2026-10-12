@@ -48,9 +48,7 @@ let package = Package(
             ],
             // No `resources:` here on purpose: a test-target resource bundle
             // generates a test-local `Bundle.module` that shadows the main
-            // module's and breaks the resource-bundle tests. Test fixtures
-            // (Fixtures/) load via #filePath instead.
-            exclude: ["Fixtures"],
+            // module's and breaks the resource-bundle tests.
             swiftSettings: swift63Settings()
         )
     ],

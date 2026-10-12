@@ -32,9 +32,6 @@ final class OpenCastUITests: XCTestCase {
     private static let nowPlayingSourceIdentifier = "Now Playing Source"
     private static let soundLabTranscriptActionIdentifier = "Now Playing Sound Lab Transcript Action"
     private static let seedVoiceBoostModeEnvironmentKey = "OPENCAST_SEED_VOICE_BOOST_MODE"
-    private static let seedAdDetectionModeEnvironmentKey = "OPENCAST_SEED_AD_DETECTION_MODE"
-    private static let cloudAdDetectionModeValue = "cloud"
-    private static let onDeviceAdDetectionModeValue = "onDevice"
     private static let adAnalysisClientTokenEnvironmentKey = "OPENCAST_AD_ANALYSIS_CLIENT_TOKEN"
     private static let adAnalysisBaseURLEnvironmentKey = "OPENCAST_AD_ANALYSIS_BASE_URL"
     private static let localAdAnalysisClientTokenFilePath = "/private/tmp/opencast-ad-analysis-client-token"
@@ -88,77 +85,6 @@ final class OpenCastUITests: XCTestCase {
         XCTAssertTrue(app.tabBars.buttons["Settings"].exists)
         XCTAssertTrue(app.tabBars.buttons["Search"].exists)
         XCTAssertFalse(app.tabBars.buttons["Inbox"].exists)
-    }
-
-    @MainActor
-    func testSettingsShowsRemoteTranscriptionUnavailableRetry() throws {
-        let app = makeCompletedOnboardingApp()
-        app.launchArguments += [
-            "-OPENCAST_REMOTE_TRANSCRIPTION_PURCHASE_FIXTURE",
-            "unavailable",
-        ]
-        app.launch()
-
-        // The Credits row stays on the hub even when StoreKit is unavailable
-        // so the retry action stays reachable.
-        openSettingsScreen("Credits", expecting: "Transcription Credits", in: app)
-        assertExists(app.buttons["Try Again"], named: "remote transcription retry action")
-    }
-
-    @MainActor
-    func testRemoteTranscriptionIAPReviewScreenshot() throws {
-        let app = makeSeededApp(forcesDarkMode: false, forcesLightMode: true)
-        app.launchArguments += [
-            "-OPENCAST_REMOTE_TRANSCRIPTION_PURCHASE_FIXTURE",
-            "review-screenshot",
-        ]
-        app.launch()
-
-        openSettingsScreen("Credits", expecting: "Transcription Credits", in: app)
-        let product = app.staticTexts["20 Transcription Hours"]
-        scrollUntilExists(product, in: app, maxSwipes: 8)
-        assertExists(app.navigationBars["Transcription Credits"], named: "Transcription Credits screen")
-        assertExists(app.staticTexts["Balance, 1 hr"], named: "fixture balance")
-        assertExists(product, named: "20-hour product")
-        assertExists(app.staticTexts["100 Transcription Hours"], named: "100-hour product")
-        assertExists(
-            app.buttons["Buy 20 Transcription Hours for $0.99"],
-            named: "20-hour purchase button"
-        )
-        assertExists(
-            app.buttons["Buy 100 Transcription Hours for $4.99"],
-            named: "100-hour purchase button"
-        )
-        attachSmokeScreenshot(named: "remote_transcription_iap_review")
-    }
-
-    @MainActor
-    func testEpisodeMenuShowsRemoteSurfacesOnFreshLaunchWithoutSettings() throws {
-        // Launch-scoped gate resolution: remote surfaces
-        // must appear in the episode menu on a fresh launch without Settings
-        // ever mounting (the gate was previously resolved only from Settings' task).
-        let app = makeSeededApp(
-            forcesDarkMode: false,
-            forcesLightMode: true
-        )
-        app.launchArguments.append("-OPENCAST_REMOTE_TRANSCRIPTION_DEV")
-        app.launch()
-
-        openAllPlaylist(in: app)
-        let inboxEpisode = seededEpisodeRow(in: app)
-        assertExists(inboxEpisode, named: "seeded inbox episode")
-        openEpisodeDetailFromContextMenu(inboxEpisode, in: app, named: "seeded inbox episode")
-
-        let actionsButton = app.buttons["Episode Actions"].firstMatch
-        assertExists(actionsButton, named: "Episode Actions menu", timeout: 8)
-        actionsButton.tap()
-
-        assertExists(app.buttons["Download"], named: "download action proving episode is not local")
-        let remoteAction = app.descendants(matching: .any)["Transcribe Remotely"].firstMatch
-        XCTAssertTrue(
-            remoteAction.existsOrWait(timeout: 8),
-            "Remote transcription menu entry should be present on fresh launch without opening Settings"
-        )
     }
 
     @MainActor
@@ -1886,9 +1812,6 @@ final class OpenCastUITests: XCTestCase {
     @MainActor
     func testSeededAdDetectionIndicatorOpensQueueScreenWithConsentAffordance() throws {
         let app = makeSeededApp()
-        // A stored mode skips the first-tap cloud-or-device dialog (its own
-        // coverage: testDetectAdsFirstTapPromptsForModeAndRemembersOnDeviceChoice).
-        app.launchEnvironment[Self.seedAdDetectionModeEnvironmentKey] = Self.onDeviceAdDetectionModeValue
         app.launch()
 
         let indicator = app.buttons["Ad Detection Queue Indicator"]
@@ -1923,9 +1846,8 @@ final class OpenCastUITests: XCTestCase {
     }
 
     @MainActor
-    func testDetectAdsFirstTapPromptsForModeAndRemembersOnDeviceChoice() throws {
+    func testDetectAdsFirstTapStartsOnDeviceDetection() throws {
         let app = makeSeededApp()
-        app.launchArguments.append("-OPENCAST_REMOTE_TRANSCRIPTION_DEV")
         app.launch()
 
         openAllPlaylist(in: app)
@@ -1936,83 +1858,17 @@ final class OpenCastUITests: XCTestCase {
         assertExists(detectAction, named: "Detect Ads context action")
         detectAction.tap()
 
-        // First manual tap with no stored mode: the cloud-or-device dialog.
-        let deviceChoice = app.buttons["Detect On This Device"]
-        assertExists(deviceChoice, named: "mode dialog device choice", timeout: 10)
-        assertExists(app.buttons["Use Cloud Credits"], named: "mode dialog cloud choice")
-        attachSmokeScreenshot(named: "admode_dialog_first_tap")
-        deviceChoice.tap()
-
-        // The chosen on-device pass runs (parks at whisper model consent on
-        // the simulator) — no second confirmation.
-        // The indicator sits on the Playlists root, not inside All.
-        openSection("Playlists", in: app)
-        let indicator = app.buttons["Ad Detection Queue Indicator"]
-        assertExists(indicator, named: "indicator after device choice", timeout: 10)
+        // The on-device pass starts directly (parks at whisper model consent
+        // on the simulator) — no mode dialog.
         assertDoesNotExist(
-            app.buttons["Use Cloud Credits"],
-            named: "mode dialog after the choice ran"
+            app.buttons["Detect On This Device"],
+            named: "mode dialog on first tap",
+            timeout: 1
         )
-
-        // Settings reflects the remembered device-local choice. (Cross-
-        // relaunch persistence is covered at the store layer — UI-test
-        // launches deliberately use an in-memory store.) The inline picker
-        // exposes the selection as a row label or value.
-        openSettingsScreen("Ad Skipping", in: app)
-        let modeSelection = app.descendants(matching: .any).matching(
-            NSPredicate(
-                format: "label CONTAINS %@ OR value CONTAINS %@",
-                "On This Device",
-                "On This Device"
-            )
-        ).firstMatch
-        scrollUntilExists(modeSelection, in: app, maxSwipes: 12)
-        assertExists(modeSelection, named: "Detect Ads mode in Settings")
-        attachSmokeScreenshot(named: "admode_settings_on_device")
-    }
-
-    @MainActor
-    func testCloudUnavailableDetectPassOffersOneTapOnDeviceFallback() throws {
-        let app = makeSeededApp()
-        app.launchArguments.append("-OPENCAST_REMOTE_TRANSCRIPTION_DEV")
-        app.launchArguments += [
-            "-OPENCAST_REMOTE_TRANSCRIPTION_PURCHASE_FIXTURE", "unavailable",
-        ]
-        app.launch()
-
-        openAllPlaylist(in: app)
-        let episodeRow = seededEpisodeRow(in: app)
-        assertExists(episodeRow, named: "seeded inbox episode row")
-        episodeRow.press(forDuration: 1.2)
-        let detectAction = app.buttons["Detect Ads"].firstMatch
-        assertExists(detectAction, named: "Detect Ads context action")
-        detectAction.tap()
-
-        let cloudChoice = app.buttons["Use Cloud Credits"]
-        assertExists(cloudChoice, named: "mode dialog cloud choice", timeout: 10)
-        cloudChoice.tap()
-
-        // The unresolved backend fails the viability precheck immediately:
-        // the queue finishes with a cloud-unavailable outcome — never a
-        // silent switch to on-device.
         // The indicator sits on the Playlists root, not inside All.
         openSection("Playlists", in: app)
         let indicator = app.buttons["Ad Detection Queue Indicator"]
-        assertExists(indicator, named: "indicator after cloud-unavailable outcome", timeout: 10)
-        indicator.tap()
-        assertExists(app.navigationBars["Ad Detection"], named: "queue screen title")
-        let fallback = app.buttons["Detect on this device instead"]
-        assertExists(fallback, named: "one-tap on-device fallback", timeout: 10)
-        attachSmokeScreenshot(named: "adqueue_cloud_unavailable_fallback")
-
-        // The explicit fallback runs a fresh on-device pass, which parks at
-        // whisper model consent on the simulator.
-        fallback.tap()
-        let consentButton = app.buttons.matching(
-            NSPredicate(format: "label BEGINSWITH %@", "Download Model")
-        ).firstMatch
-        assertExists(consentButton, named: "on-device pass model consent", timeout: 15)
-        attachSmokeScreenshot(named: "adqueue_fallback_running_on_device")
+        assertExists(indicator, named: "indicator after first tap", timeout: 10)
     }
 
     @MainActor
@@ -2128,9 +1984,6 @@ final class OpenCastUITests: XCTestCase {
     @MainActor
     func testSeededAdDetectionQueueShowsFinishedFailures() throws {
         let app = makeSeededApp(seedsBadAudioURL: true)
-        // A stored mode skips the first-tap cloud-or-device dialog (its own
-        // coverage: testDetectAdsFirstTapPromptsForModeAndRemembersOnDeviceChoice).
-        app.launchEnvironment[Self.seedAdDetectionModeEnvironmentKey] = Self.onDeviceAdDetectionModeValue
         app.launch()
 
         openAllPlaylist(in: app)
@@ -2395,7 +2248,6 @@ final class OpenCastUITests: XCTestCase {
     @MainActor
     func testSeededSoundLabAdActionAcknowledgesBeforeHeldLaunchPreparation() throws {
         let app = makeSeededApp(seedsCompletedTranscript: true)
-        app.launchArguments.append("-OPENCAST_REMOTE_TRANSCRIPTION_DEV")
         app.launchEnvironment[Self.soundLabLaunchHoldEnvironmentKey] =
             optionalEnvironmentValue(Self.soundLabLaunchHoldEnvironmentKey) ?? "5000"
         app.launchEnvironment[Self.adAnalysisClientTokenEnvironmentKey] =
@@ -2406,13 +2258,13 @@ final class OpenCastUITests: XCTestCase {
 
         let voiceBoost = app.switches["Voice Boost"]
         let adAction = app.buttons.matching(identifier: "Skip Promos & Ads").firstMatch
-        let remoteAction = app.buttons.matching(
+        let transcriptAction = app.buttons.matching(
             identifier: Self.soundLabTranscriptActionIdentifier
         ).firstMatch
         for (control, name) in [
             (voiceBoost, "Voice Boost"),
             (adAction, "Skip Promos & Ads"),
-            (remoteAction, "Show Transcript")
+            (transcriptAction, "Show Transcript")
         ] {
             assertExists(control, named: "\(name) Sound Lab control")
             if name == "Show Transcript" {
@@ -2453,41 +2305,11 @@ final class OpenCastUITests: XCTestCase {
     }
 
     @MainActor
-    func testSeededNowPlayingSoundLabRemoteTranscriptionPresentsEstimateSheet() throws {
-        let app = makeSeededApp()
-        app.launchArguments.append("-OPENCAST_REMOTE_TRANSCRIPTION_DEV")
-        app.launchEnvironment[Self.seedAdDetectionModeEnvironmentKey] = Self.cloudAdDetectionModeValue
-        app.launch()
-
-        openSeededNowPlayingSoundLab(in: app)
-        let remoteRow = app.buttons.matching(
-            identifier: Self.soundLabTranscriptActionIdentifier
-        ).firstMatch
-        assertExists(remoteRow, named: "Transcribe Remotely Sound Lab row")
-        XCTAssertEqual(remoteRow.label, "Transcribe Remotely")
-        remoteRow.tap()
-
-        assertExists(app.navigationBars["Remote Transcription"], named: "consumption estimate sheet")
-        assertExists(app.buttons["Start"], named: "estimate sheet Start action")
-        app.buttons["Cancel"].firstMatch.tap()
-        XCTAssertTrue(
-            app.navigationBars["Remote Transcription"].absentOrWait(timeout: 5),
-            "Cancelling the estimate sheet should dismiss it without starting"
-        )
-    }
-
-    @MainActor
     func testSeededCompletedTranscriptSoundLabOpensTranscript() throws {
         let app = makeSeededApp(seedsCompletedTranscript: true)
-        app.launchArguments.append("-OPENCAST_REMOTE_TRANSCRIPTION_DEV")
-        app.launchEnvironment[Self.seedAdDetectionModeEnvironmentKey] = Self.cloudAdDetectionModeValue
         app.launch()
 
         openSeededNowPlayingSoundLab(in: app)
-        assertDoesNotExist(
-            app.buttons["Transcribe Remotely"],
-            named: "cloud transcription action after transcript completion"
-        )
         let showTranscript = app.buttons.matching(
             identifier: Self.soundLabTranscriptActionIdentifier
         ).firstMatch
@@ -2534,44 +2356,6 @@ final class OpenCastUITests: XCTestCase {
         assertExists(
             app.buttons["Deterministic UI request transcript."],
             named: "generated transcript line"
-        )
-    }
-
-    @MainActor
-    func testSeededCloudResolvingSoundLabCannotStartLocalTranscription() throws {
-        let app = makeSeededApp(
-            seedsCompletedDownload: true,
-            completesTranscriptRequests: true
-        )
-        app.launchArguments += [
-            "-OPENCAST_REMOTE_TRANSCRIPTION_PURCHASE_FIXTURE",
-            "delayed-availability",
-        ]
-        app.launchEnvironment[Self.seedAdDetectionModeEnvironmentKey] = Self.cloudAdDetectionModeValue
-        app.launch()
-
-        openSeededNowPlayingSoundLab(in: app)
-        let transcriptAction = app.buttons.matching(
-            identifier: Self.soundLabTranscriptActionIdentifier
-        ).firstMatch
-        assertExists(transcriptAction, named: "cloud availability checking action")
-        XCTAssertEqual(transcriptAction.label, "Transcribe Remotely")
-        XCTAssertFalse(transcriptAction.isEnabled)
-        XCTAssertTrue(
-            transcriptAction.value.debugDescription.localizedCaseInsensitiveContains("checking"),
-            "The disabled remote action should expose its availability check"
-        )
-
-        transcriptAction.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
-        assertDoesNotExist(
-            app.descendants(matching: .any)["Transcription Progress Toast"],
-            named: "local transcription toast while cloud availability is unresolved",
-            timeout: 1
-        )
-        assertDoesNotExist(
-            app.navigationBars["Remote Transcription"],
-            named: "remote estimate before cloud availability resolves",
-            timeout: 1
         )
     }
 
@@ -3747,78 +3531,6 @@ final class OpenCastUITests: XCTestCase {
         )
         assertExists(app.buttons["Retry"], named: "pipeline card Retry action")
         attachSmokeScreenshot(named: "episode_detail_failed_download")
-    }
-
-    @MainActor
-    func testRemoteTranscriptionFailureFixtureShowsTerminalStateAndFallback() throws {
-        let app = makeSeededApp(seedsCompletedDownload: true)
-        app.launchArguments += [
-            "-OPENCAST_REMOTE_TRANSCRIPTION_DEV",
-            "-OPENCAST_REMOTE_TRANSCRIPTION_FIXTURE", "failure:ui-test-episode-1"
-        ]
-        app.launch()
-        openSeededEpisodeDetail(in: app)
-
-        assertExists(
-            app.staticTexts["Remote transcription didn't finish"],
-            named: "remote failure card title"
-        )
-        assertExists(
-            elementContaining(label: "The server couldn't transcribe this episode.", in: app),
-            named: "category-level failure copy"
-        )
-        let fallback = app.buttons["Transcribe on Device"]
-        assertExists(fallback, named: "local fallback action")
-        attachSmokeScreenshot(named: "episode_detail_remote_failure")
-
-        // The fallback hands off to the existing local transcription path and
-        // dismisses the failure surface.
-        fallback.tap()
-        assertDoesNotExist(
-            app.staticTexts["Remote transcription didn't finish"],
-            named: "remote failure card after fallback",
-            timeout: 5
-        )
-    }
-
-    @MainActor
-    func testRemoteTranscriptionProgressFixtureShowsETAAndDeterminateProgress() throws {
-        let app = makeSeededApp(seedsCompletedDownload: true)
-        app.launchArguments += [
-            "-OPENCAST_REMOTE_TRANSCRIPTION_DEV",
-            "-OPENCAST_REMOTE_TRANSCRIPTION_FIXTURE", "transcribing:ui-test-episode-1"
-        ]
-        app.launch()
-        openSeededNowPlaying(in: app)
-
-        let toast = app.descendants(matching: .any)["Remote Transcription Progress Toast"]
-        assertExists(toast, named: "Now Playing remote transcription toast")
-        assertExists(toast.staticTexts["Transcribing"], named: "Now Playing remote stage")
-        assertExists(
-            toast.staticTexts["About 1 minute remaining."],
-            named: "Now Playing remote ETA"
-        )
-        let toastProgress = toast.progressIndicators["Remote Transcription Chunk Progress"]
-        assertExists(toastProgress, named: "Now Playing determinate remote progress")
-        XCTAssertEqual(toastProgress.label, "Transcription progress")
-        XCTAssertEqual(toastProgress.value as? String, "43 percent")
-        let openEpisodeButton = toast.buttons["Open Episode Description from Remote Toast"]
-        assertHittable(openEpisodeButton, named: "remote toast episode description action")
-        assertHittable(toast.buttons["Cancel"], named: "separate remote toast cancel action")
-
-        openEpisodeButton.tap()
-        assertDoesNotExist(nowPlayingOverlay(in: app), named: "Now Playing overlay after remote toast navigation")
-        let card = app.descendants(matching: .any)["Remote Transcription Status Card"]
-        assertExists(card, named: "episode remote transcription status card")
-        assertExists(card.staticTexts["Transcribing"], named: "episode remote stage")
-        assertExists(
-            card.staticTexts["About 1 minute remaining."],
-            named: "episode remote ETA"
-        )
-        let cardProgress = card.progressIndicators["Remote Transcription Chunk Progress"]
-        assertExists(cardProgress, named: "episode determinate remote progress")
-        XCTAssertEqual(cardProgress.label, "Transcription progress")
-        XCTAssertEqual(cardProgress.value as? String, "43 percent")
     }
 
     @MainActor

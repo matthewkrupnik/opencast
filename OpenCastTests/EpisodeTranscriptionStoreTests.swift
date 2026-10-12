@@ -2112,7 +2112,7 @@ struct EpisodeTranscriptionStoreTests {
         document.remoteChunkManifestSHA256 = "bb"
         document.normalizedTranscriptSHA256 = "cc"
         document.remoteJobProvenanceToken = "job-token"
-        document.remoteSourceMatchMode = EpisodeRemoteTranscriptSourceMatchMode.serverDeviceHashMatch.rawValue
+        document.remoteSourceMatchMode = "server_device_hash_match"
         try fileStore.write(document, relativePath: relativePath)
 
         let decoded = try fileStore.read(relativePath: relativePath)
@@ -2122,42 +2122,8 @@ struct EpisodeTranscriptionStoreTests {
         #expect(decoded.providerModelRevision == nil)
         #expect(decoded.remoteChunkManifestSHA256 == "bb")
         #expect(decoded.normalizedTranscriptSHA256 == "cc")
-        #expect(decoded.remoteSourceMatchMode == EpisodeRemoteTranscriptSourceMatchMode.serverDeviceHashMatch.rawValue)
+        #expect(decoded.remoteSourceMatchMode == "server_device_hash_match")
         #expect(decoded.modelTreeSHA256.isEmpty)
-    }
-
-    @Test("Remote fingerprint is domain-separated and contract-sensitive")
-    func remoteFingerprintIsDomainSeparatedAndContractSensitive() throws {
-        let fileStore = EpisodeTranscriptFileStore(baseDirectory: try makeTemporaryDirectory())
-        let localFingerprint = fileStore.fingerprint(
-            sourceFileSHA256: "abc",
-            modelIdentifier: "m",
-            modelVersion: "v",
-            modelTreeSHA256: "t"
-        )
-        let remoteFingerprint = fileStore.remoteFingerprint(
-            sourceFileSHA256: "abc",
-            provider: "cloudflare-workers-ai",
-            providerModelIdentifier: "@cf/openai/whisper-large-v3-turbo",
-            servingContractVersion: "1",
-            pipelineVersion: "pass0"
-        )
-        let bumpedContractFingerprint = fileStore.remoteFingerprint(
-            sourceFileSHA256: "abc",
-            provider: "cloudflare-workers-ai",
-            providerModelIdentifier: "@cf/openai/whisper-large-v3-turbo",
-            servingContractVersion: "2",
-            pipelineVersion: "pass0"
-        )
-        #expect(localFingerprint != remoteFingerprint)
-        #expect(remoteFingerprint != bumpedContractFingerprint)
-        #expect(remoteFingerprint == fileStore.remoteFingerprint(
-            sourceFileSHA256: "abc",
-            provider: "cloudflare-workers-ai",
-            providerModelIdentifier: "@cf/openai/whisper-large-v3-turbo",
-            servingContractVersion: "1",
-            pipelineVersion: "pass0"
-        ))
     }
 
     @Test("Record engine provenance distinguishes local, Apple Speech, and remote")

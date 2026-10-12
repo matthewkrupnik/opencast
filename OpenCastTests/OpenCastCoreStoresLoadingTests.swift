@@ -171,8 +171,8 @@ struct OpenCastCoreStoresLoadingTests {
         let container = try OpenCastModelContainerFactory.make(inMemory: true)
         let modelContext = ModelContext(container)
         try LocalPreferenceRecord.upsert(
-            key: AdDetectionSettingsStore.modePreferenceKey,
-            value: AdDetectionMode.cloud.rawValue,
+            key: TranscriptionEngineSettingsStore.prefersAppleSpeechPreferenceKey,
+            value: "true",
             modelContext: modelContext
         )
         try modelContext.save()
@@ -180,12 +180,12 @@ struct OpenCastCoreStoresLoadingTests {
             localLibraryCacheStore: SQLiteLocalLibraryCacheStore.inMemory()
         )
 
-        #expect(appModel.adDetectionSettings.mode == nil)
+        #expect(!appModel.transcriptionEngineSettings.prefersAppleSpeech)
 
         await appModel.ensurePlaybackDependenciesLoaded(modelContext: modelContext)
         await appModel.ensurePlaybackDependenciesLoaded(modelContext: modelContext)
 
-        #expect(appModel.adDetectionSettings.mode == .cloud)
+        #expect(appModel.transcriptionEngineSettings.prefersAppleSpeech)
     }
 
     @Test("Concurrent and repeated playback-surface hydration restores once")

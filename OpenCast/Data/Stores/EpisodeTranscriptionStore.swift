@@ -1106,25 +1106,24 @@ final class EpisodeTranscriptionStore {
         lastErrorEpisodeID = nil
     }
 
-    /// Narrow import path for remotely produced transcripts. Writes the
-    /// schema-3 document atomically at its remote fingerprint, upserts the
-    /// record with explicit remote provenance, preserves any prior completed
-    /// transcript until the new document has committed, and notifies the
-    /// existing UI. Remote jobs never touch the local run loop.
-    func importRemoteTranscript(
+    /// Narrow import path for a transcript produced outside the local run
+    /// loop (search benchmarks). Writes the document atomically at its
+    /// fingerprint, upserts the completed record, preserves any prior
+    /// completed transcript until the new document has committed, and
+    /// notifies the existing UI.
+    func importCompletedTranscript(
         _ document: EpisodeTranscriptDocument,
         modelContext: ModelContext
     ) async throws {
         guard activeEngine(for: document.episodeID) == nil else {
-            throw RemoteTranscriptImportError.localTranscriptionActive
+            throw EpisodeTranscriptionWorkCoordinator.Conflict.localTranscriptionForEpisode
         }
 
-        let fingerprint = fileStore.remoteFingerprint(
+        let fingerprint = fileStore.fingerprint(
             sourceFileSHA256: document.sourceFileSHA256,
-            provider: EpisodeRemoteTranscriptMapper.provider,
-            providerModelIdentifier: document.providerModelIdentifier ?? document.modelIdentifier,
-            servingContractVersion: document.remoteServingContractVersion ?? document.modelVersion,
-            pipelineVersion: document.remotePipelineVersion ?? ""
+            modelIdentifier: document.modelIdentifier,
+            modelVersion: document.modelVersion,
+            modelTreeSHA256: document.modelTreeSHA256
         )
         let relativePath = fileStore.relativePath(
             episodeID: document.episodeID,
@@ -1140,7 +1139,7 @@ final class EpisodeTranscriptionStore {
 
         try await fileStore.writeOffCaller(document, relativePath: relativePath)
 
-        let record = try upsertRecord(
+        _ = try upsertRecord(
             episodeID: document.episodeID,
             podcastID: document.podcastID,
             sourceAudioURL: document.sourceAudioURL,
@@ -1160,10 +1159,9 @@ final class EpisodeTranscriptionStore {
             errorMessage: nil,
             modelContext: modelContext
         )
-        record.transcriptionEngineRawValue = EpisodeTranscriptEngineProvenance.remoteWhisper.rawValue
         try commit(episodeID: document.episodeID, modelContext: modelContext, resort: true)
         if let priorRelativePath, priorRelativePath != relativePath {
-            // The committed remote document supersedes the preserved one; a
+            // The committed document supersedes the preserved one; a
             // cleanup failure must not fail the completed import.
             try? fileStore.delete(relativePath: priorRelativePath)
         }

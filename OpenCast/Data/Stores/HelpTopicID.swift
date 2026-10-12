@@ -3,8 +3,6 @@ import Foundation
 /// Slugs the app links to from Settings footers. A test asserts each one
 /// exists in the bundled document.
 nonisolated enum HelpTopicID {
-    static let whyWeCharge = "why-we-charge"
-    static let credits = "credits"
     static let voiceBoost = "voice-boost"
     static let adDetection = "ad-detection"
     static let transcriptionEngines = "transcription-engines"
@@ -15,8 +13,6 @@ nonisolated enum HelpTopicID {
     static let playlistOrganizer = "ai-playlists"
 
     static let all = [
-        whyWeCharge,
-        credits,
         voiceBoost,
         adDetection,
         transcriptionEngines,

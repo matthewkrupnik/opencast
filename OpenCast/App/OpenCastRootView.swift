@@ -106,12 +106,6 @@ struct OpenCastRootView: View {
             await consumeRemoteEpisodeNotificationRoutes()
         }
         .task {
-            // Launch-scoped gate resolution: episode-menu
-            // remote surfaces appear on fresh launch without visiting
-            // Settings; later Settings mounts re-use the cached resolution.
-            await appModel.remoteTranscriptionPurchases.prepare()
-        }
-        .task {
             await observeRemoteStoreChanges()
         }
         .task {

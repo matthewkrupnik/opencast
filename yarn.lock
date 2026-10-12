@@ -253,13 +253,6 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@cloudflare/containers@npm:0.3.7":
-  version: 0.3.7
-  resolution: "@cloudflare/containers@npm:0.3.7"
-  checksum: 10c0/2dae38e71c9f89a397de95c97e78230ee658ba43a9527589f6cff74c9dbe524d0474e67b90994cd39f839d53bbc4c98b1fb312233d8a4c70ac338a6bd2b01490
-  languageName: node
-  linkType: hard
-
 "@cloudflare/kv-asset-handler@npm:0.5.0":
   version: 0.5.0
   resolution: "@cloudflare/kv-asset-handler@npm:0.5.0"
@@ -5390,17 +5383,6 @@ __metadata:
   languageName: unknown
   linkType: soft
 
-"opencast-remote-transcription-worker@workspace:Server/RemoteTranscriptionWorker":
-  version: 0.0.0-use.local
-  resolution: "opencast-remote-transcription-worker@workspace:Server/RemoteTranscriptionWorker"
-  dependencies:
-    "@cloudflare/vitest-pool-workers": "catalog:"
-    jsonwebtoken: "catalog:"
-    vitest: "catalog:"
-    wrangler: "catalog:"
-  languageName: unknown
-  linkType: soft
-
 "opencast-share-worker@workspace:Server/ShareWorker":
   version: 0.0.0-use.local
   resolution: "opencast-share-worker@workspace:Server/ShareWorker"
@@ -5428,18 +5410,6 @@ __metadata:
   dependencies:
     "@cloudflare/vitest-pool-workers": "catalog:"
     jsonwebtoken: "catalog:"
-    vitest: "catalog:"
-    wrangler: "catalog:"
-  languageName: unknown
-  linkType: soft
-
-"opencast-transcription-media-worker@workspace:Server/TranscriptionMediaWorker":
-  version: 0.0.0-use.local
-  resolution: "opencast-transcription-media-worker@workspace:Server/TranscriptionMediaWorker"
-  dependencies:
-    "@cloudflare/containers": "npm:0.3.7"
-    "@cloudflare/workers-types": "catalog:"
-    typescript: "npm:^5.6.0"
     vitest: "catalog:"
     wrangler: "catalog:"
   languageName: unknown

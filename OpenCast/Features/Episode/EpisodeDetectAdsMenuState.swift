@@ -16,7 +16,7 @@ enum EpisodeDetectAdsMenuState: Equatable {
             self = .queued
         case .completed:
             self = .detected
-        case .failed, .cloudUnavailable, .notQueued:
+        case .failed, .notQueued:
             self = hasCurrentCompletedAnalysis ? .detected : .detect
         }
     }

@@ -571,48 +571,6 @@ struct EpisodeTranscriptionRequestCoordinatorTests {
         #expect(await waitUntil { !transcriptions.hasActiveJob })
     }
 
-    @Test("A remote reservation rejects a local request before download or model work")
-    func remoteReservationRejectsLocalRequestBeforeSideEffects() async throws {
-        let container = try OpenCastModelContainerFactory.make(inMemory: true)
-        let context = ModelContext(container)
-        let directory = try temporaryDirectory()
-        let downloader = RecordingHangingEpisodeAudioDownloader()
-        let downloads = DownloadStore(
-            downloader: downloader,
-            fileStore: EpisodeDownloadFileStore(baseDirectory: directory)
-        )
-        let transcriptions = EpisodeTranscriptionStore(
-            fileStore: EpisodeTranscriptFileStore(baseDirectory: directory)
-        )
-        let episode = makeEpisode(episodeID: "remote-owned")
-        let reservationResult = transcriptions.workCoordinator.reserveRemote(
-            episodeID: episode.episodeID,
-            activeLocalEpisodeID: nil
-        )
-        guard case .success(let reservation) = reservationResult else {
-            Issue.record("Expected remote work to reserve the episode")
-            return
-        }
-        let coordinator = EpisodeTranscriptionRequestCoordinator(
-            library: LibraryStore(localCache: SQLiteLocalLibraryCacheStore.inMemory()),
-            downloads: downloads,
-            transcriptionModels: installedTranscriptionModelStore(),
-            transcriptionEngineSettings: TranscriptionEngineSettingsStore(),
-            appleSpeechAssets: installedAppleSpeechAssetStore(),
-            transcriptions: transcriptions
-        )
-
-        coordinator.start(episode: episode, modelContext: context)
-
-        #expect(coordinator.request?.phase == .failed(
-            "A remote transcription of this episode is already in progress."
-        ))
-        #expect(coordinator.isPresented)
-        #expect(downloader.requestCount == 0)
-        #expect(!transcriptions.hasActiveJob)
-        transcriptions.workCoordinator.releaseRemote(reservation)
-    }
-
     @Test("Data nuke cancels a waiting request without recreating download state")
     func dataNukeCancelsWaitingRequest() async throws {
         let container = try OpenCastModelContainerFactory.make(inMemory: true)

@@ -41,10 +41,7 @@ struct AdDetectionQueueView: View {
                 if !presentation.finishedRows.isEmpty {
                     Section("Finished") {
                         ForEach(presentation.finishedRows) { row in
-                            AdDetectionQueueRowView(
-                                row: row,
-                                onDetectOnDevice: { detectOnDevice(episodeID: row.episodeID) }
-                            )
+                            AdDetectionQueueRowView(row: row)
                         }
                     }
                 }
@@ -81,13 +78,6 @@ struct AdDetectionQueueView: View {
                 action: resumeQueue
             )
         }
-    }
-
-    private func detectOnDevice(episodeID: String) {
-        guard let episode = appModel.library.episode(with: episodeID) else {
-            return
-        }
-        appModel.startAdFreePass(for: episode, modelContext: modelContext, mode: .onDevice)
     }
 
     private func continueInBackground() {

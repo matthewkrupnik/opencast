@@ -358,7 +358,7 @@ nonisolated struct SearchPerformanceRunner: Sendable {
                 revision: sampleIndex
             )
             let start = clock.now
-            try await transcriptionStore.importRemoteTranscript(
+            try await transcriptionStore.importCompletedTranscript(
                 transcript,
                 modelContext: modelContext
             )

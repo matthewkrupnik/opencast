@@ -6,7 +6,6 @@ enum SettingsRoute: Hashable {
     case notifications
     case transcription
     case adSkipping
-    case credits
     case sync
     case storage
     case importExport

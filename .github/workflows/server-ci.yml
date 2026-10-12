@@ -39,7 +39,6 @@ jobs:
       - name: Verify cross-component server contracts
         run: |
           ./scripts/check-yarn-workspace.sh
-          ./scripts/check-media-ua-pins.sh
           ./scripts/check-wasm-only-test-gating.sh
           python3 ./scripts/check-feed-resource-policy.py
 
@@ -59,10 +58,6 @@ jobs:
           - name: AppAttestCore
             directory: Server/AppAttestCore
             wasm: false
-            check_args: ""
-          - name: MP3FrameCore
-            directory: Server/MP3FrameCore
-            wasm: true
             check_args: ""
           - name: NotificationsWorker
             directory: Server/NotificationsWorker
@@ -86,10 +81,6 @@ jobs:
             check_args: "--lib"
           - name: PodcastDirectoryWorker
             directory: Server/PodcastDirectoryWorker
-            wasm: true
-            check_args: ""
-          - name: RemoteTranscriptionWorker
-            directory: Server/RemoteTranscriptionWorker
             wasm: true
             check_args: ""
     steps:
@@ -169,8 +160,6 @@ jobs:
             directory: Server/TranscriptAnalysisWorker
           - name: PodcastDirectoryWorker
             directory: Server/PodcastDirectoryWorker
-          - name: RemoteTranscriptionWorker
-            directory: Server/RemoteTranscriptionWorker
     steps:
       - name: Check out repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -266,34 +255,6 @@ jobs:
           path.write_text(contents.replace(public_flag, public_flag.replace("false", "true"), 1))
           PY
 
-      - name: Prepare local RemoteTranscription bindings
-        if: matrix.name == 'RemoteTranscriptionWorker'
-        working-directory: ${{ matrix.directory }}
-        run: |
-          python3 - <<'PY'
-          from pathlib import Path
-
-          path = Path("wrangler.toml")
-          contents = path.read_text()
-          blocks = (
-              '[ai]\nbinding = "AI"\n\n',
-              '[[services]]\nbinding = "TRANSCRIPTION_MEDIA_WORKER"\nservice = "your-transcription-media-worker"\n\n',
-          )
-          for block in blocks:
-              if contents.count(block) != 1:
-                  raise SystemExit(f"expected one public CI binding block: {block!r}")
-              contents = contents.replace(block, "")
-          public_flag = 'PUBLIC_REMOTE_TRANSCRIPTION_ENABLED = "false"'
-          if contents.count(public_flag) != 3:
-              raise SystemExit("expected three public remote-transcription defaults")
-          contents = contents.replace(
-              public_flag,
-              'PUBLIC_REMOTE_TRANSCRIPTION_ENABLED = "true"\nDEV_BEARER_ENABLED = "true"',
-              1,
-          )
-          path.write_text(contents)
-          PY
-
       - name: Run public AdAnalysis integration tests
         if: matrix.name == 'AdAnalysisWorker'
         working-directory: ${{ matrix.directory }}
@@ -342,11 +303,6 @@ jobs:
         working-directory: ${{ matrix.directory }}
         run: yarn test:integration
 
-      - name: Run deterministic RemoteTranscription integration tests
-        if: matrix.name == 'RemoteTranscriptionWorker'
-        working-directory: ${{ matrix.directory }}
-        run: yarn test:integration
-
   services:
     name: Service (${{ matrix.name }})
     runs-on: ubuntu-24.04
@@ -360,9 +316,6 @@ jobs:
           - name: PurchaseWorker
             directory: Server/PurchaseWorker
             timeout_minutes: 35
-          - name: TranscriptionMediaWorker
-            directory: Server/TranscriptionMediaWorker
-            timeout_minutes: 50
           - name: ExerciseFeedWorker
             directory: Server/ExerciseFeedWorker
             timeout_minutes: 15
@@ -397,25 +350,6 @@ jobs:
       - name: Install dependencies
         run: yarn install --immutable
 
-      - name: Install TranscriptionMediaWorker test prerequisites
-        if: matrix.name == 'TranscriptionMediaWorker'
-        shell: bash
-        run: |
-          sudo apt-get \
-            -o Acquire::Retries=5 \
-            -o Acquire::http::Timeout=30 \
-            -o Acquire::https::Timeout=30 \
-            update
-
-          sudo env DEBIAN_FRONTEND=noninteractive apt-get \
-            -o Acquire::Retries=5 \
-            -o Acquire::http::Timeout=30 \
-            -o Acquire::https::Timeout=30 \
-            install --yes --no-install-recommends ffmpeg
-
-          ffmpeg -hide_banner -version
-          ffprobe -hide_banner -version
-
       - name: Prepare PurchaseWorker public test configuration
         if: matrix.name == 'PurchaseWorker'
         working-directory: ${{ matrix.directory }}
@@ -449,13 +383,6 @@ jobs:
           yarn test --exclude test/unit/config.spec.mjs
           yarn typecheck
           yarn test:integration
-
-      - name: Check TranscriptionMediaWorker
-        if: matrix.name == 'TranscriptionMediaWorker'
-        working-directory: ${{ matrix.directory }}
-        run: |
-          yarn typecheck
-          yarn test:container
 
       - name: Check ExerciseFeedWorker
         if: matrix.name == 'ExerciseFeedWorker'

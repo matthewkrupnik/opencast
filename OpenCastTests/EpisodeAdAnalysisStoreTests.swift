@@ -617,56 +617,6 @@ struct EpisodeAdAnalysisStoreTests {
         #expect(store.isCurrentAnalysisDocument(rerunDocument, for: transcript))
     }
 
-    @Test("Supported cloud analyses stay current after transcript disk round trip", arguments: ["promo_ad_breaks_v2", "promo_ad_breaks_v3"])
-    func cloudImportedAnalysisStaysCurrentAfterTranscriptRoundTrip(policy: String) throws {
-        let container = try OpenCastModelContainerFactory.make(inMemory: true)
-        let context = ModelContext(container)
-        let temporaryDirectory = try makeTemporaryDirectory()
-        let store = EpisodeAdAnalysisStore(
-            client: FakeEpisodeAdAnalysisClient(),
-            fileStore: EpisodeAdAnalysisFileStore(baseDirectory: temporaryDirectory)
-        )
-        // The cloud pass maps the analysis from the in-memory transcript,
-        // whose minted `updatedAt` can carry fractional seconds that the
-        // `.iso8601` disk round trip drops.
-        let inMemoryTranscript = makeTranscriptDocument(
-            episodeID: "ad-cloud-round-trip",
-            updatedAt: Date(timeIntervalSince1970: 1_780_000_000.742)
-        )
-        let success = OpenCastRemoteTranscriptionAdAnalysisSuccess(
-            model: "gemini-3.5-flash",
-            policy: policy,
-            spans: [OpenCastRemoteTranscriptionAdAnalysisSpan(
-                kind: "host_read_ad",
-                label: "Sponsor",
-                startSegmentID: 1,
-                endSegmentID: 1,
-                startTime: 5,
-                endTime: 12,
-                confidence: 0.9,
-                evidenceQuote: "brought to you by"
-            )],
-            warnings: []
-        )
-        let analysisDocument = try EpisodeRemoteAdAnalysisMapper.document(
-            from: success,
-            transcript: inMemoryTranscript,
-            requestID: "job-cloud-round-trip"
-        )
-
-        try store.importCompletedAnalysis(analysisDocument, modelContext: context)
-
-        let reloadedTranscript = makeTranscriptDocument(
-            episodeID: "ad-cloud-round-trip",
-            updatedAt: Date(timeIntervalSince1970: 1_780_000_000)
-        )
-        if case .completed(_, let isStale) = store.jobState(for: reloadedTranscript) {
-            #expect(!isStale)
-        } else {
-            Issue.record("Expected completed current state after cloud import.")
-        }
-    }
-
     @Test("Current document check requires matching fingerprint metadata")
     func currentDocumentCheckRequiresMatchingFingerprintMetadata() async throws {
         let container = try OpenCastModelContainerFactory.make(inMemory: true)

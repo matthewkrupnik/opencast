@@ -40,7 +40,6 @@ struct PerformanceDiagnosticsModifier: ViewModifier {
 
     private var transcriptionState: String {
         if appModel.transcriptions.activeEpisodeID != nil { return "on-device" }
-        if appModel.remoteTranscription.store.phase?.isTerminal == false { return "remote" }
         return "idle"
     }
 }

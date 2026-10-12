@@ -19,7 +19,6 @@ struct EpisodePipelineState: Equatable {
     static let transcriptPausedTitle = "Transcript paused"
     static let analyzingTitle = "Detecting ads…"
     static let analysisFailedTitle = "Ad detection didn't finish"
-    static let cloudUnavailableTitle = "Cloud detection unavailable"
 
     static let downloadFailedMessage = "The download couldn't finish."
     static let downloadMissingMessage = "The downloaded file is missing."
@@ -105,14 +104,6 @@ struct EpisodePipelineState: Equatable {
                 downloadRecord: downloadRecord,
                 transcription: transcription,
                 analysis: analysis
-            )
-        }
-
-        if case .cloudUnavailable(let message) = queueStatus {
-            return cloudUnavailableState(
-                message: message,
-                downloadRecord: downloadRecord,
-                transcription: transcription
             )
         }
 
@@ -239,44 +230,6 @@ struct EpisodePipelineState: Equatable {
                 footnote: nil,
                 action: .cancelPass
             )
-        case .cloudQueued:
-            return EpisodePipelineState(
-                title: passTitle,
-                steps: passSteps(
-                    download: completedOrWaiting(downloadRecord),
-                    transcribe: .running(fraction: nil, detail: "Working in the cloud…"),
-                    detect: .waiting
-                ),
-                footnote: nil,
-                action: .cancelPass
-            )
-        case .cloudTranscribing(let progress):
-            return EpisodePipelineState(
-                title: passTitle,
-                steps: passSteps(
-                    download: .done,
-                    transcribe: .running(
-                        fraction: progress?.fractionCompleted,
-                        detail: progress?.estimate?.displayText ?? "Transcribing in the cloud…"
-                    ),
-                    detect: .waiting
-                ),
-                footnote: nil,
-                action: .cancelPass
-            )
-        case .cloudDetectingAds:
-            return EpisodePipelineState(
-                title: passTitle,
-                steps: passSteps(download: .done, transcribe: .done, detect: .running(fraction: nil, detail: nil)),
-                footnote: nil,
-                action: .cancelPass
-            )
-        case .cloudUnavailable(let message):
-            return cloudUnavailableState(
-                message: message,
-                downloadRecord: downloadRecord,
-                transcription: .unavailable
-            )
         case .interrupted:
             return EpisodePipelineState(
                 title: passTitle,
@@ -331,26 +284,6 @@ struct EpisodePipelineState: Equatable {
             steps: passSteps(download: download, transcribe: transcribe, detect: detect),
             footnote: nil,
             action: .retryPass
-        )
-    }
-
-    /// Cloud detection couldn't run (credits, capacity, kill switch): name
-    /// the reason on the detect step and offer the explicit on-device
-    /// fallback — never a silent switch.
-    private static func cloudUnavailableState(
-        message: String,
-        downloadRecord: EpisodeDownloadRecord?,
-        transcription: EpisodeTranscriptionJobState
-    ) -> EpisodePipelineState {
-        EpisodePipelineState(
-            title: cloudUnavailableTitle,
-            steps: passSteps(
-                download: completedOrWaiting(downloadRecord),
-                transcribe: transcriptDone(transcription) ? .done : .waiting,
-                detect: .failed(message: message)
-            ),
-            footnote: nil,
-            action: .detectOnDevice
         )
     }
 

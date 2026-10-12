@@ -17,9 +17,6 @@ struct NowPlayingView: View {
     @State private var isVoiceBoostEnabled = true
     @State private var showsAutoSkipPill = false
     @State private var displayedAutoSkipEventSequence = 0
-    @State private var remoteEstimateRequest: RemoteTranscriptionStartPreviewRequest?
-    @State private var remoteTranscriptionStartErrorMessage: String?
-    @State private var adDetectionModePromptEpisode: EpisodeListItemSnapshot?
 
     let bottomContentPadding: CGFloat
     let topContentPadding: CGFloat
@@ -59,7 +56,6 @@ struct NowPlayingView: View {
                                 voiceBoostEnabled: $isVoiceBoostEnabled,
                                 voiceBoostControlEnabled: appModel.playbackSettings.canChangeCurrentEpisodeVoiceBoost,
                                 onAdFreePassAction: startAdFreePass,
-                                onTranscribeRemotely: presentRemoteTranscriptionEstimate,
                                 onTranscriptAction: performTranscriptAction,
                                 onAdFreePassBackgroundProbe: startAdFreePassBackgroundProbe,
                                 isSoundLabInteractionActive: $isSoundLabInteractionActive,
@@ -203,22 +199,7 @@ struct NowPlayingView: View {
                 }
             }
             .overlay(alignment: .top) {
-                if let remoteTranscriptionPresentation {
-                    NowPlayingRemoteTranscriptionToast(
-                        presentation: remoteTranscriptionPresentation,
-                        canOpenEpisode: canOpenCurrentEpisode,
-                        onOpenEpisode: openEpisode,
-                        onResume: resumeRemoteTranscription,
-                        onCancel: appModel.remoteTranscription.cancel
-                    )
-                    .padding(.horizontal, 16)
-                    .padding(.top, moreMenuTopPadding + 48)
-                    .transition(
-                        accessibilityReduceMotion
-                            ? .opacity
-                            : .move(edge: .top).combined(with: .opacity)
-                    )
-                } else if let transcriptionRequest {
+                if let transcriptionRequest {
                     NowPlayingTranscriptionToast(
                         request: transcriptionRequest,
                         canOpenEpisode: canOpenCurrentEpisode,
@@ -238,10 +219,6 @@ struct NowPlayingView: View {
                 accessibilityReduceMotion ? .easeOut(duration: 0.2) : .bouncy,
                 value: transcriptionRequest?.id
             )
-            .animation(
-                accessibilityReduceMotion ? .easeOut(duration: 0.2) : .bouncy,
-                value: remoteTranscriptionPresentation != nil
-            )
             .onScrollGeometryChange(for: Bool.self) { geometry in
                 // At rest, a scroll view's top offset is the negative top inset.
                 geometry.contentOffset.y <= -geometry.contentInsets.top + 1
@@ -250,7 +227,6 @@ struct NowPlayingView: View {
             }
             .tint(.accentColor)
             .foregroundStyle(.primary)
-            .adDetectionModeDialog(episode: $adDetectionModePromptEpisode)
             .sensoryFeedback(.impact(flexibility: .soft), trigger: playPauseFeedback)
             .sensoryFeedback(.selection, trigger: skipFeedback)
             .sensoryFeedback(.impact(flexibility: .soft), trigger: autoSkipFeedback)
@@ -290,25 +266,6 @@ struct NowPlayingView: View {
                     .presentationDetents([.large])
                     .presentationDragIndicator(.visible)
                 }
-            }
-            .sheet(item: $remoteEstimateRequest) { request in
-                RemoteTranscriptionConsumptionPreviewSheet(request: request) {
-                    startRemoteTranscription(for: request)
-                }
-                .environment(appModel)
-                .modelContext(modelContext)
-            }
-            // Alert has no item overload for a non-Identifiable String.
-            .alert(
-                "Couldn’t Start Transcription",
-                isPresented: Binding(
-                    get: { remoteTranscriptionStartErrorMessage != nil },
-                    set: { if !$0 { remoteTranscriptionStartErrorMessage = nil } }
-                ),
-                presenting: remoteTranscriptionStartErrorMessage
-            ) { _ in
-            } message: { message in
-                Text(message)
             }
             .onAppear {
                 showAutoSkipPillIfNeeded(for: appModel.playback.lastAutoSkipEvent)
@@ -407,17 +364,6 @@ struct NowPlayingView: View {
             return nil
         }
         return request
-    }
-
-    private var remoteTranscriptionPresentation: RemoteTranscriptionStatusPresentation? {
-        guard appModel.remoteTranscriptionPurchases.isSurfaceVisible,
-              let currentEpisodeID,
-              let phase = appModel.remoteTranscription.store.phase(for: currentEpisodeID),
-              !phase.isTerminal
-        else {
-            return nil
-        }
-        return RemoteTranscriptionStatusPresentation.make(phase: phase)
     }
 
     private func performTranscriptAction() {
@@ -527,39 +473,7 @@ struct NowPlayingView: View {
     }
 
     private func startAdFreePass() {
-        adDetectionModePromptEpisode = appModel.startOrContinueAdFreePassForCurrentEpisodeResolvingMode(
-            modelContext: modelContext
-        )
-    }
-
-    private func presentRemoteTranscriptionEstimate() {
-        guard appModel.remoteTranscriptionPurchases.isSurfaceVisible,
-              !appModel.remoteTranscription.store.hasActiveRequest,
-              let currentEpisodeID,
-              !appModel.transcriptions.hasCompletedTranscript(for: currentEpisodeID)
-        else {
-            return
-        }
-
-        remoteEstimateRequest = appModel.remoteTranscriptionStartPreviewRequestForCurrentEpisode()
-    }
-
-    private func startRemoteTranscription(for request: RemoteTranscriptionStartPreviewRequest) {
-        switch appModel.confirmRemoteTranscriptionStart(request, modelContext: modelContext) {
-        case .started:
-            break
-        case .unavailable(let message):
-            remoteTranscriptionStartErrorMessage = message
-        }
-    }
-
-    private func resumeRemoteTranscription() {
-        switch appModel.resumeRemoteTranscriptionForCurrentEpisode(modelContext: modelContext) {
-        case .started:
-            break
-        case .unavailable(let message):
-            remoteTranscriptionStartErrorMessage = message
-        }
+        appModel.startOrContinueAdFreePassForCurrentEpisode(modelContext: modelContext)
     }
 
     private func startAdFreePassBackgroundProbe() {
