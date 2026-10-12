@@ -215,7 +215,7 @@
       "blocks": [
         {
           "type": "paragraph",
-          "text": "New Episode Notifications are produced on this device. opencast checks the feeds you follow in the background and posts a notification when a new episode appears. No push service is involved, and nothing about your library leaves the device."
+          "text": "New Episode Notifications are produced on this device. opencast checks the feeds you follow in the background, including every 30 minutes while an episode plays, and posts a notification when a new episode appears. No push service is involved, and nothing about your library leaves the device."
         },
         {
           "type": "bullets",
