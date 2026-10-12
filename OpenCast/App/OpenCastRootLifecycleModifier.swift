@@ -176,7 +176,6 @@ struct OpenCastRootLifecycleModifier: ViewModifier {
                 return
             }
             await appModel.notificationSettings.refreshIfNeeded(
-                activePodcastIDs: appModel.library.activePodcastIDs,
                 modelContext: modelContext
             )
             guard !Task.isCancelled else {

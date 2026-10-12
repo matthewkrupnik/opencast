@@ -32,7 +32,6 @@ struct SettingsNotificationsSection: View {
         }
         .task {
             await appModel.notificationSettings.refreshIfNeeded(
-                activePodcastIDs: appModel.library.activePodcastIDs,
                 modelContext: modelContext
             )
         }
@@ -50,7 +49,6 @@ struct SettingsNotificationsSection: View {
         Task {
             await appModel.notificationSettings.setEnabled(
                 isEnabled,
-                activePodcastIDs: appModel.library.activePodcastIDs,
                 modelContext: modelContext
             )
         }

@@ -11,7 +11,7 @@ enum TranscriptAnalysisGenerateDisclosureCopy {
         isSharingEnabled: Bool = TranscriptAnalysisFeatureFlags.isSharingEnabled
     ) -> String {
         var lines = [
-            "This episode’s transcript is sent to OpenCast to generate chapters and a summary. Your audio is never sent.",
+            "This episode’s transcript is sent from this device to Google Gemini to generate chapters and a summary. Your audio is never sent.",
             "Results are saved on this device."
         ]
         if isSharingEnabled {

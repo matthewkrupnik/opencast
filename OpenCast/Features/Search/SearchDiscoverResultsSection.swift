@@ -52,8 +52,6 @@ struct SearchDiscoverResultsSection: View {
                 }
             } header: {
                 Text("Results")
-            } footer: {
-                PodcastIndexAttributionFooter(results: results)
             }
         }
     }

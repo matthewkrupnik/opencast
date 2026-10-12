@@ -23,6 +23,7 @@ struct OpenCastTransportPolicyTests {
 
         #expect(permittedIdentifiers == [
             "mk.lan.opencast.ad-free-pass",
+            "mk.lan.opencast.feed-refresh",
             "mk.lan.opencast.transcript-generation",
         ])
         #expect(!backgroundModes.contains("processing"))

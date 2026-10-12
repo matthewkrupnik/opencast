@@ -11,7 +11,7 @@ struct OnboardingNotificationSetupPage: View {
                         .font(.largeTitle)
                         .bold()
 
-                    Text("Get a push when a podcast you follow publishes a new episode. You can turn this on now or later from Settings.")
+                    Text("Get a notification when a podcast you follow publishes a new episode. opencast checks your shows in the background. You can turn this on now or later from Settings.")
                         .font(.body)
                         .foregroundStyle(.secondary)
                 }

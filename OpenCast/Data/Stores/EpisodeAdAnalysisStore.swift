@@ -26,24 +26,13 @@ final class EpisodeAdAnalysisStore {
 
     init(
         fileStore: EpisodeAdAnalysisFileStore = EpisodeAdAnalysisFileStore(),
-        configuration: AdAnalysisBackendConfiguration? = nil,
-        transport: any EpisodeAdAnalysisHTTPTransport & AppAttestHTTPTransport = URLSession.shared,
+        configuration: GeminiConfiguration = .current,
+        transport: any GeminiHTTPTransport = GeminiGenerateContentClient.sharedSession,
         preparationGate: @escaping @Sendable () async throws -> Void = {}
     ) {
-        let effectiveConfiguration = configuration ?? .current
-        #if DEBUG || INTERNAL_NOTIFICATIONS_DIAGNOSTICS
-        client = URLSessionEpisodeAdAnalysisClient(configuration: effectiveConfiguration, transport: transport)
-        #else
-        if let configuration {
-            client = URLSessionEpisodeAdAnalysisClient(configuration: configuration, transport: transport)
-        } else {
-            client = EpisodeAdAnalysisRoutedClient(clientFactory: { configuration in
-                URLSessionEpisodeAdAnalysisClient(configuration: configuration, transport: transport)
-            })
-        }
-        #endif
+        client = GeminiAdAnalysisClient(configuration: configuration, transport: transport)
         self.fileStore = fileStore
-        analysisUnavailableMessage = effectiveConfiguration.analysisUnavailableMessage
+        analysisUnavailableMessage = configuration.unavailableMessage
         poller = Self.makePoller(timeout: .seconds(1_800)) { duration in
             try await Task.sleep(for: duration)
         }

@@ -61,8 +61,6 @@ struct PodcastSearchView: View {
                     }
                 } header: {
                     Text("Results")
-                } footer: {
-                    PodcastIndexAttributionFooter(results: results)
                 }
             }
         }

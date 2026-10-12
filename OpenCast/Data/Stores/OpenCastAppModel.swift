@@ -4,6 +4,7 @@ import OpenCastCore
 import OpenCastPlayback
 import OpenCastTranscription
 import SwiftData
+import UIKit
 import UserNotifications
 
 @Observable
@@ -235,9 +236,10 @@ final class OpenCastAppModel {
 
         self.cacheController = cacheController
         self.httpClient = resolvedHTTPClient
-        self.helpContent = helpContent ?? HelpContentStore(
-            httpClient: resolvedHTTPClient,
-            cacheDirectory: cacheController.rootDirectory.appending(path: "HelpContent", directoryHint: .isDirectory)
+        self.helpContent = helpContent ?? HelpContentStore()
+        // Remote help copies were cached here before help became bundled-only.
+        try? FileManager.default.removeItem(
+            at: cacheController.rootDirectory.appending(path: "HelpContent", directoryHint: .isDirectory)
         )
         let resolvedLibrary = library ?? LibraryStore(
             feedService: DefaultFeedService(httpClient: resolvedHTTPClient),
@@ -269,9 +271,6 @@ final class OpenCastAppModel {
             library: resolvedLibrary
         )
         resolvedLibrary.episodeSidecarMigrators = [downloads, transcriptions, adAnalyses, transcriptAnalyses, playlists]
-        notificationSettings.feedHealthRecorder = { [weak resolvedLibrary] records in
-            await resolvedLibrary?.recordNotificationFeedHealth(records)
-        }
         adFreePassEnqueueContext = AdFreePassEnqueueContext(
             downloads: downloads,
             transcriptionModels: transcriptionModels,
@@ -357,6 +356,9 @@ final class OpenCastAppModel {
         adFreePass.uiTestQueueOverride = adFreePassQueueOverride
         adFreePass.uiTestEpisodeSnapshotResolver = { [weak self] episodeID in
             self?.episodeSnapshot(for: episodeID)
+        }
+        self.library.onNewEpisodes = { [weak self] candidates in
+            await self?.notifyNewEpisodes(candidates)
         }
         dataNuke.prepareRuntime = { [weak self] in
             await self?.prepareRuntimeForDataNuke()
@@ -2111,6 +2113,20 @@ final class OpenCastAppModel {
         return notification
     }
 
+    /// Announces newly published episodes. Episodes found while the app is
+    /// active are recorded but not posted, so a later background check never
+    /// re-announces them.
+    private func notifyNewEpisodes(_ candidates: [NewEpisodeCandidate]) async {
+        guard notificationSettings.isEnabled else {
+            return
+        }
+        let admitted = await notificationSettings.ledger.admit(candidates)
+        await NewEpisodeNotificationScheduler().post(
+            admitted,
+            isSceneActive: UIApplication.shared.applicationState == .active
+        )
+    }
+
     func refreshLibraryIfStale(modelContext: ModelContext) async {
         guard allowsAutomaticFeedRefresh else {
             return
@@ -2134,7 +2150,6 @@ final class OpenCastAppModel {
     /// fresh network analysis mid-nuke.
     private func prepareRuntimeForDataNuke() async {
         transcriptionRequests.resetForDataNuke()
-        await notificationSettings.deleteInstallIfRegistered()
         library.prepareForDataNuke()
         await transcriptAnalysisQueue.cancelPending()
     }
@@ -2407,7 +2422,7 @@ final class OpenCastAppModel {
         playlists.sortOrder = playlistDisplaySettings.sortOrder
         recentSearches.load(modelContext: modelContext)
         playbackSettings.load(modelContext: modelContext, playback: playback)
-        notificationSettings.resetAfterDataNuke()
+        await notificationSettings.resetAfterDataNuke()
         onboardingState.load(modelContext: modelContext)
         coreStoresHydrated = true
         #if DEBUG
@@ -2612,23 +2627,11 @@ final class OpenCastAppModel {
         return episode
     }
 
-    /// Apple stays the ranking authority; the Podcast Index Worker is a
-    /// supplement, so a disabled directory backend degrades to the
-    /// Apple-only service.
+    /// Apple's directory only: the Podcast Index supplement needed a
+    /// self-hosted Worker.
     private static func defaultPodcastDirectoryService(
         httpClient: any OpenCastHTTPClient
     ) -> any PodcastDirectoryService {
-        let apple = ITunesPodcastDirectoryService(httpClient: httpClient)
-        let configuration = PodcastDirectoryBackendConfiguration.current
-        guard configuration.isEnabled else {
-            return apple
-        }
-        return CompositePodcastDirectoryService(
-            apple: apple,
-            podcastIndex: PodcastIndexWorkerDirectoryService(
-                baseURL: configuration.workerBaseURL,
-                httpClient: httpClient
-            )
-        )
+        ITunesPodcastDirectoryService(httpClient: httpClient)
     }
 }

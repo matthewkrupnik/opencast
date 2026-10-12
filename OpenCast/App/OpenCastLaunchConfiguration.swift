@@ -24,7 +24,6 @@ struct OpenCastLaunchConfiguration {
     var schedulesAdFreePassNotificationLookFixture: Bool
     var schedulesAppStoreAdFreePassNotification: Bool
     var schedulesAppStoreEpisodeNotification: Bool
-    var resetsAdAnalysisAppAttestCredential: Bool
     var adFreePassPresentationOverride: EpisodeAdFreePassPresentation?
     var adFreePassQueueOverride: AdFreePassQueueUITestOverride?
     /// UI-test seam: scripts PCC eligibility so the recap entries and the
@@ -115,7 +114,6 @@ struct OpenCastLaunchConfiguration {
         let appStoreSoundLabRevealProgress = isUITesting
             ? environment["OPENCAST_PIN_APP_STORE_SOUND_LAB_REVEAL"].flatMap(Double.init)
             : nil
-        let shouldResetAdAnalysisAppAttestCredential = environment["OPENCAST_RESET_AD_ANALYSIS_APP_ATTEST_CREDENTIAL"] == "1"
         let adFreePassPresentationOverride = isUITesting
             ? OpenCastUITestAdFreePassPresentationOverride.resolve(environment: environment)
             : nil
@@ -188,7 +186,6 @@ struct OpenCastLaunchConfiguration {
                 && shouldScheduleAppStoreAdFreePassNotification,
             schedulesAppStoreEpisodeNotification: isUITesting
                 && shouldScheduleAppStoreEpisodeNotification,
-            resetsAdAnalysisAppAttestCredential: isUITesting && shouldResetAdAnalysisAppAttestCredential,
             adFreePassPresentationOverride: adFreePassPresentationOverride,
             adFreePassQueueOverride: adFreePassQueueOverride,
             uiTestTranscriptIntelligenceAvailability: uiTestTranscriptIntelligenceAvailability,

@@ -88,39 +88,6 @@ struct EpisodeTranscriptAnalysisStoreTests {
         #expect(store.capDeferredEpisodeIDs == [transcript.episodeID])
     }
 
-    @Test("Insufficient-seconds 402s thread the insufficientSeconds kind and defer for a balance increase")
-    func insufficientSeconds402ThreadsKindAndDefers() async throws {
-        let container = try OpenCastModelContainerFactory.make(inMemory: true)
-        let context = ModelContext(container)
-        let client = ThrowingEpisodeTranscriptAnalysisClient(
-            error: EpisodeTranscriptAnalysisHTTPError(
-                statusCode: 402,
-                code: "insufficient_transcription_seconds",
-                detail: nil
-            )
-        )
-        let store = EpisodeTranscriptAnalysisStore(
-            client: client,
-            fileStore: EpisodeTranscriptAnalysisFileStore(baseDirectory: try makeTemporaryDirectory())
-        )
-        let transcript = makeTranscriptDocument(episodeID: "chapters-402")
-
-        store.startAnalysis(
-            transcript: transcript,
-            episodeTitle: "Episode Title",
-            podcastTitle: "Podcast Title",
-            modelContext: context
-        )
-
-        #expect(await waitUntil {
-            store.record(for: transcript.episodeID)?.state == .failed
-        })
-        let record = try #require(store.record(for: transcript.episodeID))
-        #expect(record.failureKind == .insufficientSeconds)
-        #expect(store.insufficientSecondsDeferredEpisodeIDs == [transcript.episodeID])
-        #expect(store.capDeferredEpisodeIDs.isEmpty)
-    }
-
     @Test("A defensive async_required 400 stays a generic quiet failure")
     func asyncRequiredStaysGenericQuietFailure() async throws {
         let container = try OpenCastModelContainerFactory.make(inMemory: true)
@@ -152,33 +119,6 @@ struct EpisodeTranscriptAnalysisStoreTests {
         #expect(record.failureKind == .generic)
         #expect(store.insufficientSecondsDeferredEpisodeIDs.isEmpty)
         #expect(store.capDeferredEpisodeIDs.isEmpty)
-    }
-
-    @Test("A bootstrap_required 403 repairs the account link and retries once")
-    func bootstrapRequiredRepairsLinkAndRetries() async throws {
-        let container = try OpenCastModelContainerFactory.make(inMemory: true)
-        let context = ModelContext(container)
-        let client = BootstrapRepairingEpisodeTranscriptAnalysisClient()
-        let store = EpisodeTranscriptAnalysisStore(
-            client: client,
-            fileStore: EpisodeTranscriptAnalysisFileStore(baseDirectory: try makeTemporaryDirectory())
-        )
-        let transcript = makeTranscriptDocument(episodeID: "chapters-bootstrap")
-
-        store.startAnalysis(
-            transcript: transcript,
-            episodeTitle: "Episode Title",
-            podcastTitle: "Podcast Title",
-            modelContext: context
-        )
-
-        #expect(await waitUntil {
-            store.record(for: transcript.episodeID)?.state == .completed
-        })
-        // The 403 is repaired transparently: bootstrap between the two
-        // analyze calls, no failure surfaced anywhere.
-        #expect(client.events == ["analyze", "bootstrap", "analyze"])
-        #expect(store.lastErrorMessage(for: transcript.episodeID) == nil)
     }
 
     @Test("Generic failures never join the cap-deferred retry set")
@@ -435,7 +375,7 @@ struct EpisodeTranscriptAnalysisStoreTests {
     func generateDisclosureCopyComposesFromFlags() {
         // All flags live pins the full first-tap disclosure byte-for-byte.
         let pinnedBody = """
-        This episode’s transcript is sent to OpenCast to generate chapters and a summary. Your audio is never sent.
+        This episode’s transcript is sent from this device to Google Gemini to generate chapters and a summary. Your audio is never sent.
         Results are saved on this device.
         Chapters may be shared with other listeners of the same episode.
         """
@@ -451,7 +391,7 @@ struct EpisodeTranscriptAnalysisStoreTests {
         )
         #expect(!darkBody.contains("shared"))
         #expect(darkBody == """
-        This episode’s transcript is sent to OpenCast to generate chapters and a summary. Your audio is never sent.
+        This episode’s transcript is sent from this device to Google Gemini to generate chapters and a summary. Your audio is never sent.
         Results are saved on this device.
         """)
 
@@ -460,7 +400,7 @@ struct EpisodeTranscriptAnalysisStoreTests {
         let shippingBody = TranscriptAnalysisGenerateDisclosureCopy.confirmationBody()
         #expect(!shippingBody.contains("shared"))
         #expect(shippingBody == """
-        This episode’s transcript is sent to OpenCast to generate chapters and a summary. Your audio is never sent.
+        This episode’s transcript is sent from this device to Google Gemini to generate chapters and a summary. Your audio is never sent.
         Results are saved on this device.
         """)
         #expect(TranscriptAnalysisGenerateDisclosureCopy.title == "Generate Chapters & Summary?")
@@ -592,106 +532,6 @@ struct EpisodeTranscriptAnalysisStoreTests {
         #expect(client.requests.map(\.episodeID) == [plainEpisodeID])
         #expect(transcriptAnalyses.record(for: untranscribedEpisodeID)?.failureKind == .capExceeded)
         #expect(transcriptAnalyses.record(for: chapteredEpisodeID)?.failureKind == .capExceeded)
-    }
-
-    @Test("A fresh insufficient-seconds denial halts the drain instead of burning the queue's admissions")
-    func freshInsufficientDenialHaltsDrain() async throws {
-        let container = try OpenCastModelContainerFactory.make(inMemory: true)
-        let context = ModelContext(container)
-        let localCache = SQLiteLocalLibraryCacheStore.inMemory()
-        let temporaryDirectory = try makeTemporaryDirectory()
-        let transcriptFileStore = EpisodeTranscriptFileStore(baseDirectory: temporaryDirectory)
-        let client = ThrowingEpisodeTranscriptAnalysisClient(
-            error: EpisodeTranscriptAnalysisHTTPError(
-                statusCode: 402,
-                code: "insufficient_transcription_seconds",
-                detail: nil
-            )
-        )
-        let transcriptAnalyses = EpisodeTranscriptAnalysisStore(
-            client: client,
-            fileStore: EpisodeTranscriptAnalysisFileStore(baseDirectory: temporaryDirectory)
-        )
-
-        let snapshot = try RSSFeedParser().parse(
-            data: Data(
-                """
-                <?xml version="1.0" encoding="utf-8"?>
-                <rss version="2.0">
-                  <channel>
-                    <title>Broke Show</title>
-                    <item>
-                      <title>First Long Episode</title>
-                      <guid>halt-402-first</guid>
-                      <enclosure url="https://example.com/audio/halt-402-first.mp3" type="audio/mpeg" />
-                    </item>
-                    <item>
-                      <title>Second Long Episode</title>
-                      <guid>halt-402-second</guid>
-                      <enclosure url="https://example.com/audio/halt-402-second.mp3" type="audio/mpeg" />
-                    </item>
-                  </channel>
-                </rss>
-                """.utf8
-            ),
-            feedURL: URL(string: "https://example.com/halt-402.xml")!
-        )
-        try await localCache.upsertCache(from: snapshot, refreshedAt: .now)
-        let feedURL = snapshot.podcast.id.rawValue
-        let firstEpisodeID = snapshot.episodes[0].id.rawValue
-        let secondEpisodeID = snapshot.episodes[1].id.rawValue
-        context.insert(SubscriptionRecord(feedURL: feedURL, title: "Broke Show"))
-        for episodeID in [firstEpisodeID, secondEpisodeID] {
-            try seedCompletedTranscript(
-                episodeID: episodeID,
-                podcastID: feedURL,
-                fileStore: transcriptFileStore,
-                context: context
-            )
-        }
-        let base = Date(timeIntervalSince1970: 1_780_300_000)
-        insertDeferredRecord(
-            kind: .insufficientSeconds,
-            episodeID: firstEpisodeID,
-            podcastID: feedURL,
-            updatedAt: base.addingTimeInterval(10),
-            context: context
-        )
-        insertDeferredRecord(
-            kind: .insufficientSeconds,
-            episodeID: secondEpisodeID,
-            podcastID: feedURL,
-            updatedAt: base,
-            context: context
-        )
-        try context.save()
-
-        let appModel = OpenCastAppModel(
-            library: LibraryStore(localCache: localCache),
-            transcriptions: EpisodeTranscriptionStore(fileStore: transcriptFileStore),
-            transcriptAnalyses: transcriptAnalyses,
-            allowsAutomaticFeedRefresh: false
-        )
-        await appModel.library.load(modelContext: context)
-        appModel.transcriptions.load(modelContext: context)
-        // The deferrals model manually started runs, so consent is on file.
-        transcriptAnalyses.acknowledgeGenerateDisclosure(modelContext: context)
-        appModel.transcriptAnalyses.load(modelContext: context)
-        appModel.retryDeferredTranscriptAnalyses(modelContext: context, trigger: .launch)
-
-        // The first run's FRESH 402 must stop the drain: each queued denial
-        // would burn a daily-cap admission the post-top-up retries need.
-        #expect(await waitUntil {
-            client.analyzeCallCount == 1 && !transcriptAnalyses.hasActiveJob
-        })
-        try? await Task.sleep(for: .milliseconds(150))
-        #expect(client.analyzeCallCount == 1)
-        #expect(transcriptAnalyses.record(for: firstEpisodeID)?.failureKind == .insufficientSeconds)
-        #expect(transcriptAnalyses.record(for: secondEpisodeID)?.failureKind == .insufficientSeconds)
-        #expect(
-            Set(transcriptAnalyses.insufficientSecondsDeferredEpisodeIDs)
-                == [firstEpisodeID, secondEpisodeID]
-        )
     }
 
     @Test("Deferrals inherited before the disclosure acknowledgement demote and never re-upload")
@@ -1075,50 +915,6 @@ private final class ThrowingEpisodeTranscriptAnalysisClient: EpisodeTranscriptAn
 
     func pollJob(id: String) async throws -> EpisodeTranscriptAnalysisJobPollOutcome {
         throw EpisodeTranscriptAnalysisError.clientDisabled
-    }
-}
-
-/// Refuses the first analyze with the typed link-missing 403, then admits
-/// everything after a bootstrap: the store's transparent repair path.
-private final class BootstrapRepairingEpisodeTranscriptAnalysisClient: EpisodeTranscriptAnalysisClient, @unchecked Sendable {
-    private(set) var events: [String] = []
-
-    func analyze(_ request: EpisodeTranscriptAnalysisAPIRequest) async throws -> EpisodeTranscriptAnalysisSubmitOutcome {
-        events.append("analyze")
-        guard events.contains("bootstrap") else {
-            throw EpisodeTranscriptAnalysisHTTPError(
-                statusCode: 403,
-                code: "bootstrap_required",
-                detail: nil
-            )
-        }
-        return .completed(EpisodeTranscriptAnalysisAPIResponse(
-            schemaVersion: 1,
-            requestID: request.requestID,
-            model: "gemini-3.5-flash",
-            policy: EpisodeTranscriptAnalysisContract.expectedPolicy,
-            chapters: [
-                EpisodeTranscriptAnalysisAPIChapter(
-                    title: "Welcome",
-                    startSegmentID: 0,
-                    endSegmentID: 1,
-                    startTime: 0,
-                    endTime: 12,
-                    confidence: 0.9
-                )
-            ],
-            summary: nil,
-            warnings: [],
-            usage: nil
-        ))
-    }
-
-    func pollJob(id: String) async throws -> EpisodeTranscriptAnalysisJobPollOutcome {
-        throw EpisodeTranscriptAnalysisError.clientDisabled
-    }
-
-    func bootstrapAccount() async throws {
-        events.append("bootstrap")
     }
 }
 

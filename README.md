@@ -43,7 +43,9 @@ open opencast.xcodeproj
 
 Select the `OpenCast` scheme, choose an iPhone or iPad running iOS 27, and press Run. A simulator build does **not** require a Cloudflare deployment: RSS, the local library, playback, downloads, Voice Boost, and local persistence are all part of the app checkout.
 
-The public repository is deliberately sanitized. Server-backed features point to placeholder endpoints, so notifications, ad analysis, and model delivery require services you operate and configure yourself.
+New-episode notifications are produced on the device: a background feed check posts local notifications, so iOS decides when they arrive.
+
+Ad detection and Chapters & Summary call Google's Gemini API directly from the app. Copy `Config/Secrets.xcconfig.example` to `Config/Secrets.xcconfig` (git-ignored), set `GEMINI_API_KEY`, and rebuild. The key is embedded in the built app, so restrict it to your bundle identifier in Google Cloud. Whisper models download from Hugging Face at pinned revisions and are checked against pinned hashes.
 
 <details>
 <summary><strong>Running on a physical device</strong></summary>
@@ -69,15 +71,10 @@ The app is intentionally native-first: SwiftUI, Observation, SwiftData, AVFounda
 
 ## Optional services
 
-Every public Worker configuration is a disabled, self-hostable template.
+The app no longer depends on any of the Workers in `Server/`; they remain as disabled, self-hostable templates.
 
 | Capability | Setup guide |
 | --- | --- |
-| New-episode notifications | [`NotificationsWorker`](Server/NotificationsWorker/README.md) and [`FeedPollingWorker`](Server/FeedPollingWorker/README.md) |
-| Transcript-based ad analysis | [`AdAnalysisWorker`](Server/AdAnalysisWorker/README.md) |
-| Transcript chapters and summaries | [`TranscriptAnalysisWorker`](Server/TranscriptAnalysisWorker/README.md) |
-| Whisper model manifests and assets | [`ModelGatewayWorker`](Server/ModelGatewayWorker/README.md) |
-| Optional chapters-and-summaries billing | [`PurchaseWorker`](Server/PurchaseWorker/README.md) |
 | Marketing, support, and privacy site | [`Website`](Server/Website/README.md) |
 
 ## Contributing

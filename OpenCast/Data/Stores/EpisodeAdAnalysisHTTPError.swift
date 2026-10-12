@@ -44,7 +44,9 @@ struct EpisodeAdAnalysisHTTPError: LocalizedError, Sendable, Equatable {
         case "ambiguous_legacy_job":
             return "This older ad-analysis job needs a new polling reference. Retry Detect Ads."
         case "gemini_quota_exhausted":
-            return "Promo/ad analysis is at capacity. Try again later."
+            return "Gemini quota for this API key is exhausted. Try again later."
+        case "gemini_api_key_rejected":
+            return "Gemini rejected the configured API key."
         case "global_capacity_exhausted":
             return "Promo/ad analysis is at capacity today. Try again tomorrow."
         case "daily_request_cap_exceeded", "daily_input_token_cap_exceeded":

@@ -50,19 +50,19 @@ struct AdFreePassCapDeferralPolicyTests {
     #if DEBUG
     @Test("Force-cap hook reads the environment variable or launch argument")
     func forceCapHookReadsEnvironmentAndArguments() {
-        #expect(URLSessionEpisodeAdAnalysisClient.forcesCapRejection(
+        #expect(GeminiAdAnalysisClient.forcesCapRejection(
             environment: ["OPENCAST_ADANALYSIS_FORCE_CAP": "1"],
             arguments: []
         ))
-        #expect(URLSessionEpisodeAdAnalysisClient.forcesCapRejection(
+        #expect(GeminiAdAnalysisClient.forcesCapRejection(
             environment: [:],
             arguments: ["-OPENCAST_ADANALYSIS_FORCE_CAP"]
         ))
-        #expect(!URLSessionEpisodeAdAnalysisClient.forcesCapRejection(
+        #expect(!GeminiAdAnalysisClient.forcesCapRejection(
             environment: ["OPENCAST_ADANALYSIS_FORCE_CAP": "0"],
             arguments: []
         ))
-        #expect(!URLSessionEpisodeAdAnalysisClient.forcesCapRejection(
+        #expect(!GeminiAdAnalysisClient.forcesCapRejection(
             environment: [:],
             arguments: []
         ))

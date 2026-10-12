@@ -31,29 +31,12 @@ final class EpisodeTranscriptAnalysisStore {
 
     init(
         fileStore: EpisodeTranscriptAnalysisFileStore = EpisodeTranscriptAnalysisFileStore(),
-        configuration: TranscriptAnalysisBackendConfiguration = .current,
-        transport: any EpisodeTranscriptAnalysisHTTPTransport & AppAttestHTTPTransport = URLSession.shared,
+        configuration: GeminiConfiguration = .current,
+        transport: any GeminiHTTPTransport = GeminiGenerateContentClient.sharedSession,
         preparationGate: @escaping @Sendable () async throws -> Void = {}
     ) {
-        #if DEBUG || INTERNAL_NOTIFICATIONS_DIAGNOSTICS
-        client = URLSessionEpisodeTranscriptAnalysisClient(
-            configuration: configuration,
-            transport: transport
-        )
-        analysisUnavailableMessage = configuration.analysisUnavailableMessage
-        #else
-        // Release resolves its lane from the StoreKit environment at first
-        // use (sandbox installs must reach prod-staging billing), so no
-        // concrete lane can be pinned here; the start gate reflects only
-        // what is knowable synchronously.
-        client = TranscriptAnalysisRoutedAPIClient(clientFactory: { configuration in
-            URLSessionEpisodeTranscriptAnalysisClient(
-                configuration: configuration,
-                transport: transport
-            )
-        })
-        analysisUnavailableMessage = TranscriptAnalysisBackendConfiguration.releaseAnalysisUnavailableMessage
-        #endif
+        client = GeminiTranscriptAnalysisClient(configuration: configuration, transport: transport)
+        analysisUnavailableMessage = configuration.unavailableMessage
         self.fileStore = fileStore
         poller = Self.makePoller(timeout: .seconds(1_800)) { duration in
             try await Task.sleep(for: duration)
@@ -600,7 +583,7 @@ final class EpisodeTranscriptAnalysisStore {
 
             let submitOutcome: EpisodeTranscriptAnalysisSubmitOutcome
             do {
-                submitOutcome = try await analyzeRepairingAccountLink(preparation.request)
+                submitOutcome = try await client.analyze(preparation.request)
             } catch is URLError {
                 // A lost submit response is recovered through the poll loop:
                 // the job ID is the transcript fingerprint, so it is known
@@ -628,7 +611,7 @@ final class EpisodeTranscriptAnalysisStore {
                     jobID: jobID,
                     initialPollAfter: pollAfter,
                     resubmit: {
-                        try await self.analyzeRepairingAccountLink(preparation.request)
+                        try await self.client.analyze(preparation.request)
                     }
                 )
             }
@@ -1107,25 +1090,7 @@ final class EpisodeTranscriptAnalysisStore {
         if httpError.isCapExceeded {
             return .capExceeded
         }
-        if httpError.isInsufficientSeconds {
-            return .insufficientSeconds
-        }
         return .generic
-    }
-
-    /// One transparent link repair: a `bootstrap_required` 403 means the
-    /// worker doesn't know this install→account link yet (or it went stale),
-    /// so bootstrap and retry once. Every other error propagates unchanged.
-    private func analyzeRepairingAccountLink(
-        _ request: EpisodeTranscriptAnalysisAPIRequest
-    ) async throws -> EpisodeTranscriptAnalysisSubmitOutcome {
-        do {
-            return try await client.analyze(request)
-        } catch let error as EpisodeTranscriptAnalysisHTTPError where error.isBootstrapRequired {
-            try await client.bootstrapAccount()
-            try Task.checkCancellation()
-            return try await client.analyze(request)
-        }
     }
 
     private static let reconcileMessages = AnalysisRecordReconcileMessages(

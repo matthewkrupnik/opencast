@@ -93,6 +93,13 @@ final class LibraryStore {
     @ObservationIgnored private let now: () -> Date
     /// Episode-keyed device-local stores that identity reconciliation
     /// carries across an ID change; wired by OpenCastAppModel at composition.
+    /// Newly published episodes found by feed refreshes; wired by
+    /// OpenCastAppModel to the local new-episode notifier.
+    var onNewEpisodes: ([NewEpisodeCandidate]) async -> Void {
+        get { feedWrites.onNewEpisodes }
+        set { feedWrites.onNewEpisodes = newValue }
+    }
+
     var episodeSidecarMigrators: [any EpisodeIdentitySidecarMigrating] {
         get { feedWrites.sidecarMigrators }
         set { feedWrites.sidecarMigrators = newValue }
@@ -452,8 +459,12 @@ final class LibraryStore {
         await feedRefreshes.refreshAll(modelContext: modelContext)
     }
 
-    func refreshAllIfStale(modelContext: ModelContext, now: Date = .now) async {
-        await feedRefreshes.refreshAllIfStale(modelContext: modelContext, now: now)
+    func refreshAllIfStale(
+        modelContext: ModelContext,
+        now: Date = .now,
+        staleAfter: TimeInterval = LibraryStore.foregroundRefreshInterval
+    ) async {
+        await feedRefreshes.refreshAllIfStale(modelContext: modelContext, now: now, staleAfter: staleAfter)
     }
 
     @discardableResult

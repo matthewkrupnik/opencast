@@ -2,7 +2,7 @@ import Foundation
 
 enum EpisodeAdAnalysisError: LocalizedError, Sendable, Equatable {
     case clientDisabled
-    case appAttestUnavailable
+    case apiKeyMissing
     case transcriptNotCompleted
     case analysisDocumentMissing
     case anotherJobActive
@@ -13,8 +13,8 @@ enum EpisodeAdAnalysisError: LocalizedError, Sendable, Equatable {
         switch self {
         case .clientDisabled:
             "Promo/ad analysis is disabled in this build."
-        case .appAttestUnavailable:
-            "Promo/ad analysis requires App Attest on a physical device."
+        case .apiKeyMissing:
+            GeminiConfiguration.missingKeyMessage
         case .transcriptNotCompleted:
             "Complete the transcript before analyzing promos and ads."
         case .analysisDocumentMissing:

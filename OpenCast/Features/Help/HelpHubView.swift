@@ -13,9 +13,6 @@ struct HelpHubView: View {
             }
         }
         .settingsSubscreen(title: "Help")
-        .task {
-            await helpContent.refreshIfNeeded()
-        }
     }
 
     private func topicList(_ topics: [HelpTopic], updatedAt: Date) -> some View {
@@ -36,8 +33,6 @@ struct HelpHubView: View {
             Label("Help Unavailable", systemImage: "questionmark.circle")
         } description: {
             Text(loadErrorMessage ?? "No help topics are available for this version of opencast.")
-        } actions: {
-            Link("Open Support", destination: OpenCastConstants.supportURL)
         }
     }
 }

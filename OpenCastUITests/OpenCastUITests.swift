@@ -32,11 +32,7 @@ final class OpenCastUITests: XCTestCase {
     private static let nowPlayingSourceIdentifier = "Now Playing Source"
     private static let soundLabTranscriptActionIdentifier = "Now Playing Sound Lab Transcript Action"
     private static let seedVoiceBoostModeEnvironmentKey = "OPENCAST_SEED_VOICE_BOOST_MODE"
-    private static let adAnalysisClientTokenEnvironmentKey = "OPENCAST_AD_ANALYSIS_CLIENT_TOKEN"
-    private static let adAnalysisBaseURLEnvironmentKey = "OPENCAST_AD_ANALYSIS_BASE_URL"
-    private static let localAdAnalysisClientTokenFilePath = "/private/tmp/opencast-ad-analysis-client-token"
-    private static let physicalAppAttestAdAnalysisProbeEnvironmentKey = "OPENCAST_RUN_PHYSICAL_APP_ATTEST_AD_ANALYSIS_UI_TESTS"
-    private static let physicalAppAttestAdAnalysisProbeFilePath = "/tmp/opencast-run-physical-app-attest-ad-analysis-ui-tests"
+    private static let geminiAPIKeyEnvironmentKey = "OPENCAST_GEMINI_API_KEY"
     private static let liveAdAnalysisTranscriptPathEnvironmentKey = "OPENCAST_SEED_LIVE_AD_ANALYSIS_TRANSCRIPT_PATH"
     private static let liveAdAnalysisResponsePathEnvironmentKey = "OPENCAST_SEED_LIVE_AD_ANALYSIS_RESPONSE_PATH"
     private static let adFreePassPresentationOverrideEnvironmentKey = "OPENCAST_UI_TEST_AD_FREE_PASS_STAGE"
@@ -1875,10 +1871,9 @@ final class OpenCastUITests: XCTestCase {
     func testSeededAdDetectionQueueCapDeferredShowsBannerAndRetry() throws {
         let app = makeSeededApp(seedsCompletedTranscript: true)
         app.launchEnvironment["OPENCAST_ADANALYSIS_FORCE_CAP"] = "1"
-        // DEBUG bearer auth so the simulator's missing App Attest doesn't
-        // fail the pass before the forced cap rejection fires (no network
-        // happens — the force hook throws first).
-        app.launchEnvironment["OPENCAST_AD_ANALYSIS_CLIENT_TOKEN"] = "ui-test-forced-cap"
+        // A placeholder key makes analysis available; no network happens —
+        // the force hook throws first.
+        app.launchEnvironment[Self.geminiAPIKeyEnvironmentKey] = "ui-test-forced-cap"
         app.launch()
 
         openAllPlaylist(in: app)
@@ -1909,76 +1904,6 @@ final class OpenCastUITests: XCTestCase {
             named: "Continue in Background while cap-deferred"
         )
         attachSmokeScreenshot(named: "adqueue_screen_cap_deferred")
-    }
-
-    @MainActor
-    func testOptInSlowWorkerAdDetectionQueueRunningTwoEpisodes() throws {
-        // Requires the slow local analysis server (never responds) so the
-        // analyzing stage stays live: OPENCAST_UI_SLOW_AD_ANALYSIS_URL points
-        // at it (e.g. http://127.0.0.1:8977).
-        let slowBaseURL = try requireEnvironmentValue(
-            "OPENCAST_UI_SLOW_AD_ANALYSIS_URL",
-            skipMessage: "Set OPENCAST_UI_SLOW_AD_ANALYSIS_URL to a stalling local worker to run the live queue smoke."
-        )
-        let app = makeSeededApp(
-            seedsCompletedTranscript: true,
-            seedsEpisodeProgress: true
-        )
-        app.launchEnvironment["OPENCAST_AD_ANALYSIS_BASE_URL"] = slowBaseURL
-        app.launchEnvironment["OPENCAST_AD_ANALYSIS_CLIENT_TOKEN"] = "ui-test-slow-worker"
-        app.launch()
-
-        // Opt the show into auto-detect from its detail menu.
-        openLibrary(in: app)
-        let libraryPodcast = seededSubscriptionRow(in: app)
-        assertExists(libraryPodcast, named: "seeded library podcast")
-        libraryPodcast.tap()
-        app.buttons["Podcast Actions"].tap()
-        let toggle = app.buttons["Automatically Detect Ads"]
-        assertExists(toggle, named: "Automatically Detect Ads toggle")
-        toggle.tap()
-        let confirmButton = app.sheets.buttons["Turn On"].firstMatch
-        assertExists(confirmButton, named: "auto-detect confirmation action")
-        confirmButton.tap()
-
-        // Play the transcript-seeded episode: its auto pass reuses the
-        // transcript and hangs in the live analyzing stage on the stalled
-        // worker. Then play the second episode so it queues behind it.
-        let analyzedSeedRow = seededEpisodeRow(in: app)
-        assertExists(analyzedSeedRow, named: "transcript-seeded episode row")
-        analyzedSeedRow.tap()
-        assertNowPlayingOverlay(in: app)
-        dismissNowPlayingOverlay(in: app)
-
-        let secondRow = seededCompletedEpisodeRow(in: app)
-        assertExists(secondRow, named: "second seeded episode row")
-        secondRow.tap()
-        assertNowPlayingOverlay(in: app)
-        dismissNowPlayingOverlay(in: app)
-
-        openSection("Playlists", in: app)
-        let indicator = app.buttons["Ad Detection Queue Indicator"]
-        assertExists(indicator, named: "running queue indicator", timeout: 10)
-        attachSmokeScreenshot(named: "adqueue_indicator_running")
-        indicator.tap()
-
-        assertExists(app.navigationBars["Ad Detection"], named: "queue screen title")
-        assertExists(
-            elementContaining(label: "Analyzing promos and ads", in: app),
-            named: "live analyzing stage text",
-            timeout: 10
-        )
-        assertExists(
-            elementContaining(label: "Queued — 1 ahead", in: app),
-            named: "second episode queue position"
-        )
-        // Play-triggered auto passes never arm, so the explicit
-        // continue-in-background affordance is offered.
-        assertExists(
-            app.buttons["Continue in Background"],
-            named: "Continue in Background while running un-armed"
-        )
-        attachSmokeScreenshot(named: "adqueue_screen_running_two_episodes")
     }
 
     @MainActor
@@ -2250,8 +2175,7 @@ final class OpenCastUITests: XCTestCase {
         let app = makeSeededApp(seedsCompletedTranscript: true)
         app.launchEnvironment[Self.soundLabLaunchHoldEnvironmentKey] =
             optionalEnvironmentValue(Self.soundLabLaunchHoldEnvironmentKey) ?? "5000"
-        app.launchEnvironment[Self.adAnalysisClientTokenEnvironmentKey] =
-            "ui-test-held-preparation"
+        app.launchEnvironment[Self.geminiAPIKeyEnvironmentKey] = "ui-test-held-preparation"
         app.launch()
 
         openSeededNowPlayingSoundLab(in: app)
@@ -2491,7 +2415,7 @@ final class OpenCastUITests: XCTestCase {
             seedsCompletedTranscript: true,
             seedsStaleAdAnalysis: true
         )
-        app.launchEnvironment[Self.adAnalysisClientTokenEnvironmentKey] = ""
+        app.launchEnvironment[Self.geminiAPIKeyEnvironmentKey] = ""
         app.launch()
 
         openSeededNowPlaying(in: app)
@@ -2544,7 +2468,7 @@ final class OpenCastUITests: XCTestCase {
             seedsCompletedTranscript: true,
             seedsOutdatedPolicyAdAnalysis: true
         )
-        app.launchEnvironment[Self.adAnalysisClientTokenEnvironmentKey] = ""
+        app.launchEnvironment[Self.geminiAPIKeyEnvironmentKey] = ""
         app.launch()
 
         openSeededNowPlaying(in: app)
@@ -3198,121 +3122,6 @@ final class OpenCastUITests: XCTestCase {
     }
 
     @MainActor
-    func testOptInDebugBearerAdAnalysisRoundTripsAgainstDevWorker() throws {
-        let clientToken = try requireEnvironmentValue(
-            Self.adAnalysisClientTokenEnvironmentKey,
-            skipMessage: "Set \(Self.adAnalysisClientTokenEnvironmentKey) to run the live dev Worker ad-analysis Debug bearer smoke."
-        )
-        let app = makeSeededApp(
-            seedsTranscriptionModel: true,
-            seedsCompletedTranscript: true
-        )
-        app.launchEnvironment[Self.adAnalysisClientTokenEnvironmentKey] = clientToken
-        if let baseURL = optionalEnvironmentValue(Self.adAnalysisBaseURLEnvironmentKey) {
-            app.launchEnvironment[Self.adAnalysisBaseURLEnvironmentKey] = baseURL
-        }
-        app.launch()
-
-        openAllPlaylist(in: app)
-        let inboxEpisode = seededEpisodeRow(in: app)
-        assertExists(inboxEpisode, named: "seeded inbox episode")
-        inboxEpisode.tap()
-        assertNowPlayingOverlay(in: app)
-        openCurrentEpisodeDetailFromNowPlaying(in: app)
-
-        let viewTranscriptButton = app.buttons["Read Transcript"]
-        scrollUntilHittable(viewTranscriptButton, in: app)
-        viewTranscriptButton.tap()
-
-        assertExists(app.staticTexts["Transcript"], named: "Transcript route title")
-        assertExists(app.buttons["This row is brought to you by Seed Sponsor."], named: "seeded sponsor transcript line")
-        openTranscriptOptionsMenu(in: app)
-        let analyzeButton = app.buttons["Analyze Promos & Ads"]
-        assertExists(analyzeButton, named: "Analyze Promos & Ads menu action")
-        analyzeButton.tap()
-
-        assertExists(app.staticTexts["Analyzing Promos & Ads"], named: "live dev Worker analysis progress", timeout: 10)
-        XCTAssertTrue(
-            app.staticTexts["Analyzing Promos & Ads"].absentOrWait(timeout: 120),
-            "Live dev Worker analysis should finish within two minutes."
-        )
-        openTranscriptOptionsMenu(in: app)
-        assertDoesNotExist(app.buttons["Retry Promo/Ad Analysis"], named: "Retry action after successful analysis", timeout: 1)
-        assertExists(app.buttons["Delete Promo/Ad Analysis"], named: "Delete live dev Worker promo/ad analysis")
-        dismissTranscriptOptionsMenu(in: app)
-        attachSmokeScreenshot(named: "episode_transcript_live_dev_worker_ad_analysis")
-    }
-
-    @MainActor
-    func testOptInPhysicalAppAttestAdAnalysisRoundTripsAgainstDevWorker() throws {
-        #if !OPENCAST_RUN_PHYSICAL_APP_ATTEST_AD_ANALYSIS_UI_TESTS
-        let shouldRunProbe =
-            ProcessInfo.processInfo.environment[Self.physicalAppAttestAdAnalysisProbeEnvironmentKey] == "1"
-            || FileManager.default.fileExists(atPath: Self.physicalAppAttestAdAnalysisProbeFilePath)
-        guard shouldRunProbe else {
-            throw XCTSkip("Set \(Self.physicalAppAttestAdAnalysisProbeEnvironmentKey)=1, create \(Self.physicalAppAttestAdAnalysisProbeFilePath), or build with -DOPENCAST_RUN_PHYSICAL_APP_ATTEST_AD_ANALYSIS_UI_TESTS to run the physical-device App Attest ad-analysis smoke.")
-        }
-        #endif
-
-        let app = makeSeededApp(
-            seedsTranscriptionModel: true,
-            seedsCompletedTranscript: true
-        )
-        app.launchEnvironment[Self.adAnalysisClientTokenEnvironmentKey] = ""
-        app.launchEnvironment["OPENCAST_RESET_AD_ANALYSIS_APP_ATTEST_CREDENTIAL"] = "1"
-        if let baseURL = optionalEnvironmentValue(Self.adAnalysisBaseURLEnvironmentKey) {
-            app.launchEnvironment[Self.adAnalysisBaseURLEnvironmentKey] = baseURL
-        }
-        app.launch()
-
-        openAllPlaylist(in: app)
-        let inboxEpisode = seededEpisodeRow(in: app)
-        assertExists(inboxEpisode, named: "seeded inbox episode")
-        inboxEpisode.tap()
-        assertNowPlayingOverlay(in: app)
-        openCurrentEpisodeDetailFromNowPlaying(in: app)
-
-        let viewTranscriptButton = app.buttons["Read Transcript"]
-        scrollUntilHittable(viewTranscriptButton, in: app)
-        viewTranscriptButton.tap()
-
-        assertExists(app.staticTexts["Transcript"], named: "Transcript route title")
-        assertExists(app.buttons["This row is brought to you by Seed Sponsor."], named: "seeded sponsor transcript line")
-        openTranscriptOptionsMenu(in: app)
-        let analyzeButton = app.buttons["Analyze Promos & Ads"]
-        assertExists(analyzeButton, named: "Analyze Promos & Ads menu action")
-        analyzeButton.tap()
-
-        assertExists(app.staticTexts["Analyzing Promos & Ads"], named: "physical App Attest analysis progress", timeout: 10)
-        XCTAssertTrue(
-            app.staticTexts["Analyzing Promos & Ads"].absentOrWait(timeout: 120),
-            "Physical App Attest analysis should finish within two minutes."
-        )
-        openTranscriptOptionsMenu(in: app)
-        let firstDeleteButton = app.buttons["Delete Promo/Ad Analysis"]
-        assertExists(firstDeleteButton, named: "Delete physical App Attest promo/ad analysis")
-        dismissTranscriptOptionsMenu(in: app)
-        attachSmokeScreenshot(named: "episode_transcript_physical_app_attest_dev_worker_ad_analysis")
-
-        openTranscriptOptionsMenu(in: app)
-        firstDeleteButton.tap()
-        openTranscriptOptionsMenu(in: app)
-        let cachedKeyAnalyzeButton = app.buttons["Analyze Promos & Ads"]
-        assertExists(cachedKeyAnalyzeButton, named: "Analyze action after deleting first analysis")
-        cachedKeyAnalyzeButton.tap()
-
-        _ = app.staticTexts["Analyzing Promos & Ads"].existsOrWait(timeout: 2)
-        XCTAssertTrue(
-            app.staticTexts["Analyzing Promos & Ads"].absentOrWait(timeout: 120),
-            "Cached-key analysis should finish within two minutes."
-        )
-        openTranscriptOptionsMenu(in: app)
-        assertExists(app.buttons["Delete Promo/Ad Analysis"], named: "Delete physical App Attest cached-key ad analysis")
-        dismissTranscriptOptionsMenu(in: app)
-        attachSmokeScreenshot(named: "episode_transcript_physical_app_attest_dev_worker_ad_analysis_cached_key")
-    }
-
-    @MainActor
     func testSeededStaleAdAnalysisDoesNotAnnotateTranscriptRows() throws {
         let app = makeSeededApp(
             seedsCompletedDownload: true,
@@ -3320,7 +3129,7 @@ final class OpenCastUITests: XCTestCase {
             seedsCompletedTranscript: true,
             seedsStaleAdAnalysis: true
         )
-        app.launchEnvironment[Self.adAnalysisClientTokenEnvironmentKey] = ""
+        app.launchEnvironment[Self.geminiAPIKeyEnvironmentKey] = ""
         app.launch()
 
         openAllPlaylist(in: app)
@@ -3379,7 +3188,7 @@ final class OpenCastUITests: XCTestCase {
             seedsTranscriptionModel: true,
             seedsCompletedTranscript: true
         )
-        app.launchEnvironment[Self.adAnalysisClientTokenEnvironmentKey] = ""
+        app.launchEnvironment[Self.geminiAPIKeyEnvironmentKey] = ""
         app.launch()
 
         openAllPlaylist(in: app)
@@ -6609,16 +6418,7 @@ final class OpenCastUITests: XCTestCase {
             .first(where: { !$0.isEmpty }) {
             return value
         }
-
-        guard environmentKey == Self.adAnalysisClientTokenEnvironmentKey,
-              FileManager.default.fileExists(atPath: Self.localAdAnalysisClientTokenFilePath),
-              let fileValue = try? String(contentsOfFile: Self.localAdAnalysisClientTokenFilePath, encoding: .utf8)
-                .trimmingCharacters(in: .whitespacesAndNewlines),
-              !fileValue.isEmpty
-        else {
-            return nil
-        }
-        return fileValue
+        return nil
     }
 
     @MainActor

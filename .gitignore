@@ -20,3 +20,6 @@ node_modules/
 # Yarn 4 (node-modules linker; no cache, patches, or plugins committed)
 .yarn/
 .pnp.*
+
+# Local build secrets
+Config/Secrets.xcconfig

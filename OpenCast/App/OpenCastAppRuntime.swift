@@ -19,11 +19,6 @@ final class OpenCastAppRuntime {
             #if DEBUG
             NowPlayingFramePacingProbe.shared.enableIfRequested()
             #endif
-            #if DEBUG || INTERNAL_NOTIFICATIONS_DIAGNOSTICS
-            if launchConfiguration.resetsAdAnalysisAppAttestCredential {
-                try Self.deleteAdAnalysisAppAttestCredentials()
-            }
-            #endif
             modelContainer = try OpenCastModelContainerFactory.make(
                 inMemory: launchConfiguration.usesInMemoryStore
             )
@@ -168,14 +163,6 @@ final class OpenCastAppRuntime {
         #endif
         return EpisodeTranscriptionStore()
     }
-
-    #if DEBUG || INTERNAL_NOTIFICATIONS_DIAGNOSTICS
-    private static func deleteAdAnalysisAppAttestCredentials() throws {
-        for keychainService in AdAnalysisAppAttestKeychainServices.all {
-            try AppAttestKeychain(service: keychainService).deleteAll()
-        }
-    }
-    #endif
 
     private static func localLibraryCacheStore(
         launchConfiguration: OpenCastLaunchConfiguration,

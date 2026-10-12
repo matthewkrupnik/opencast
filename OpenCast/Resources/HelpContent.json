@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "updatedAt": "2026-10-11T00:00:00Z",
+  "updatedAt": "2026-10-12T00:00:00Z",
   "topics": [
     {
       "id": "voice-boost",
@@ -33,7 +33,7 @@
       "title": "Ad detection",
       "symbol": "forward.end",
       "summary": "Find promo and ad breaks in an episode.",
-      "updatedAt": "2026-10-11T00:00:00Z",
+      "updatedAt": "2026-10-12T00:00:00Z",
       "related": [
         "transcription-engines"
       ],
@@ -44,7 +44,7 @@
         },
         {
           "type": "paragraph",
-          "text": "Detect Ads transcribes the episode with the speech model on your device. The transcript text is then sent to opencast's ad-analysis service, which uses Google's Gemini models to find the breaks. The audio itself never leaves your device."
+          "text": "Detect Ads transcribes the episode with the speech model on your device. The transcript text is then sent directly from your device to Google's Gemini API to find the breaks. The audio itself never leaves your device."
         },
         {
           "type": "paragraph",
@@ -89,7 +89,7 @@
       "title": "Recap and Ask",
       "symbol": "apple.intelligence",
       "summary": "Summaries and answers from an episode's transcript, on Apple Intelligence.",
-      "updatedAt": "2026-10-11T00:00:00Z",
+      "updatedAt": "2026-10-12T00:00:00Z",
       "minAppBuild": 270,
       "related": [
         "transcription-engines",
@@ -113,11 +113,6 @@
             "Recaps are cached on this device so a repeat tap answers at once; Ask conversations are not saved. **Delete Data** clears the cache and the one-time notice.",
             "Nothing runs until you tap Recap or Ask. Turning off Apple Intelligence in iOS Settings stops both."
           ]
-        },
-        {
-          "type": "link",
-          "title": "Privacy Policy: Recap and Ask",
-          "url": "https://support.opencast.mobile/privacy#recap-and-ask"
         }
       ]
     },
@@ -126,7 +121,7 @@
       "title": "Make a Playlist with Apple Intelligence",
       "symbol": "sparkles",
       "summary": "Playlists drafted from one show's episode list, on Apple Intelligence.",
-      "updatedAt": "2026-10-01T00:00:00Z",
+      "updatedAt": "2026-10-12T00:00:00Z",
       "minAppBuild": 284,
       "related": [
         "recap-and-ask"
@@ -158,11 +153,6 @@
         {
           "type": "paragraph",
           "text": "Make a Playlist is labelled Beta. Apple's model may decline a request; opencast tries once more before telling you, and you can then try again. It uses the same Apple Intelligence allowance as Recap and Ask, with nothing to buy, and turning off Apple Intelligence in iOS Settings stops it."
-        },
-        {
-          "type": "link",
-          "title": "Privacy Policy: Make a Playlist",
-          "url": "https://support.opencast.mobile/privacy#ai-playlists"
         }
       ]
     },
@@ -219,23 +209,21 @@
       "id": "notifications",
       "title": "Notifications",
       "symbol": "bell",
-      "summary": "New-episode alerts from opencast's own service.",
-      "updatedAt": "2026-09-12T00:00:00Z",
+      "summary": "New-episode alerts, checked on your device.",
+      "updatedAt": "2026-10-12T00:00:00Z",
       "related": [],
       "blocks": [
         {
           "type": "paragraph",
-          "text": "New Episode Notifications are sent by opencast's own notification service, not by a third party. It checks the feeds you follow and sends a push when a new episode appears."
-        },
-        {
-          "type": "paragraph",
-          "text": "To do that it stores a push token for this device and the list of feeds you follow, tied to an anonymous install identity. Turning notifications off disables the token, and Delete Data removes the install entirely."
+          "text": "New Episode Notifications are produced on this device. opencast checks the feeds you follow in the background and posts a notification when a new episode appears. No push service is involved, and nothing about your library leaves the device."
         },
         {
           "type": "bullets",
           "items": [
+            "iOS decides when background checks run, based on how you use the app. Alerts can arrive later than the publisher posted, and none arrive after you force-quit opencast or while Background App Refresh is off.",
+            "Episodes found while opencast is open are added to your library without a notification.",
             "If iOS permission was denied, use Open Settings to allow notifications for opencast.",
-            "Delivery depends on how often the publisher updates its feed and on the service's polling schedule."
+            "Delete Data clears the list of episodes already announced."
           ]
         }
       ]
@@ -266,28 +254,20 @@
       "id": "sharing",
       "title": "Share an Episode",
       "symbol": "square.and.arrow.up",
-      "summary": "Send a link that plays in any browser, from the start or from where you are.",
-      "updatedAt": "2026-09-22T00:00:00Z",
+      "summary": "Send the episode's audio link to anyone.",
+      "updatedAt": "2026-10-12T00:00:00Z",
       "minAppBuild": 274,
       "related": [],
       "blocks": [
         {
           "type": "paragraph",
-          "text": "**Share Episode** is in the **Episode Actions** menu on an episode's page, in the menu you get by touching and holding an episode in a list, and in **More Actions** in Now Playing. It sends a link to a web player at opencast.mobile that plays the episode in any browser, with no app or account needed."
-        },
-        {
-          "type": "bullets",
-          "items": [
-            "Once you've started an episode, choose **Share**, then **Share from 12:34** to start the listener where you are.",
-            "In Messages, the link shows the episode's artwork with a Play button, so it can play right in the conversation.",
-            "The web player has play and pause, skip back and forward, playback speed, and a **Download** button that saves the audio file."
-          ]
+          "text": "**Share Episode** is in the **Episode Actions** menu on an episode's page, in the menu you get by touching and holding an episode in a list, and in **More Actions** in Now Playing. It sends the episode's audio link, which plays in any browser or podcast app, with no account needed. If an episode has no web audio link, the show's feed link is sent instead."
         },
         {
           "type": "callout",
           "symbol": "lock.shield",
           "title": "What the link contains",
-          "text": "The link itself holds the episode's audio address, titles, artwork, feed address, and date. Nothing about you or your library is in it, and nothing is stored on a server, so a link can't be recalled once you've sent it. The audio and artwork load from the podcast's own host, just as in any podcast app."
+          "text": "The link is the podcast's own audio address. Nothing about you or your library is in it, and opencast doesn't store anything on a server."
         }
       ]
     }

@@ -8,10 +8,6 @@ enum EpisodeAdAnalysisJSONCoding {
         return encoder
     }
 
-    nonisolated static func canonicalPayloadString(_ payload: some Encodable) throws -> String {
-        try AppAttestSignedPayloadJSONCoding.payloadString(payload)
-    }
-
     nonisolated static func decoder() -> JSONDecoder {
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601

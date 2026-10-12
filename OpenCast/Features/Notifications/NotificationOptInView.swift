@@ -63,7 +63,6 @@ struct NotificationOptInView: View {
         .glassEffect(.regular, in: .rect(cornerRadius: 18))
         .task {
             await appModel.notificationSettings.refreshIfNeeded(
-                activePodcastIDs: appModel.library.activePodcastIDs,
                 modelContext: modelContext
             )
         }
@@ -124,7 +123,6 @@ struct NotificationOptInView: View {
         Task {
             await appModel.notificationSettings.setEnabled(
                 true,
-                activePodcastIDs: appModel.library.activePodcastIDs,
                 modelContext: modelContext
             )
         }

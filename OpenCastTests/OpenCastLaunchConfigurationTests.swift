@@ -374,28 +374,4 @@ struct OpenCastLaunchConfigurationTests {
         #expect(ignoredConfiguration.schedulesAppStoreAdFreePassNotification == false)
         #expect(enabledConfiguration.schedulesAppStoreAdFreePassNotification == true)
     }
-
-    @Test("Ad-analysis App Attest reset requires UI testing mode")
-    func adAnalysisAppAttestResetRequiresUITestingMode() {
-        let ignoredConfiguration = OpenCastLaunchConfiguration.resolving(
-            arguments: [
-                "OpenCast"
-            ],
-            environment: [
-                "OPENCAST_RESET_AD_ANALYSIS_APP_ATTEST_CREDENTIAL": "1"
-            ]
-        )
-        let enabledConfiguration = OpenCastLaunchConfiguration.resolving(
-            arguments: [
-                "OpenCast",
-                "--opencast-ui-testing"
-            ],
-            environment: [
-                "OPENCAST_RESET_AD_ANALYSIS_APP_ATTEST_CREDENTIAL": "1"
-            ]
-        )
-
-        #expect(ignoredConfiguration.resetsAdAnalysisAppAttestCredential == false)
-        #expect(enabledConfiguration.resetsAdAnalysisAppAttestCredential == true)
-    }
 }

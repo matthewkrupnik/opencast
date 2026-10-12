@@ -18,6 +18,14 @@ final class OpenCastAppDelegate: NSObject, UIApplicationDelegate, UNUserNotifica
     ) -> Bool {
         registerNotificationCategories()
         UNUserNotificationCenter.current().delegate = self
+        BGTaskSchedulerFeedRefreshScheduler.register { task in
+            let runtime = OpenCastAppRuntime.shared
+            BackgroundFeedRefreshRunner.run(
+                task: task,
+                appModel: runtime.appModel,
+                modelContext: runtime.modelContainer.mainContext
+            )
+        }
 
         return true
     }
@@ -26,41 +34,11 @@ final class OpenCastAppDelegate: NSObject, UIApplicationDelegate, UNUserNotifica
         intent is INPlayMediaIntent ? siriPlayMediaHandler : nil
     }
 
-    func application(
-        _ application: UIApplication,
-        didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data
-    ) {
-        guard !RemoteNotificationRegistrationBridge.shared.didRegister(deviceToken: deviceToken) else {
-            return
-        }
-        // Reconcile unsolicited token changes through the same opt-in and serialization gates.
-        Task {
-            let runtime = OpenCastAppRuntime.shared
-            await runtime.appModel.notificationSettings.refreshIfNeeded(
-                activePodcastIDs: runtime.appModel.library.activePodcastIDs,
-                modelContext: runtime.modelContainer.mainContext
-            )
-        }
-    }
-
-    func application(
-        _ application: UIApplication,
-        didFailToRegisterForRemoteNotificationsWithError error: Error
-    ) {
-        RemoteNotificationRegistrationBridge.shared.didFailToRegister(error: error)
-    }
-
     nonisolated func userNotificationCenter(
         _ center: UNUserNotificationCenter,
         willPresent notification: UNNotification,
         withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void
     ) {
-        #if DEBUG || INTERNAL_NOTIFICATIONS_DIAGNOSTICS
-        if Self.notificationKind(from: notification) == "diagnostic" {
-            Self.deliverDiagnosticNotification()
-        }
-        #endif
-
         completionHandler([.banner, .list, .sound, .badge])
     }
 
@@ -69,34 +47,14 @@ final class OpenCastAppDelegate: NSObject, UIApplicationDelegate, UNUserNotifica
         didReceive response: UNNotificationResponse,
         withCompletionHandler completionHandler: @escaping () -> Void
     ) {
-        let notification = response.notification
-        let isDiagnostic = Self.notificationKind(from: notification) == "diagnostic"
-        let route = Self.episodeRoute(from: notification)
+        let route = Self.episodeRoute(from: response.notification)
 
         completionHandler()
 
-        #if DEBUG || INTERNAL_NOTIFICATIONS_DIAGNOSTICS
-        if isDiagnostic {
-            Self.deliverDiagnosticNotification()
-        } else if let route {
-            Self.deliverEpisodeRoute(route)
-        }
-        #else
         if let route {
             Self.deliverEpisodeRoute(route)
         }
-        #endif
     }
-
-    #if DEBUG || INTERNAL_NOTIFICATIONS_DIAGNOSTICS
-    nonisolated private static func deliverDiagnosticNotification() {
-        Task { @MainActor in
-            // Let UIKit's notification completion path unwind before mutating app route state.
-            await Task.yield()
-            RemoteNotificationRegistrationBridge.shared.didReceiveDiagnosticNotification()
-        }
-    }
-    #endif
 
     nonisolated private static func deliverEpisodeRoute(_ route: RemoteEpisodeNotificationRoute) {
         Task { @MainActor in
@@ -106,12 +64,6 @@ final class OpenCastAppDelegate: NSObject, UIApplicationDelegate, UNUserNotifica
             #endif
             RemoteEpisodeNotificationRouteBridge.shared.didReceive(route: route)
         }
-    }
-
-    nonisolated private static func notificationKind(from notification: UNNotification) -> String? {
-        let userInfo = notification.request.content.userInfo
-        let opencastPayload = userInfo["opencast"] as? [String: Any]
-        return opencastPayload?["kind"] as? String
     }
 
     private func registerNotificationCategories() {

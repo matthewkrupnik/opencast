@@ -35,9 +35,6 @@ struct DiagnosticsView: View {
             #endif
 
             #if DEBUG || INTERNAL_NOTIFICATIONS_DIAGNOSTICS
-            NotificationSecurityDiagnosticsSection()
-            NotificationRegistrationDiagnosticsSection()
-            NotificationSubscriptionDiagnosticsSection()
             NotificationRouteDiagnosticsSection()
             #endif
         }

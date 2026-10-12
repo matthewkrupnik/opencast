@@ -111,12 +111,16 @@ final class FeedRefreshCoordinator {
         }
     }
 
-    func refreshAllIfStale(modelContext: ModelContext, now: Date = .now) async {
+    func refreshAllIfStale(
+        modelContext: ModelContext,
+        now: Date = .now,
+        staleAfter: TimeInterval = LibraryStore.foregroundRefreshInterval
+    ) async {
         guard host.state != .refreshing, refreshingFeedURLCounts.isEmpty else {
             return
         }
 
-        let staleFeedURLStrings = Array(Set(staleFeedURLStrings(now: now) + host.feedURLStringsNeedingLocalCache))
+        let staleFeedURLStrings = Array(Set(staleFeedURLStrings(now: now, staleAfter: staleAfter) + host.feedURLStringsNeedingLocalCache))
             .filter { automaticRetryIsEligible(feedURL: $0, now: now) }
         guard !staleFeedURLStrings.isEmpty else {
             return
@@ -455,13 +459,13 @@ final class FeedRefreshCoordinator {
         }
     }
 
-    private func staleFeedURLStrings(now: Date) -> [String] {
+    private func staleFeedURLStrings(now: Date, staleAfter: TimeInterval) -> [String] {
         host.subscriptions.compactMap { subscription in
             guard let lastRefreshActivity = lastRefreshActivity(for: subscription) else {
                 return subscription.feedURL
             }
 
-            return now.timeIntervalSince(lastRefreshActivity) >= LibraryStore.foregroundRefreshInterval
+            return now.timeIntervalSince(lastRefreshActivity) >= staleAfter
                 ? subscription.feedURL
                 : nil
         }

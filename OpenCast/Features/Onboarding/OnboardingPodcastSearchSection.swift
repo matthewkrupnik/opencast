@@ -90,9 +90,6 @@ struct OnboardingPodcastSearchSection: View {
                             .padding(.leading, 64)
                     }
                 }
-
-                PodcastIndexAttributionFooter(results: results)
-                    .padding(.top, 8)
             }
         }
     }

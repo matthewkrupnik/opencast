@@ -137,11 +137,4 @@ struct EpisodeAdBoundaryRefinerTests {
         #expect(!mark.isWholeSegment)
         #expect(mark.ranges.map { String(source.segments[0].text[$0]) } == ["Sponsor", "offer", "ends"])
     }
-
-    @Test func releaseRoutingMatchesCloudEnvironment() {
-        #expect(AdAnalysisBackendConfiguration.release(for: .production)?.workerBaseURL == AdAnalysisBackendConfiguration.production.workerBaseURL)
-        #expect(AdAnalysisBackendConfiguration.release(for: .sandbox)?.workerBaseURL == AdAnalysisBackendConfiguration.prodStaging.workerBaseURL)
-        #expect(AdAnalysisBackendConfiguration.release(for: .xcode)?.workerBaseURL == AdAnalysisBackendConfiguration.prodStaging.workerBaseURL)
-        #expect(AdAnalysisBackendConfiguration.release(for: .unknown("test")) == nil)
-    }
 }

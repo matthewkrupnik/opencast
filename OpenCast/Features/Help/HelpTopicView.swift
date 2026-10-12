@@ -38,8 +38,6 @@ struct HelpTopicView: View {
             Label("Topic Unavailable", systemImage: "questionmark.circle")
         } description: {
             Text("This help topic isn't available in this version of opencast.")
-        } actions: {
-            Link("Open Support", destination: OpenCastConstants.supportURL)
         }
     }
 }

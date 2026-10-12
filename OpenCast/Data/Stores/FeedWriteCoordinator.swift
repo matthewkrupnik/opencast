@@ -25,6 +25,9 @@ final class FeedWriteCoordinator {
     /// the full library reload and the progress-projection refetch.
     @ObservationIgnored var reloadLibrary: (ModelContext) async throws -> Void = { _ in }
     @ObservationIgnored var reloadProgress: (ModelContext) throws -> Void = { _ in }
+    /// Newly published episodes found by a refresh (never by a subscribe or
+    /// import, whose first fetch is a silent baseline).
+    @ObservationIgnored var onNewEpisodes: ([NewEpisodeCandidate]) async -> Void = { _ in }
 
     // Deliberately survives resetAfterDataNuke — observed session-scoped
     // behavior, decision deferred.
@@ -117,6 +120,12 @@ final class FeedWriteCoordinator {
             generation: generation,
             modelContext: modelContext
         )
+        if !subscribe {
+            let newEpisodes = NewEpisodeDetector.detect(preexisting: preexistingEpisodes, snapshot: snapshot, now: now)
+            if !newEpisodes.isEmpty {
+                await onNewEpisodes(newEpisodes)
+            }
+        }
         // Checked before the fetch-and-mutate below rather than at the save:
         // nothing suspends in between, and unwinding here leaves no dirty
         // subscription behind for an unrelated save to commit.
