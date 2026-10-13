@@ -23,3 +23,9 @@ node_modules/
 
 # Local build secrets
 Config/Secrets.xcconfig
+
+# Cloudflare credentials for scripts/server-toolbox.sh
+Server/Toolbox/cloudflare.env
+# Production Worker configs and the APNs certificate they deploy with
+Server/*/wrangler.production.*
+Server/Toolbox/apns/
