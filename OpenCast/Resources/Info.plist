@@ -42,10 +42,6 @@
 	<string>$(PRODUCT_BUNDLE_PACKAGE_TYPE)</string>
 	<key>CFBundleShortVersionString</key>
 	<string>$(MARKETING_VERSION)</string>
-	<key>OpenCastGeminiAPIKey</key>
-	<string>$(GEMINI_API_KEY)</string>
-	<key>OpenCastNotificationsWorker</key>
-	<string>$(NOTIFICATIONS_WORKER)</string>
 	<key>CFBundleURLTypes</key>
 	<array>
 		<dict>
@@ -89,6 +85,10 @@
 	</dict>
 	<key>NSSiriUsageDescription</key>
 	<string>Siri lets you play your podcasts by voice — hands-free in the car.</string>
+	<key>OpenCastGeminiAPIKey</key>
+	<string>$(GEMINI_API_KEY)</string>
+	<key>OpenCastNotificationsWorker</key>
+	<string>$(NOTIFICATIONS_WORKER)</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>

@@ -101,7 +101,6 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
-		E5C0FF1C00000000000000A1 /* OpenCast.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Config/OpenCast.xcconfig; sourceTree = "<group>"; };
 		0FA60CF4265491A26D59B58C /* Info.plist */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		192CD3FA3C8CE63DAC9FCE45 /* OpenCastWidgets.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = OpenCastWidgets.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		1B8D930945FAD5C4384C9167 /* ResumeWidgetView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = ResumeWidgetView.swift; sourceTree = "<group>"; };
@@ -136,6 +135,7 @@
 		D40000000000000000000007 /* OpenCastNotificationService/ArtworkDownloadAccumulator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenCastNotificationService/ArtworkDownloadAccumulator.swift; sourceTree = "<group>"; };
 		D40000000000000000000008 /* OpenCastNotificationService/ArtworkDownloadRequest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenCastNotificationService/ArtworkDownloadRequest.swift; sourceTree = "<group>"; };
 		E2F0A99C05303FF6E87B150B /* RateController.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = RateController.swift; sourceTree = "<group>"; };
+		E5C0FF1C00000000000000A1 /* Config/OpenCast.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Config/OpenCast.xcconfig; sourceTree = "<group>"; };
 		EE562EA9B50391FB2A7C2564 /* ResumeWidgetSnapshot.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = ResumeWidgetSnapshot.swift; path = OpenCast/Widgets/ResumeWidgetSnapshot.swift; sourceTree = "<group>"; };
 		EEEC57972BE60B1502C491A0 /* Foundation.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Foundation.framework; path = System/Library/Frameworks/Foundation.framework; sourceTree = SDKROOT; };
 		F2D8080B3436C189323BFF97 /* OpenCastResumeWidget.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = OpenCastResumeWidget.swift; sourceTree = "<group>"; };
@@ -285,7 +285,7 @@
 		A10000000000000000000012 = {
 			isa = PBXGroup;
 			children = (
-				E5C0FF1C00000000000000A1 /* OpenCast.xcconfig */,
+				E5C0FF1C00000000000000A1 /* Config/OpenCast.xcconfig */,
 				A1000000000000000000000C /* OpenCast */,
 				A10000000000000000000038 /* OpenCastNotificationService */,
 				C30000000000000000000007 /* OpenCastNotificationContent */,
@@ -785,7 +785,7 @@
 				CLANG_ENABLE_OBJC_WEAK = NO;
 				CODE_SIGN_ENTITLEMENTS = OpenCastWidgets/OpenCastWidgets.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 285;
+				CURRENT_PROJECT_VERSION = 287;
 				DEVELOPMENT_TEAM = XF6X92W4W9;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = OpenCastWidgets/Info.plist;
@@ -811,7 +811,7 @@
 				CLANG_ENABLE_OBJC_WEAK = NO;
 				CODE_SIGN_ENTITLEMENTS = OpenCastWidgets/OpenCastWidgets.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 285;
+				CURRENT_PROJECT_VERSION = 287;
 				DEVELOPMENT_TEAM = XF6X92W4W9;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = OpenCastWidgets/Info.plist;
@@ -956,13 +956,13 @@
 		};
 		A10000000000000000000027 /* Debug */ = {
 			isa = XCBuildConfiguration;
-			baseConfigurationReference = E5C0FF1C00000000000000A1 /* OpenCast.xcconfig */;
+			baseConfigurationReference = E5C0FF1C00000000000000A1 /* Config/OpenCast.xcconfig */;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_ALTERNATE_APPICON_NAMES = "AppIconOcean AppIconSunset AppIconHoney AppIconRose AppIconViolet AppIconLagoon AppIconFern AppIconAbyss";
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_ENTITLEMENTS = OpenCast/Resources/OpenCast.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 285;
+				CURRENT_PROJECT_VERSION = 287;
 				DEVELOPMENT_TEAM = XF6X92W4W9;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = NO;
@@ -987,13 +987,13 @@
 		};
 		A10000000000000000000028 /* Release */ = {
 			isa = XCBuildConfiguration;
-			baseConfigurationReference = E5C0FF1C00000000000000A1 /* OpenCast.xcconfig */;
+			baseConfigurationReference = E5C0FF1C00000000000000A1 /* Config/OpenCast.xcconfig */;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_ALTERNATE_APPICON_NAMES = "AppIconOcean AppIconSunset AppIconHoney AppIconRose AppIconViolet AppIconLagoon AppIconFern AppIconAbyss";
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_ENTITLEMENTS = OpenCast/Resources/OpenCastProduction.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 285;
+				CURRENT_PROJECT_VERSION = 287;
 				DEVELOPMENT_TEAM = XF6X92W4W9;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = NO;
@@ -1021,7 +1021,7 @@
 			buildSettings = {
 				BUNDLE_LOADER = "$(TEST_HOST)";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 285;
+				CURRENT_PROJECT_VERSION = 287;
 				GENERATE_INFOPLIST_FILE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 27.0;
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -1043,7 +1043,7 @@
 			buildSettings = {
 				BUNDLE_LOADER = "$(TEST_HOST)";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 285;
+				CURRENT_PROJECT_VERSION = 287;
 				GENERATE_INFOPLIST_FILE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 27.0;
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -1065,7 +1065,7 @@
 			buildSettings = {
 				BUNDLE_LOADER = "$(TEST_HOST)";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 285;
+				CURRENT_PROJECT_VERSION = 287;
 				GENERATE_INFOPLIST_FILE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 27.0;
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -1086,7 +1086,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 285;
+				CURRENT_PROJECT_VERSION = 287;
 				GENERATE_INFOPLIST_FILE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 27.0;
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -1166,13 +1166,13 @@
 		};
 		A10000000000000000000030 /* NotificationsInternal */ = {
 			isa = XCBuildConfiguration;
-			baseConfigurationReference = E5C0FF1C00000000000000A1 /* OpenCast.xcconfig */;
+			baseConfigurationReference = E5C0FF1C00000000000000A1 /* Config/OpenCast.xcconfig */;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_ALTERNATE_APPICON_NAMES = "AppIconOcean AppIconSunset AppIconHoney AppIconRose AppIconViolet AppIconLagoon AppIconFern AppIconAbyss";
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_ENTITLEMENTS = OpenCast/Resources/OpenCastNotificationsInternal.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 285;
+				CURRENT_PROJECT_VERSION = 287;
 				DEVELOPMENT_TEAM = XF6X92W4W9;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = NO;
@@ -1201,7 +1201,7 @@
 			buildSettings = {
 				BUNDLE_LOADER = "$(TEST_HOST)";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 285;
+				CURRENT_PROJECT_VERSION = 287;
 				GENERATE_INFOPLIST_FILE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 27.0;
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -1223,7 +1223,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 285;
+				CURRENT_PROJECT_VERSION = 287;
 				GENERATE_INFOPLIST_FILE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 27.0;
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -1246,7 +1246,7 @@
 			buildSettings = {
 				APPLICATION_EXTENSION_API_ONLY = YES;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 285;
+				CURRENT_PROJECT_VERSION = 287;
 				DEVELOPMENT_TEAM = XF6X92W4W9;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = OpenCastNotificationService/Info.plist;
@@ -1273,7 +1273,7 @@
 			buildSettings = {
 				APPLICATION_EXTENSION_API_ONLY = YES;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 285;
+				CURRENT_PROJECT_VERSION = 287;
 				DEVELOPMENT_TEAM = XF6X92W4W9;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = OpenCastNotificationService/Info.plist;
@@ -1299,7 +1299,7 @@
 			buildSettings = {
 				APPLICATION_EXTENSION_API_ONLY = YES;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 285;
+				CURRENT_PROJECT_VERSION = 287;
 				DEVELOPMENT_TEAM = XF6X92W4W9;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = OpenCastNotificationService/Info.plist;
@@ -1326,7 +1326,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 285;
+				CURRENT_PROJECT_VERSION = 287;
 				GENERATE_INFOPLIST_FILE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 27.0;
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -1346,7 +1346,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 285;
+				CURRENT_PROJECT_VERSION = 287;
 				GENERATE_INFOPLIST_FILE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 27.0;
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -1366,7 +1366,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 285;
+				CURRENT_PROJECT_VERSION = 287;
 				GENERATE_INFOPLIST_FILE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 27.0;
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -1390,7 +1390,7 @@
 				CLANG_ENABLE_OBJC_WEAK = NO;
 				CODE_SIGN_ENTITLEMENTS = OpenCastWidgets/OpenCastWidgets.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 285;
+				CURRENT_PROJECT_VERSION = 287;
 				DEVELOPMENT_TEAM = XF6X92W4W9;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = OpenCastWidgets/Info.plist;
@@ -1415,7 +1415,7 @@
 			buildSettings = {
 				APPLICATION_EXTENSION_API_ONLY = YES;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 285;
+				CURRENT_PROJECT_VERSION = 287;
 				DEVELOPMENT_TEAM = XF6X92W4W9;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = OpenCastNotificationContent/Info.plist;
@@ -1443,7 +1443,7 @@
 			buildSettings = {
 				APPLICATION_EXTENSION_API_ONLY = YES;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 285;
+				CURRENT_PROJECT_VERSION = 287;
 				DEVELOPMENT_TEAM = XF6X92W4W9;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = OpenCastNotificationContent/Info.plist;
@@ -1470,7 +1470,7 @@
 			buildSettings = {
 				APPLICATION_EXTENSION_API_ONLY = YES;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 285;
+				CURRENT_PROJECT_VERSION = 287;
 				DEVELOPMENT_TEAM = XF6X92W4W9;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = OpenCastNotificationContent/Info.plist;
