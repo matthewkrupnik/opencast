@@ -11,7 +11,7 @@ struct SmartPlaylistRuleChips: View {
     let rule: PlaylistRule
     let onChange: (PlaylistRule) -> Void
 
-    private static let sortOptions = PodcastEpisodeSortOrder.allCases.map { sortOrder in
+    private static let sortOptions = PlaylistRule.sortOptions.map { sortOrder in
         (value: sortOrder, title: sortOrder.title)
     }
     private static let lengthOptions = PlaylistRuleLengthPreset.allCases.map { preset in
@@ -146,7 +146,7 @@ struct SmartPlaylistRuleChips: View {
             downloadedOnly: true,
             maximumMinutes: 45,
             maximumAgeDays: 30,
-            sortOrder: .shortestFirst
+            sortOrder: .newestFirst
         )
     ) { _ in }
         .padding()

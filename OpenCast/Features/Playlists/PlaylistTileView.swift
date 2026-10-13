@@ -6,13 +6,12 @@ struct PlaylistTileView: View {
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     let summary: PlaylistSummary
-    let sources: PlaylistCoverSources
     let metrics: LibraryGridMetrics
 
     var body: some View {
         NavigationLink(value: AppRoute.playlistDetail(id: summary.playlistID)) {
             VStack(alignment: .leading, spacing: metrics.isCompact ? 6 : 10) {
-                PlaylistCoverView(summary: summary, sources: sources, cornerRadius: 12)
+                PlaylistCoverView(summary: summary, cornerRadius: 12)
                     .frame(width: metrics.tileWidth, height: metrics.tileWidth)
 
                 VStack(alignment: .leading, spacing: 2) {

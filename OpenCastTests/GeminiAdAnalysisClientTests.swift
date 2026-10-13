@@ -261,7 +261,7 @@ struct GeminiAdAnalysisClientTests {
         #expect(transport.requests.count == 2)
     }
 
-    @Test("A missing key fails before any request and gates the store")
+    @Test("A missing key fails before any request and gates the store unless Apple runs first")
     @MainActor
     func missingKeyGatesStore() async {
         let transport = GeminiTestTransport([])
@@ -271,8 +271,9 @@ struct GeminiAdAnalysisClientTests {
             _ = try await client.analyze(Self.request())
         }
         #expect(transport.requests.isEmpty)
+        // Without a key the store is gated unless Apple's model runs first.
         let store = EpisodeAdAnalysisStore(configuration: GeminiConfiguration(apiKey: ""), transport: transport)
-        #expect(!store.canStartAnalysis)
+        #expect(store.canStartAnalysis == AppleFirstAdAnalysisClient.usesAppleForProcess)
     }
 
     @Test("Polling reports the job gone so the store resubmits locally")

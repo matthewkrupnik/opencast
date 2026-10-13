@@ -426,48 +426,28 @@ final class CarPlayInterfaceCoordinator {
         }
     }
 
-    /// The one image a playlist row carries: a manual playlist's first cover
-    /// show, or a smart playlist's most dominant matched show. The smart
-    /// evaluation is the memo the row's episode count already read.
+    /// The one image a playlist row carries: its most dominant matched show.
+    /// The evaluation is the memo the row's episode count already read.
     private static func playlistArtworkURL(for summary: PlaylistSummary, appModel: OpenCastAppModel) -> String? {
         let podcastArtworkURL: (String) -> URL? = { podcastID in
             appModel.library.podcastCache(for: podcastID)?.artworkURL.flatMap(URL.init(string:))
         }
-        let url = switch summary.kind {
-        case .manual:
-            PlaylistCoverSources.make(
-                summary: summary,
-                items: appModel.playlists.itemsByPlaylistID[summary.playlistID] ?? [],
-                podcastArtworkURL: podcastArtworkURL
-            ).artworkURLs.first
-        case .smart:
-            SmartPlaylistCoverSources.make(
-                episodes: appModel.smartPlaylistEvaluation(for: summary).episodes,
-                podcastArtworkURL: podcastArtworkURL
-            ).artworkURLs.first
-        }
+        let url = SmartPlaylistCoverSources.make(
+            episodes: appModel.smartPlaylistEvaluation(for: summary).episodes,
+            podcastArtworkURL: podcastArtworkURL
+        ).artworkURLs.first
         return url?.absoluteString
     }
 
     private func pushPlaylistEpisodes(for row: CarPlayPlaylistRow, limits: CarPlayListLimits) {
         // Nil when the phone deleted the playlist after this list was pushed:
         // an empty list reads better than an alert about an episode.
-        let summary = appModel.playlist(row.playlistID)
-        let episodes: [EpisodeListItemSnapshot] = switch summary?.kind {
-        case .manual:
-            appModel.playlists.resolvedItems(in: row.playlistID) { appModel.episodeSnapshot(for: $0) }
-                .compactMap(\.snapshot)
-        case .smart:
-            summary.map { appModel.smartPlaylistEvaluation(for: $0).episodes } ?? []
-        case nil:
-            []
-        }
+        let episodes = appModel.playlist(row.playlistID).map { appModel.smartPlaylistEvaluation(for: $0).episodes } ?? []
         push(
             CarPlayBrowseModelBuilder.playlistEpisodes(
                 playlistID: row.playlistID,
                 title: row.title,
                 episodes: episodes,
-                hidesPlayed: summary?.kind == .manual && summary?.hidesPlayed == true,
                 library: appModel.library,
                 downloadRecords: appModel.downloads.records,
                 nowPlaying: Self.nowPlayingState(appModel: appModel),

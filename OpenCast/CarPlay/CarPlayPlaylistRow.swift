@@ -2,11 +2,9 @@ nonisolated struct CarPlayPlaylistRow: Identifiable, Equatable, Sendable {
     let playlistID: String
     let title: String
     let detailText: String?
-    /// A manual playlist's first cover show artwork, or a smart playlist's
-    /// most dominant matched show's.
+    /// The playlist's most dominant matched show's artwork.
     let artworkURL: String?
-    /// A smart playlist's stored symbol, or a manual playlist's fallback
-    /// glyph, when it has no cover artwork.
+    /// The playlist's symbol, when it has no cover artwork.
     let symbolName: String?
 
     var id: String {

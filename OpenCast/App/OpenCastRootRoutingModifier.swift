@@ -30,11 +30,6 @@ struct OpenCastRootRoutingModifier: ViewModifier {
             .onChange(of: appModel.dataNukeConfirmationPresentationRequest) { _, _ in
                 sheetDestination = .nukeConfirmation
             }
-            .onChange(of: appModel.addToPlaylistPresentationRequest) { _, request in
-                if let request {
-                    sheetDestination = .addToPlaylist(episodeID: request.episodeID)
-                }
-            }
             .onChange(of: appModel.hasNowPlayingPresentationContent, initial: true) { _, hasContent in
                 if !hasContent {
                     dismissNowPlaying()

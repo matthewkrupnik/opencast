@@ -1,6 +1,6 @@
 import Foundation
 
-/// Everything a smart playlist's evaluation depends on. A token the rule
+/// Everything a playlist's evaluation depends on. A token the rule
 /// does not read stays nil, so an unrelated change never recomputes it and a
 /// view reading the key never observes it.
 nonisolated struct SmartPlaylistEvaluationKey: Hashable, Sendable {

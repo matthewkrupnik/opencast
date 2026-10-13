@@ -56,7 +56,7 @@ final class OpenCastSystemActionRouter {
             }
             let before = playbackIdentity()
             let upNextErrorBefore = appModel.lastUpNextError
-            guard appModel.playPlaylist(playlistID, mode: .replace, shuffle: false, presentsNowPlaying: false, modelContext: modelContext) else {
+            guard appModel.playPlaylist(playlistID, mode: .replace, presentsNowPlaying: false, modelContext: modelContext) else {
                 // A false return after the first episode started means the queue
                 // clear or pour failed; the listener hears the episode either way.
                 // A start that happened moved the episode or the source, or, when
@@ -70,18 +70,6 @@ final class OpenCastSystemActionRouter {
                 throw OpenCastSystemActionError.playbackFailed
             }
             try requirePlaybackStarted()
-        case .addToPlaylist(let episodeID, let playlistID):
-            let episode = try availableEpisode(episodeID)
-            guard let playlist = appModel.playlist(playlistID) else { throw OpenCastSystemActionError.unavailable }
-            guard playlist.kind == .manual else { throw OpenCastSystemActionError.smartPlaylistRejectsEpisodes }
-            // The already-a-member zero neither sets nor clears the store's
-            // message, so a stale one is dropped first; a zero with a fresh
-            // message is a failure, a zero without one is idempotent success.
-            _ = appModel.playlists.consumeLastErrorMessage()
-            let added = appModel.playlists.add([episode], to: playlistID, modelContext: modelContext)
-            if added == 0, appModel.playlists.consumeLastErrorMessage() != nil {
-                throw OpenCastSystemActionError.playlistFailed
-            }
         }
     }
 

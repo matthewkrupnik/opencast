@@ -1,14 +1,15 @@
 import SwiftData
 import SwiftUI
 
-/// One smart playlist: the tinted hero with its rule chips, then the episodes
-/// the rule matches, in rule order. Tapping a row plays from there. The rule
-/// decides membership and order, so rows cannot be reordered or removed;
-/// changing a chip re-evaluates the list in place.
+/// One playlist: the tinted hero with its rule chips, then the episodes the
+/// rule matches, in rule order (show by show when it lists its shows).
+/// Tapping a row plays from there. The rule decides membership and order, so
+/// rows cannot be reordered or removed; changing a chip re-evaluates the list
+/// in place.
 ///
 /// The body reads the evaluation once, through the app model's memo, which
 /// recomputes only when a token the rule depends on changes. The body never
-/// reads the playlist items, Hide Played or Up Next.
+/// reads Up Next.
 struct SmartPlaylistDetailView: View {
     @Environment(OpenCastAppModel.self) private var appModel
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -37,8 +38,6 @@ struct SmartPlaylistDetailView: View {
                     summary: summary,
                     itemCount: evaluation.count,
                     totalDuration: evaluation.totalDuration,
-                    counts: nil,
-                    sources: PlaylistCoverSources(artworkURLs: [], fallbackTitle: summary.name),
                     primaryAction: primaryAction ?? .play,
                     canPlay: primaryAction != nil,
                     onPlay: play,
@@ -57,13 +56,12 @@ struct SmartPlaylistDetailView: View {
                     if evaluation.episodes.isEmpty {
                         ContentUnavailableView(
                             "No Matching Episodes",
-                            systemImage: "sparkles",
+                            systemImage: "music.note.list",
                             description: Text("No episodes match these rules. Change a rule above to include more.")
                         )
                     } else {
                         ForEach(visibleEpisodes) { episode in
                             PlaylistEpisodeRowView(
-                                itemID: nil,
                                 playlistID: summary.playlistID,
                                 episode: episode,
                                 onOpenEpisode: onOpenEpisode
@@ -92,7 +90,7 @@ struct SmartPlaylistDetailView: View {
                 )
             }
         }
-        // The age clause measures from the library's reference date; a smart
+        // The age clause measures from the library's reference date; a
         // playlist opened from the Playlists tab or the playing-from pill
         // never passes through the Library screen that advances it.
         .onAppear(perform: appModel.library.advanceNewEpisodeReferenceDate)
@@ -102,7 +100,7 @@ struct SmartPlaylistDetailView: View {
         reduceMotion ? nil : .default
     }
 
-    /// The candidate rule `OpenCastAppModel` plays a smart playlist with, so
+    /// The candidate rule `OpenCastAppModel` plays a playlist with, so
     /// Play Next and Play Last are enabled exactly when they would queue
     /// something.
     private func isCandidate(_ episode: EpisodeListItemSnapshot) -> Bool {
@@ -110,7 +108,7 @@ struct SmartPlaylistDetailView: View {
     }
 
     private func play(_ mode: PlaylistPlayMode) {
-        appModel.playPlaylist(summary.playlistID, mode: mode, shuffle: false, modelContext: modelContext)
+        appModel.playPlaylist(summary.playlistID, mode: mode, modelContext: modelContext)
     }
 
     private func setRule(_ rule: PlaylistRule) {

@@ -9,7 +9,6 @@ nonisolated struct OpenCastPlaylistEntity: AppEntity {
     let name: String
     let episodeCount: Int
     let episodeCountText: String
-    let isSmart: Bool
     let updatedAt: Date
 
     var displayRepresentation: DisplayRepresentation {
@@ -26,7 +25,6 @@ nonisolated struct OpenCastPlaylistEntity: AppEntity {
         name = String(summary.name.prefix(512))
         self.episodeCount = episodeCount
         episodeCountText = PlaylistSummaryText.line(itemCount: episodeCount, totalDuration: 0)
-        isSmart = summary.kind == .smart
         updatedAt = summary.updatedAt
     }
 

@@ -21,7 +21,7 @@ final class OpenCastIntentUITests: XCTestCase {
     }
 
     @MainActor
-    func testSystemPlaylistQueryPlayAndAdd() async throws {
+    func testSystemPlaylistQueryAndPlay() async throws {
         let app = XCUIApplication()
         app.launchArguments = ["--opencast-ui-testing", "--opencast-seed-ui-library"]
         app.launchEnvironment["OPENCAST_SEED_PLAYLISTS"] = "1"
@@ -45,38 +45,5 @@ final class OpenCastIntentUITests: XCTestCase {
             (miniPlayer.value as? String)?.contains("playing from Seeded Commute") == true,
             "Mini player value reads \(String(describing: miniPlayer.value))"
         )
-
-        let episodes = try await definitions.entities["OpenCastEpisodeEntity"].entities(identifiers: ["ui-test-episode-1"])
-        let episode = try XCTUnwrap(episodes.first)
-        let empty = playlists.makeReference(identifier: "ui-test-playlist-empty")
-        // Twice: a retried Add must not duplicate the row.
-        for _ in 0..<2 {
-            try await definitions.intents["AddOpenCastEpisodeToPlaylistIntent"].makeIntent(episode: episode, playlist: empty).run()
-        }
-
-        // A foreground intent hands the scene back mid-transition, and a tab
-        // tap that lands then is dropped; verify the switch and tap again.
-        XCTAssertTrue(app.wait(for: .runningForeground, timeout: 10))
-        for _ in 0..<3 where !app.navigationBars["Library"].exists {
-            openSection("Library", in: app)
-            _ = app.navigationBars["Library"].existsOrWait(timeout: 3)
-        }
-        XCTAssertTrue(app.navigationBars["Library"].exists, "Library tab should be selected after the intents")
-        let playlistsRow = app.buttons.matching(identifier: "Library Playlists Row").firstMatch
-        XCTAssertTrue(playlistsRow.existsOrWait(timeout: 10))
-        playlistsRow.tap()
-        let emptyRow = app.descendants(matching: .any).matching(identifier: "playlist-row-ui-test-playlist-empty").firstMatch
-        XCTAssertTrue(emptyRow.existsOrWait(timeout: 10))
-        emptyRow.tap()
-        let countLine = app.descendants(matching: .any).matching(identifier: "Playlist Count Line").firstMatch
-        XCTAssertTrue(countLine.existsOrWait(timeout: 10))
-        // A whole clause, so "1 episode" cannot pass for "11 episodes".
-        var clauses: [String] = []
-        for _ in 0..<40 {
-            clauses = countLine.label.components(separatedBy: ", ")
-            if clauses.contains("1 episode") { break }
-            try await Task.sleep(for: .milliseconds(250))
-        }
-        XCTAssertTrue(clauses.contains("1 episode"), "Playlist Count Line reads \(countLine.label)")
     }
 }

@@ -21,7 +21,7 @@ struct PlaylistRuleTests {
 
     // MARK: - Coding
 
-    @Test("The default rule is unplayed, all shows, any length and age, newest first, 25 episodes")
+    @Test("The default rule is unplayed, all shows, any length and age, oldest first, 25 episodes")
     func defaultRule() {
         let rule = PlaylistRule.default
 
@@ -32,7 +32,7 @@ struct PlaylistRuleTests {
         #expect(rule.minimumMinutes == nil)
         #expect(rule.maximumMinutes == nil)
         #expect(rule.maximumAgeDays == nil)
-        #expect(rule.sortOrder == .newestFirst)
+        #expect(rule.sortOrder == .oldestFirst)
         #expect(rule.limit == 25)
         #expect(rule.normalized() == rule)
     }
@@ -50,7 +50,7 @@ struct PlaylistRuleTests {
     func encodedJSONIsDeterministic() {
         #expect(
             PlaylistRule.default.encodedJSON()
-                == #"{"downloadedOnly":false,"limit":25,"sortOrder":"newestFirst","status":"unplayed","version":1}"#
+                == #"{"downloadedOnly":false,"limit":25,"sortOrder":"oldestFirst","status":"unplayed","version":1}"#
         )
         #expect(
             Self.everyClause.encodedJSON()
@@ -61,13 +61,14 @@ struct PlaylistRuleTests {
         #expect(!Self.everyClause.encodedJSON().contains(#"\/"#))
     }
 
-    @Test("Equal rules encode identically whatever order their shows were toggled in")
-    func toggleOrderDoesNotChangeEncoding() {
+    @Test("Show order is part of the rule: reordered shows encode differently")
+    func showOrderChangesEncoding() {
         let forward = PlaylistRule(podcastIDs: [Self.alphaID, Self.bravoID]).normalized()
         let backward = PlaylistRule(podcastIDs: [Self.bravoID, Self.alphaID, Self.bravoID]).normalized()
 
-        #expect(forward == backward)
-        #expect(forward.encodedJSON() == backward.encodedJSON())
+        #expect(backward.podcastIDs == [Self.bravoID, Self.alphaID])
+        #expect(forward != backward)
+        #expect(forward.encodedJSON() != backward.encodedJSON())
     }
 
     @Test("A No Limit rule omits the limit and decodes back to No Limit, not the default 25")
@@ -84,7 +85,7 @@ struct PlaylistRuleTests {
         #expect(decoded != .default)
     }
 
-    @Test("A bare version 1 object decodes to unplayed, all shows, newest first, no limit")
+    @Test("A bare version 1 object decodes to unplayed, all shows, oldest first, no limit")
     func bareVersionDecodesToPropertyDefaults() throws {
         let rule = try #require(PlaylistRule.decode(#"{"version":1}"#))
 
@@ -95,7 +96,7 @@ struct PlaylistRuleTests {
         #expect(rule.minimumMinutes == nil)
         #expect(rule.maximumMinutes == nil)
         #expect(rule.maximumAgeDays == nil)
-        #expect(rule.sortOrder == .newestFirst)
+        #expect(rule.sortOrder == .oldestFirst)
         #expect(rule.limit == nil)
     }
 
@@ -142,11 +143,11 @@ struct PlaylistRuleTests {
 
     // MARK: - Normalization
 
-    @Test("Normalizing deduplicates and sorts show IDs and turns an empty list into all shows")
+    @Test("Normalizing deduplicates show IDs in their listed order and turns an empty list into all shows")
     func normalizedShowIDs() {
         let listed = PlaylistRule(podcastIDs: [Self.charlieID, Self.alphaID, Self.charlieID, Self.bravoID])
 
-        #expect(listed.normalized().podcastIDs == [Self.alphaID, Self.bravoID, Self.charlieID])
+        #expect(listed.normalized().podcastIDs == [Self.charlieID, Self.alphaID, Self.bravoID])
         #expect(PlaylistRule(podcastIDs: []).normalized().podcastIDs == nil)
         #expect(PlaylistRule(podcastIDs: nil).normalized().podcastIDs == nil)
     }
@@ -245,12 +246,14 @@ struct PlaylistRuleTests {
         )
     }
 
-    @Test("The Sort chip reads the sort order's title")
+    @Test("The Sort chip reads the sort order's title, and offers only oldest and newest first")
     func sortTitles() {
-        #expect(PlaylistRule.default.sortTitle == "Newest First")
-        #expect(PlaylistRule(sortOrder: .oldestFirst).sortTitle == "Oldest First")
-        #expect(PlaylistRule(sortOrder: .longestFirst).sortTitle == "Longest First")
-        #expect(PlaylistRule(sortOrder: .shortestFirst).sortTitle == "Shortest First")
+        #expect(PlaylistRule.default.sortTitle == "Oldest First")
+        #expect(PlaylistRule(sortOrder: .newestFirst).sortTitle == "Newest First")
+        #expect(PlaylistRule.sortOptions == [.oldestFirst, .newestFirst])
+        #expect(PlaylistRule(sortOrder: .longestFirst).normalized().sortOrder == .oldestFirst)
+        #expect(PlaylistRule(sortOrder: .shortestFirst).normalized().sortOrder == .oldestFirst)
+        #expect(PlaylistRule(sortOrder: .newestFirst).normalized().sortOrder == .newestFirst)
     }
 
     @Test("Length titles read minutes below an hour and hours from an hour, for presets and other bounds")

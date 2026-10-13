@@ -454,7 +454,7 @@ struct CarPlayBrowseModelBuilderTests {
     @Test("The playlists list keeps the store's order and pages at the floor limits")
     func playlistsListRespectsFloorLimitsWithContinuation() throws {
         let summaries = (0..<13).map { index in
-            makePlaylistSummary(playlistID: "playlist-\(index)", name: "Playlist \(index)", kind: .manual)
+            makePlaylistSummary(playlistID: "playlist-\(index)", name: "Playlist \(index)")
         }
 
         let snapshot = CarPlayBrowseModelBuilder.playlists(
@@ -478,18 +478,18 @@ struct CarPlayBrowseModelBuilderTests {
     }
 
     @Test("Playlist rows carry the cover show's artwork, else their symbol, with an inflected count")
-    func playlistRowsCarryShowArtworkOrSmartSymbol() throws {
+    func playlistRowsCarryShowArtworkOrSymbol() throws {
         let summaries = [
-            makePlaylistSummary(playlistID: "manual-cover", name: "Commute", kind: .manual),
-            makePlaylistSummary(playlistID: "manual-bare", name: "Bare", kind: .manual),
-            makePlaylistSummary(playlistID: "smart-default", name: "Fresh", kind: .smart),
-            makePlaylistSummary(playlistID: "smart-star", name: "Starred", kind: .smart)
+            makePlaylistSummary(playlistID: "cover", name: "Commute"),
+            makePlaylistSummary(playlistID: "bare", name: "Bare"),
+            makePlaylistSummary(playlistID: "fresh", name: "Fresh"),
+            makePlaylistSummary(playlistID: "starred", name: "Starred")
         ]
-        let counts = ["manual-cover": 3, "manual-bare": 0, "smart-default": 1, "smart-star": 12]
+        let counts = ["cover": 3, "bare": 0, "fresh": 1, "starred": 12]
 
-        // The closure offers a cover to one playlist of each kind, so the
-        // other two prove they fall back to their symbol.
-        let bare: Set = ["manual-bare", "smart-star"]
+        // The closure offers a cover to two of them, so the other two prove
+        // they fall back to the symbol.
+        let bare: Set = ["bare", "starred"]
         let snapshot = CarPlayBrowseModelBuilder.playlists(
             summaries,
             episodeCount: { counts[$0.playlistID] ?? -1 },
@@ -504,7 +504,7 @@ struct CarPlayBrowseModelBuilderTests {
         #expect(rows[0].symbolName == nil)
         #expect(rows[0].detailText == "3 episodes")
         #expect(rows[1].artworkURL == nil)
-        #expect(rows[1].symbolName == "music.note.list")
+        #expect(rows[1].symbolName == PlaylistSymbolCover.defaultSymbolName)
         #expect(rows[1].detailText == "No episodes")
         #expect(rows[2].artworkURL == "https://example.com/cover.jpg")
         #expect(rows[2].symbolName == nil)
@@ -524,7 +524,6 @@ struct CarPlayBrowseModelBuilderTests {
             playlistID: "playlist-commute",
             title: "Commute",
             episodes: episodes,
-            hidesPlayed: false,
             library: fixture.library,
             downloadRecords: [],
             nowPlaying: .idle,
@@ -534,7 +533,6 @@ struct CarPlayBrowseModelBuilderTests {
             playlistID: "playlist-empty",
             title: "Empty",
             episodes: [],
-            hidesPlayed: false,
             library: fixture.library,
             downloadRecords: [],
             nowPlaying: .idle,
@@ -559,37 +557,6 @@ struct CarPlayBrowseModelBuilderTests {
         #expect(empty.continuation == nil)
         #expect(empty.emptyTitleVariants.first == "Nothing to Play")
         #expect(empty.emptySubtitleVariants == ["This playlist has no episodes to play."])
-    }
-
-    @Test("A playlist's episodes drop played rows only when it hides played")
-    func playlistEpisodesHonourHidesPlayed() async throws {
-        let fixture = try await makeFixture(episodeCount: 3)
-        let episodes = try (0..<3).map { try #require(fixture.library.episode(with: episodeID($0))) }
-        #expect(fixture.library.markEpisodePlayed(episodes[1], modelContext: fixture.context))
-
-        let hiding = CarPlayBrowseModelBuilder.playlistEpisodes(
-            playlistID: "playlist-commute",
-            title: "Commute",
-            episodes: episodes,
-            hidesPlayed: true,
-            library: fixture.library,
-            downloadRecords: [],
-            nowPlaying: .idle,
-            limits: Self.roomyLimits
-        )
-        let showing = CarPlayBrowseModelBuilder.playlistEpisodes(
-            playlistID: "playlist-commute",
-            title: "Commute",
-            episodes: episodes,
-            hidesPlayed: false,
-            library: fixture.library,
-            downloadRecords: [],
-            nowPlaying: .idle,
-            limits: Self.roomyLimits
-        )
-
-        #expect(episodeIDs(in: hiding) == [episodeID(0), episodeID(2)])
-        #expect(episodeIDs(in: showing) == (0..<3).map(episodeID))
     }
 
     private func makeFixture(
@@ -694,14 +661,13 @@ struct CarPlayBrowseModelBuilderTests {
 
     private func makePlaylistSummary(
         playlistID: String,
-        name: String,
-        kind: PlaylistKind
+        name: String
     ) -> PlaylistSummary {
         PlaylistSummary(
             playlistID: playlistID,
             name: name,
-            kind: kind,
-            rule: kind == .smart ? PlaylistRule.default : nil,
+            kind: .smart,
+            rule: PlaylistRule.default,
             hidesPlayed: false,
             origin: .user,
             itemCount: 0,

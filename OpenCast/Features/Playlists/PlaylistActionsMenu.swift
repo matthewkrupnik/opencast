@@ -2,21 +2,16 @@ import SwiftData
 import SwiftUI
 
 /// The playlist detail toolbar menu: Play Next, Play Last and Download All,
-/// then reorder, rename, sort, Hide Played and delete. Reorder, sort and Hide
-/// Played are manual only: a smart playlist's rule decides its order and
-/// membership, so it passes no edit mode and Edit does not show. Deleting
-/// pops back to the collection.
+/// then rename and delete. The rule decides the order and membership, so
+/// there is no reordering here. Deleting pops back to the collection.
 struct PlaylistActionsMenu: View {
     @Environment(OpenCastAppModel.self) private var appModel
     @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var modelContext
 
     let summary: PlaylistSummary
-    /// Whether Edit can start; read only alongside `editMode`.
-    var canEdit = false
     let canEnqueue: Bool
     let canDownloadAll: Bool
-    var editMode: Binding<EditMode>?
     @State private var namePromptRequest: PlaylistNamePromptRequest?
     @State private var isConfirmingDelete = false
     @State private var isConfirmingDownloadAll = false
@@ -44,25 +39,7 @@ struct PlaylistActionsMenu: View {
 
             Divider()
 
-            if let editMode {
-                Button(
-                    editMode.wrappedValue.isEditing ? "Done" : "Edit",
-                    systemImage: "arrow.up.arrow.down.circle",
-                    action: toggleEditMode
-                )
-                .disabled(!canEdit && !editMode.wrappedValue.isEditing)
-            }
-
             Button("Rename", systemImage: "pencil", action: promptRename)
-
-            if summary.kind == .manual {
-                Menu(PlaylistOrganizerCopy.sortEpisodes, systemImage: "arrow.up.arrow.down") {
-                    Button(PlaylistItemSortOrder.oldestFirst.title, action: sortOldestFirst)
-                    Button(PlaylistItemSortOrder.newestFirst.title, action: sortNewestFirst)
-                }
-
-                Toggle("Hide Played", systemImage: "eye.slash", isOn: hidesPlayedBinding)
-            }
 
             Divider()
 
@@ -95,15 +72,6 @@ struct PlaylistActionsMenu: View {
             Text("Every unplayed episode in this playlist is downloaded or downloading.")
         }
         .playlistNamePrompt($namePromptRequest, onCommit: commitName(_:name:))
-    }
-
-    private var hidesPlayedBinding: Binding<Bool> {
-        Binding(
-            get: { summary.hidesPlayed },
-            set: { hidesPlayed in
-                setHidesPlayed(hidesPlayed)
-            }
-        )
     }
 
     // Grammar agreement resolves only on the attributed localization path.
@@ -141,15 +109,6 @@ struct PlaylistActionsMenu: View {
         appModel.downloadAllPlaylistEpisodes(summary.playlistID, modelContext: modelContext)
     }
 
-    private func toggleEditMode() {
-        guard let editMode else {
-            return
-        }
-        withAnimation {
-            editMode.wrappedValue = editMode.wrappedValue.isEditing ? .inactive : .active
-        }
-    }
-
     private func promptRename() {
         namePromptRequest = .rename(summary)
     }
@@ -159,30 +118,6 @@ struct PlaylistActionsMenu: View {
             return
         }
         appModel.renamePlaylist(playlistID, to: name, modelContext: modelContext)
-    }
-
-    private func sortOldestFirst() {
-        sortItems(by: .oldestFirst)
-    }
-
-    private func sortNewestFirst() {
-        sortItems(by: .newestFirst)
-    }
-
-    private func sortItems(by order: PlaylistItemSortOrder) {
-        appModel.performPlaylistMutation {
-            appModel.playlists.sortItems(in: summary.playlistID, by: order, modelContext: modelContext)
-        }
-    }
-
-    private func setHidesPlayed(_ hidesPlayed: Bool) {
-        appModel.performPlaylistMutation {
-            appModel.playlists.setHidesPlayed(
-                hidesPlayed,
-                for: summary.playlistID,
-                modelContext: modelContext
-            )
-        }
     }
 
     private func confirmDelete() {

@@ -12,10 +12,6 @@ nonisolated final class UITestTranscriptIntelligenceClient: TranscriptIntelligen
     static let availabilityEnvironmentKey = "OPENCAST_UI_TEST_TRANSCRIPT_INTELLIGENCE_AVAILABILITY"
     /// `answerable` (default), `unanswerable`, or `unverified`.
     static let askAnswerEnvironmentKey = "OPENCAST_UI_TEST_TRANSCRIPT_ASK_ANSWER"
-    /// `proposals` (default), `empty`, `guardrail` (every turn declines, the
-    /// simpler answer's too), or `guardrail-until-simpler` (standard turns
-    /// decline; the simpler answer's turns answer).
-    static let playlistOrganizerResponseEnvironmentKey = "OPENCAST_UI_TEST_PLAYLIST_ORGANIZER_RESPONSE"
 
     let modelIdentifier = "ui-test"
     let modelAvailability: TranscriptIntelligenceModelAvailability
@@ -83,8 +79,6 @@ nonisolated final class UITestTranscriptIntelligenceSession: TranscriptIntellige
             """
     )
 
-    private static let emptyPlaylistProposalsJSON = #"{"playlists":[]}"#
-
     func respond(
         to prompt: String,
         options: TranscriptIntelligenceGenerationOptions
@@ -108,13 +102,6 @@ nonisolated final class UITestTranscriptIntelligenceSession: TranscriptIntellige
         onPartialContent: @escaping @MainActor (GeneratedContent) -> Void
     ) async throws -> TranscriptIntelligenceResponse<Content> {
         inputTokenCount += prompt.count / 4
-        if type == PlaylistProposalSet.self || type == PlaylistIndexSet.self {
-            return try await playlistProposals(
-                for: prompt,
-                isIndicesOnly: type == PlaylistIndexSet.self,
-                onPartialContent: onPartialContent
-            )
-        }
         let isAnswer = type == TranscriptAnswer.self
         let json = isAnswer ? Self.cannedAnswerJSON : Self.cannedRecapJSON
         let content: Content
@@ -137,83 +124,6 @@ nonisolated final class UITestTranscriptIntelligenceSession: TranscriptIntellige
             usage: TranscriptIntelligenceUsage(inputTokens: inputTokenCount, outputTokens: 60),
             toolExchanges: isAnswer ? [Self.cannedToolExchange] : []
         )
-    }
-
-    /// `isIndicesOnly` is the simpler answer's turn (`PlaylistIndexSet`).
-    private func playlistProposals<Content: Generable>(
-        for prompt: String,
-        isIndicesOnly: Bool,
-        onPartialContent: @escaping @MainActor (GeneratedContent) -> Void
-    ) async throws -> TranscriptIntelligenceResponse<Content> {
-        let variant = ProcessInfo.processInfo.environment[
-            UITestTranscriptIntelligenceClient.playlistOrganizerResponseEnvironmentKey
-        ]
-        let json: String
-        switch variant {
-        case "guardrail":
-            throw TranscriptIntelligenceFailure.guardrailViolation(.output)
-        case "guardrail-until-simpler" where !isIndicesOnly:
-            throw TranscriptIntelligenceFailure.guardrailViolation(.output)
-        case "empty":
-            json = Self.emptyPlaylistProposalsJSON
-        default:
-            let numbers = Self.listedLineNumbers(in: prompt)
-            json = isIndicesOnly
-                ? Self.cannedPlaylistIndexSetJSON(numbers: numbers)
-                : Self.cannedPlaylistProposalsJSON(numbers: numbers)
-        }
-        let content: Content
-        do {
-            let generated = try GeneratedContent(json: json)
-            await onPartialContent(generated)
-            content = try Content(generated)
-        } catch {
-            throw TranscriptIntelligenceFailure.malformedOutput
-        }
-        return TranscriptIntelligenceResponse(
-            content: content,
-            usage: TranscriptIntelligenceUsage(inputTokens: inputTokenCount, outputTokens: 60),
-            toolExchanges: []
-        )
-    }
-
-    /// Two proposals over every listed episode: one in the prompt's order,
-    /// one reversed.
-    private static func cannedPlaylistProposalsJSON(numbers: [Int]) -> String {
-        guard !numbers.isEmpty else {
-            return emptyPlaylistProposalsJSON
-        }
-        let listed = numbers.map { String($0) }.joined(separator: ",")
-        let listedBackwards = numbers.reversed().map { String($0) }.joined(separator: ",")
-        return #"{"playlists":[{"title":"First Seeded Playlist","rationale":"Every listed episode in feed order.","episodeIndices":[\#(listed)],"confidence":0.9},{"title":"Second Seeded Playlist","rationale":"The same episodes, newest last.","episodeIndices":[\#(listedBackwards)],"confidence":0.6}]}"#
-    }
-
-    /// The simpler answer: one playlist of every listed episode, numbers
-    /// only, as `PlaylistIndexSet` reads it.
-    private static func cannedPlaylistIndexSetJSON(numbers: [Int]) -> String {
-        guard !numbers.isEmpty else {
-            return emptyPlaylistProposalsJSON
-        }
-        let listed = numbers.map { String($0) }.joined(separator: ",")
-        return #"{"playlists":[{"episodeIndices":[\#(listed)]}]}"#
-    }
-
-    /// The number that opens each numbered episode line ("12. …"),
-    /// ascending. These are the prompt's line numbers, which may be gapped;
-    /// the client maps an answer's numbers back to episodes.
-    private static func listedLineNumbers(in prompt: String) -> [Int] {
-        var numbers = Set<Int>()
-        for line in prompt.split(separator: "\n") {
-            let digits = line.prefix { $0.isASCII && $0.isNumber }
-            guard !digits.isEmpty,
-                  line.dropFirst(digits.count).hasPrefix(". "),
-                  let number = Int(digits)
-            else {
-                continue
-            }
-            numbers.insert(number)
-        }
-        return numbers.sorted()
     }
 }
 #endif

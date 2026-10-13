@@ -10,28 +10,17 @@ struct PlaylistStoreTests {
     func createRenameDelete() throws {
         let fixture = try makeFixture()
         let commute = try #require(
-            fixture.store.create(name: "  Commute  ", kind: .manual, modelContext: fixture.context)
+            fixture.store.create(name: "  Commute  ", modelContext: fixture.context)
         )
         let other = try #require(
-            fixture.store.create(name: "Other", kind: .manual, modelContext: fixture.context)
+            fixture.store.create(name: "Other", modelContext: fixture.context)
         )
         #expect(commute.name == "Commute")
-        #expect(commute.kind == .manual)
+        #expect(commute.kind == .smart)
         #expect(commute.origin == .user)
-        #expect(commute.tintKey == nil)
-        #expect(commute.itemCount == 0)
-        let commuteAdded = fixture.store.add(
-            [episode("a"), episode("b")],
-            to: commute.playlistID,
-            modelContext: fixture.context
-        )
-        let otherAdded = fixture.store.add(
-            [episode("a")],
-            to: other.playlistID,
-            modelContext: fixture.context
-        )
-        #expect(commuteAdded == 2)
-        #expect(otherAdded == 1)
+        #expect(commute.tintKey != nil)
+        try seedItems([episode("a"), episode("b")], in: commute.playlistID, fixture: fixture)
+        try seedItems([episode("a")], in: other.playlistID, fixture: fixture)
 
         #expect(fixture.store.rename(commute.playlistID, to: "Morning", modelContext: fixture.context))
         #expect(!fixture.store.rename(commute.playlistID, to: "   ", modelContext: fixture.context))
@@ -52,295 +41,15 @@ struct PlaylistStoreTests {
         #expect(try storedItems(in: deletedContext).map(\.playlistID) == [other.playlistID])
     }
 
-    @Test("Adding skips existing members and copies the episode's fallbacks")
-    func addDedupesAndCopiesFallbacks() throws {
-        let fixture = try makeFixture()
-        let playlist = try #require(
-            fixture.store.create(name: "Commute", kind: .manual, modelContext: fixture.context)
-        )
-        let publishedAt = Date(timeIntervalSince1970: 1_775_000_000)
-        let detailed = EpisodeListItemSnapshot.fixture(
-            episodeID: "detailed",
-            podcastID: "https://example.com/other.xml",
-            podcastTitle: "Other Show",
-            title: "Detailed Episode",
-            publishedAt: publishedAt,
-            duration: 1_800,
-            audioURL: "https://example.com/detailed.mp3",
-            artworkURL: "https://example.com/detailed.jpg",
-            guid: "detailed"
-        )
-
-        let firstAdded = fixture.store.add(
-            [episode("a"), detailed, episode("a")],
-            to: playlist.playlistID,
-            modelContext: fixture.context
-        )
-        let secondAdded = fixture.store.add(
-            [detailed, episode("b")],
-            to: playlist.playlistID,
-            modelContext: fixture.context
-        )
-
-        #expect(firstAdded == 2)
-        #expect(secondAdded == 1)
-        #expect(fixture.store.itemsByPlaylistID[playlist.playlistID]?.map(\.episodeID) == ["a", "detailed", "b"])
-
-        let storedContext = ModelContext(fixture.container)
-        let records = try storedItems(in: storedContext)
-        #expect(records.map(\.episodeID) == ["a", "detailed", "b"])
-        #expect(Set(records.map(\.sortKey)).count == 3)
-        #expect(records.allSatisfy { PlaylistSortKey.isValid($0.sortKey) })
-
-        let stored = try #require(records.first(where: { $0.episodeID == "detailed" }))
-        #expect(stored.playlistID == playlist.playlistID)
-        #expect(stored.podcastID == "https://example.com/other.xml")
-        #expect(stored.episodeTitle == "Detailed Episode")
-        #expect(stored.podcastTitle == "Other Show")
-        #expect(stored.artworkURL == "https://example.com/detailed.jpg")
-        #expect(stored.audioURL == "https://example.com/detailed.mp3")
-        #expect(stored.duration == 1_800)
-        #expect(stored.publishedAt == publishedAt)
-        #expect(!stored.itemID.isEmpty)
-        #expect(!stored.dedupeUUID.isEmpty)
-
-        let summary = try #require(fixture.store.playlists.first)
-        #expect(summary.itemCount == 3)
-        #expect(summary.totalDuration == 1_920)
-    }
-
-    @Test("Summaries carry item-derived figures and survive a fresh load")
-    func summariesSurviveReload() throws {
-        let fixture = try makeFixture()
-        let playlist = try #require(
-            fixture.store.create(name: "Mixed", kind: .manual, modelContext: fixture.context)
-        )
-        let episodes = [
-            episode("one", podcastID: "https://example.com/show-1.xml", duration: 100),
-            episode("two", podcastID: "https://example.com/show-1.xml", duration: nil),
-            episode("three", podcastID: "https://example.com/show-2.xml", duration: 200),
-            episode("four", podcastID: "https://example.com/show-3.xml", duration: 300),
-            episode("five", podcastID: "https://example.com/show-4.xml", duration: 400),
-            episode("six", podcastID: "https://example.com/show-5.xml", duration: 500)
-        ]
-        let added = fixture.store.add(episodes, to: playlist.playlistID, modelContext: fixture.context)
-        #expect(added == 6)
-
-        let summary = try #require(fixture.store.playlists.first)
-        #expect(summary.itemCount == 6)
-        #expect(summary.totalDuration == 1_500)
-        #expect(
-            summary.coverPodcastIDs == [
-                "https://example.com/show-1.xml",
-                "https://example.com/show-2.xml",
-                "https://example.com/show-3.xml",
-                "https://example.com/show-4.xml"
-            ]
-        )
-
-        let reloaded = PlaylistStore(saveSyncedStore: SyncedStoreSelfSaveLedger().save)
-        reloaded.load(modelContext: ModelContext(fixture.container))
-
-        #expect(reloaded.playlists == fixture.store.playlists)
-        #expect(reloaded.itemsByPlaylistID == fixture.store.itemsByPlaylistID)
-        #expect(reloaded.lastErrorMessage == nil)
-    }
-
-    @Test("Removing items deletes their rows and updates the summary")
-    func removeItems() throws {
-        let fixture = try makeFixture()
-        let playlist = try #require(
-            fixture.store.create(name: "Commute", kind: .manual, modelContext: fixture.context)
-        )
-        let added = fixture.store.add(
-            [episode("a"), episode("b"), episode("c")],
-            to: playlist.playlistID,
-            modelContext: fixture.context
-        )
-        #expect(added == 3)
-        let items = fixture.store.itemsByPlaylistID[playlist.playlistID] ?? []
-        let removedItemID = try #require(items.first(where: { $0.episodeID == "b" })?.itemID)
-
-        #expect(
-            fixture.store.remove(
-                itemIDs: [removedItemID],
-                from: playlist.playlistID,
-                modelContext: fixture.context
-            )
-        )
-
-        let storedContext = ModelContext(fixture.container)
-        #expect(fixture.store.itemsByPlaylistID[playlist.playlistID]?.map(\.episodeID) == ["a", "c"])
-        #expect(try storedItems(in: storedContext).map(\.episodeID) == ["a", "c"])
-        #expect(fixture.store.playlists.first?.itemCount == 2)
-        #expect(fixture.store.playlistIDs(containing: "b").isEmpty)
-    }
-
-    @Test("A single-row move rewrites exactly the moved row's key")
-    func singleRowMoveRewritesOneKey() throws {
-        let fixture = try makeFixture()
-        let playlist = try #require(
-            fixture.store.create(name: "Commute", kind: .manual, modelContext: fixture.context)
-        )
-        let added = fixture.store.add(
-            ["a", "b", "c", "d", "e"].map { episode($0) },
-            to: playlist.playlistID,
-            modelContext: fixture.context
-        )
-        #expect(added == 5)
-        let movedItemID = try #require(fixture.store.itemsByPlaylistID[playlist.playlistID]?.last?.itemID)
-        let keysBefore = try storedKeysByItemID(in: fixture.container)
-
-        #expect(
-            fixture.store.move(
-                fromOffsets: IndexSet(integer: 4),
-                toOffset: 1,
-                in: playlist.playlistID,
-                modelContext: fixture.context
-            )
-        )
-
-        let expectedOrder = ["a", "e", "b", "c", "d"]
-        let keysAfter = try storedKeysByItemID(in: fixture.container)
-        let changedItemIDs = keysAfter.filter { keysBefore[$0.key] != $0.value }.map(\.key)
-        let storedContext = ModelContext(fixture.container)
-        #expect(changedItemIDs == [movedItemID])
-        #expect(Set(keysAfter.keys) == Set(keysBefore.keys))
-        #expect(fixture.store.itemsByPlaylistID[playlist.playlistID]?.map(\.episodeID) == expectedOrder)
-        #expect(try storedItems(in: storedContext).map(\.episodeID) == expectedOrder)
-
-        let reloaded = PlaylistStore(saveSyncedStore: SyncedStoreSelfSaveLedger().save)
-        reloaded.load(modelContext: ModelContext(fixture.container))
-        #expect(reloaded.itemsByPlaylistID[playlist.playlistID]?.map(\.episodeID) == expectedOrder)
-    }
-
-    @Test("A multi-row move rewrites only the moved rows' keys")
-    func multiRowMoveRewritesMovedKeys() throws {
-        let fixture = try makeFixture()
-        let playlist = try #require(
-            fixture.store.create(name: "Commute", kind: .manual, modelContext: fixture.context)
-        )
-        let added = fixture.store.add(
-            ["a", "b", "c", "d", "e"].map { episode($0) },
-            to: playlist.playlistID,
-            modelContext: fixture.context
-        )
-        #expect(added == 5)
-        let items = fixture.store.itemsByPlaylistID[playlist.playlistID] ?? []
-        let movedItemIDs = Set([items[0].itemID, items[2].itemID])
-        let keysBefore = try storedKeysByItemID(in: fixture.container)
-
-        #expect(
-            fixture.store.move(
-                fromOffsets: IndexSet([0, 2]),
-                toOffset: 5,
-                in: playlist.playlistID,
-                modelContext: fixture.context
-            )
-        )
-
-        let expectedOrder = ["b", "d", "e", "a", "c"]
-        let keysAfter = try storedKeysByItemID(in: fixture.container)
-        let changedItemIDs = Set(keysAfter.filter { keysBefore[$0.key] != $0.value }.map(\.key))
-        let storedContext = ModelContext(fixture.container)
-        #expect(changedItemIDs == movedItemIDs)
-        #expect(fixture.store.itemsByPlaylistID[playlist.playlistID]?.map(\.episodeID) == expectedOrder)
-        #expect(try storedItems(in: storedContext).map(\.episodeID) == expectedOrder)
-    }
-
-    @Test("A move renumbers the whole playlist in one save when a key is too long")
-    func moveRenumbersOverlongKeys() throws {
-        let container = try OpenCastModelContainerFactory.make(inMemory: true)
-        let context = ModelContext(container)
-        let longKey = String(repeating: "1", count: 69) + "2"
-        #expect(longKey.count == 70)
-        #expect(PlaylistSortKey.isValid(longKey))
-        #expect(PlaylistSortKey.needsRenumbering(longKey))
-        context.insert(PlaylistRecord(playlistID: "renumber", name: "Renumber"))
-        for (index, sortKey) in ["1", longKey, "2"].enumerated() {
-            context.insert(
-                PlaylistItemRecord(
-                    itemID: "renumber-item-\(index)",
-                    playlistID: "renumber",
-                    episodeID: "episode-\(index)",
-                    podcastID: "https://example.com/feed.xml",
-                    sortKey: sortKey,
-                    episodeTitle: "Episode \(index)",
-                    podcastTitle: "Example Show"
-                )
-            )
-        }
-        try context.save()
-        let probe = PlaylistStoreProbe()
-        let store = PlaylistStore(
-            saveSyncedStore: SyncedStoreSelfSaveLedger(performSave: probe.save).save,
-            now: probe.nextDate
-        )
-        store.load(modelContext: context)
-        #expect(store.itemsByPlaylistID["renumber"]?.map(\.episodeID) == ["episode-0", "episode-1", "episode-2"])
-
-        #expect(
-            store.move(
-                fromOffsets: IndexSet(integer: 2),
-                toOffset: 0,
-                in: "renumber",
-                modelContext: context
-            )
-        )
-
-        let storedContext = ModelContext(container)
-        let records = try storedItems(in: storedContext)
-        #expect(probe.saveCount == 1)
-        #expect(records.map(\.episodeID) == ["episode-2", "episode-0", "episode-1"])
-        #expect(records.map(\.sortKey) == PlaylistSortKey.renumbered(count: 3))
-        #expect(!records.contains(where: { PlaylistSortKey.needsRenumbering($0.sortKey) }))
-        #expect(store.itemsByPlaylistID["renumber"]?.map(\.sortKey) == records.map(\.sortKey))
-    }
-
-    @Test("Adding after rows with unusable keys renumbers them first")
-    func addRenumbersUnusableKeys() throws {
-        let container = try OpenCastModelContainerFactory.make(inMemory: true)
-        let context = ModelContext(container)
-        let addedAt = Date(timeIntervalSince1970: 1_775_000_000)
-        context.insert(PlaylistRecord(playlistID: "legacy", name: "Legacy"))
-        for index in 0..<2 {
-            context.insert(
-                PlaylistItemRecord(
-                    itemID: "legacy-item-\(index)",
-                    playlistID: "legacy",
-                    episodeID: "legacy-episode-\(index)",
-                    podcastID: "https://example.com/feed.xml",
-                    sortKey: "",
-                    addedAt: addedAt.addingTimeInterval(Double(index)),
-                    episodeTitle: "Legacy Episode \(index)",
-                    podcastTitle: "Example Show"
-                )
-            )
-        }
-        try context.save()
-        let store = PlaylistStore(saveSyncedStore: SyncedStoreSelfSaveLedger().save)
-        store.load(modelContext: context)
-
-        let added = store.add([episode("fresh")], to: "legacy", modelContext: context)
-
-        let storedContext = ModelContext(container)
-        let records = try storedItems(in: storedContext)
-        #expect(added == 1)
-        #expect(records.map(\.episodeID) == ["legacy-episode-0", "legacy-episode-1", "fresh"])
-        #expect(records.allSatisfy { PlaylistSortKey.isValid($0.sortKey) })
-        #expect(records.map(\.sortKey) == records.map(\.sortKey).sorted())
-        #expect(Set(records.map(\.sortKey)).count == 3)
-    }
-
     @Test("A failed create leaves memory and storage unchanged")
     func createRollsBack() throws {
         let fixture = try makeFixture()
         let existing = try #require(
-            fixture.store.create(name: "Existing", kind: .manual, modelContext: fixture.context)
+            fixture.store.create(name: "Existing", modelContext: fixture.context)
         )
         fixture.probe.failsSaves = true
 
-        let created = fixture.store.create(name: "New", kind: .smart, modelContext: fixture.context)
+        let created = fixture.store.create(name: "New", modelContext: fixture.context)
 
         let storedContext = ModelContext(fixture.container)
         #expect(created == nil)
@@ -350,76 +59,13 @@ struct PlaylistStoreTests {
         #expect(fixture.store.lastErrorMessage?.contains("Unable to create the playlist") == true)
     }
 
-    @Test("A failed add leaves memory and storage unchanged")
-    func addRollsBack() throws {
-        let fixture = try makeFixture()
-        let playlist = try #require(
-            fixture.store.create(name: "Commute", kind: .manual, modelContext: fixture.context)
-        )
-        let firstAdded = fixture.store.add([episode("a")], to: playlist.playlistID, modelContext: fixture.context)
-        #expect(firstAdded == 1)
-        let summaryBefore = fixture.store.playlists
-        let itemsBefore = fixture.store.itemsByPlaylistID
-        fixture.probe.failsSaves = true
-
-        let added = fixture.store.add([episode("b")], to: playlist.playlistID, modelContext: fixture.context)
-
-        let storedContext = ModelContext(fixture.container)
-        #expect(added == 0)
-        #expect(fixture.store.playlists == summaryBefore)
-        #expect(fixture.store.itemsByPlaylistID == itemsBefore)
-        #expect(try storedItems(in: storedContext).map(\.episodeID) == ["a"])
-        #expect(try storedPlaylists(in: storedContext).first?.updatedAt == summaryBefore.first?.updatedAt)
-        #expect(try fixture.context.fetch(FetchDescriptor<PlaylistItemRecord>()).count == 1)
-        #expect(fixture.store.lastErrorMessage?.contains("Unable to add the episode to the playlist") == true)
-    }
-
-    @Test("A failed remove leaves memory and storage unchanged")
-    func removeRollsBack() throws {
-        let fixture = try makeFixture()
-        let playlist = try #require(
-            fixture.store.create(name: "Commute", kind: .manual, modelContext: fixture.context)
-        )
-        let added = fixture.store.add(
-            ["a", "b", "c"].map { episode($0) },
-            to: playlist.playlistID,
-            modelContext: fixture.context
-        )
-        #expect(added == 3)
-        let summaryBefore = fixture.store.playlists
-        let itemsBefore = fixture.store.itemsByPlaylistID
-        let keysBefore = try storedKeysByItemID(in: fixture.container)
-        let removedItemID = try #require(itemsBefore[playlist.playlistID]?[1].itemID)
-        fixture.probe.failsSaves = true
-
-        let removed = fixture.store.remove(
-            itemIDs: [removedItemID],
-            from: playlist.playlistID,
-            modelContext: fixture.context
-        )
-
-        let storedContext = ModelContext(fixture.container)
-        #expect(!removed)
-        #expect(fixture.store.playlists == summaryBefore)
-        #expect(fixture.store.itemsByPlaylistID == itemsBefore)
-        #expect(try storedItems(in: storedContext).map(\.episodeID) == ["a", "b", "c"])
-        #expect(try storedKeysByItemID(in: fixture.container) == keysBefore)
-        #expect(try fixture.context.fetch(FetchDescriptor<PlaylistItemRecord>()).count == 3)
-        #expect(fixture.store.lastErrorMessage?.contains("Unable to remove the episode from the playlist") == true)
-    }
-
     @Test("A failed delete leaves memory and storage unchanged")
     func deleteRollsBack() throws {
         let fixture = try makeFixture()
         let playlist = try #require(
-            fixture.store.create(name: "Commute", kind: .manual, modelContext: fixture.context)
+            fixture.store.create(name: "Commute", modelContext: fixture.context)
         )
-        let added = fixture.store.add(
-            ["a", "b"].map { episode($0) },
-            to: playlist.playlistID,
-            modelContext: fixture.context
-        )
-        #expect(added == 2)
+        try seedItems(["a", "b"].map { episode($0) }, in: playlist.playlistID, fixture: fixture)
         let summaryBefore = fixture.store.playlists
         let itemsBefore = fixture.store.itemsByPlaylistID
         fixture.probe.failsSaves = true
@@ -459,23 +105,13 @@ struct PlaylistStoreTests {
 
         let fixture = try makeFixture()
         let departedOnly = try #require(
-            fixture.store.create(name: "Departed Only", kind: .manual, modelContext: fixture.context)
+            fixture.store.create(name: "Departed Only", modelContext: fixture.context)
         )
         let both = try #require(
-            fixture.store.create(name: "Both", kind: .manual, modelContext: fixture.context)
+            fixture.store.create(name: "Both", modelContext: fixture.context)
         )
-        let departedAdded = fixture.store.add(
-            [episode("a"), episode("old")],
-            to: departedOnly.playlistID,
-            modelContext: fixture.context
-        )
-        let bothAdded = fixture.store.add(
-            [episode("old"), episode("new")],
-            to: both.playlistID,
-            modelContext: fixture.context
-        )
-        #expect(departedAdded == 2)
-        #expect(bothAdded == 2)
+        try seedItems([episode("a"), episode("old")], in: departedOnly.playlistID, fixture: fixture)
+        try seedItems([episode("old"), episode("new")], in: both.playlistID, fixture: fixture)
         let keysBefore = try storedKeysByItemID(in: fixture.container)
         let departedItemID = try #require(fixture.store.itemsByPlaylistID[departedOnly.playlistID]?.last?.itemID)
         let playlistsBefore = fixture.store.playlists
@@ -498,7 +134,6 @@ struct PlaylistStoreTests {
 
         #expect(fixture.store.itemsByPlaylistID == itemsBefore)
         #expect(fixture.store.playlists == playlistsBefore)
-        #expect(fixture.store.playlistIDs(containing: "old") == [departedOnly.playlistID, both.playlistID])
         #expect(changeCount == 0)
 
         // A committed save publishes the re-key once.
@@ -529,8 +164,6 @@ struct PlaylistStoreTests {
         #expect(bothSummary.itemCount == 1)
         #expect(bothSummary.totalDuration == 60)
         #expect(fixture.store.playlists.map(\.updatedAt) == playlistsBefore.map(\.updatedAt))
-        #expect(fixture.store.playlistIDs(containing: "old").isEmpty)
-        #expect(fixture.store.playlistIDs(containing: "new") == [departedOnly.playlistID, both.playlistID])
         // Rows belong to the applier; the memory pass leaves them alone.
         #expect(
             try storedItems(in: ModelContext(fixture.container)).map(\.episodeID).sorted()
@@ -551,152 +184,28 @@ struct PlaylistStoreTests {
         #expect(changeCount == 1)
     }
 
-    @Test("A failed move leaves memory, keys and storage unchanged")
-    func moveRollsBack() throws {
-        let fixture = try makeFixture()
-        let playlist = try #require(
-            fixture.store.create(name: "Commute", kind: .manual, modelContext: fixture.context)
-        )
-        let added = fixture.store.add(
-            ["a", "b", "c"].map { episode($0) },
-            to: playlist.playlistID,
-            modelContext: fixture.context
-        )
-        #expect(added == 3)
-        let summaryBefore = fixture.store.playlists
-        let itemsBefore = fixture.store.itemsByPlaylistID
-        let keysBefore = try storedKeysByItemID(in: fixture.container)
-        fixture.probe.failsSaves = true
-
-        #expect(
-            !fixture.store.move(
-                fromOffsets: IndexSet(integer: 0),
-                toOffset: 3,
-                in: playlist.playlistID,
-                modelContext: fixture.context
-            )
-        )
-
-        let contextKeys = try storedItems(in: fixture.context).map(\.sortKey)
-        #expect(fixture.store.playlists == summaryBefore)
-        #expect(fixture.store.itemsByPlaylistID == itemsBefore)
-        #expect(try storedKeysByItemID(in: fixture.container) == keysBefore)
-        #expect(contextKeys == itemsBefore[playlist.playlistID]?.map(\.sortKey))
-        #expect(fixture.store.lastErrorMessage?.contains("Unable to reorder the playlist") == true)
-    }
-
     @Test("A failed playlist update keeps the loaded summary")
     func updateRollsBack() throws {
         let fixture = try makeFixture()
         let playlist = try #require(
-            fixture.store.create(name: "Commute", kind: .manual, modelContext: fixture.context)
+            fixture.store.create(name: "Commute", modelContext: fixture.context)
         )
         fixture.probe.failsSaves = true
 
-        #expect(!fixture.store.setHidesPlayed(true, for: playlist.playlistID, modelContext: fixture.context))
+        #expect(!fixture.store.rename(playlist.playlistID, to: "Evening", modelContext: fixture.context))
 
         let storedContext = ModelContext(fixture.container)
         #expect(fixture.store.playlists == [playlist])
-        #expect(try storedPlaylists(in: storedContext).first?.hidesPlayed == false)
-        #expect(fixture.store.lastErrorMessage?.contains("Unable to update Hide Played") == true)
-    }
-
-    @Test("Membership lookup lists every playlist holding an episode")
-    func playlistIDsContainingEpisode() throws {
-        let fixture = try makeFixture()
-        let first = try #require(
-            fixture.store.create(name: "First", kind: .manual, modelContext: fixture.context)
-        )
-        let second = try #require(
-            fixture.store.create(name: "Second", kind: .manual, modelContext: fixture.context)
-        )
-        let firstAdded = fixture.store.add(
-            [episode("a"), episode("b")],
-            to: first.playlistID,
-            modelContext: fixture.context
-        )
-        let secondAdded = fixture.store.add([episode("b")], to: second.playlistID, modelContext: fixture.context)
-        #expect(firstAdded == 2)
-        #expect(secondAdded == 1)
-
-        #expect(fixture.store.playlistIDs(containing: "b") == [first.playlistID, second.playlistID])
-        #expect(fixture.store.playlistIDs(containing: "a") == [first.playlistID])
-        #expect(fixture.store.playlistIDs(containing: "missing").isEmpty)
-    }
-
-    @Test("Load keeps rows whose episode no longer resolves")
-    func loadKeepsUnresolvedRows() throws {
-        let container = try OpenCastModelContainerFactory.make(inMemory: true)
-        let context = ModelContext(container)
-        context.insert(PlaylistRecord(playlistID: "kept", name: "Kept"))
-        context.insert(
-            PlaylistItemRecord(
-                itemID: "departed-item",
-                playlistID: "kept",
-                episodeID: "departed",
-                podcastID: "https://example.com/unsubscribed.xml",
-                sortKey: "i",
-                episodeTitle: "Departed Episode",
-                podcastTitle: "Departed Show",
-                duration: 900
-            )
-        )
-        context.insert(
-            PlaylistItemRecord(
-                itemID: "present-item",
-                playlistID: "kept",
-                episodeID: "present",
-                podcastID: "https://example.com/feed.xml",
-                sortKey: "r",
-                episodeTitle: "Present Episode",
-                podcastTitle: "Example Show"
-            )
-        )
-        try context.save()
-        let store = PlaylistStore(saveSyncedStore: SyncedStoreSelfSaveLedger().save)
-
-        store.load(modelContext: context)
-
-        let resolved = store.resolvedItems(in: "kept") { episodeID in
-            episodeID == "present" ? episode(episodeID) : nil
-        }
-        let storedContext = ModelContext(container)
-        #expect(resolved.map(\.id) == ["departed-item", "present-item"])
-        #expect(resolved.map(\.isResolved) == [false, true])
-        #expect(resolved.first?.item.episodeTitle == "Departed Episode")
-        #expect(resolved.first?.item.podcastTitle == "Departed Show")
-        #expect(resolved.first?.item.duration == 900)
-        #expect(store.playlists.first?.itemCount == 2)
-        #expect(try storedItems(in: storedContext).count == 2)
-        #expect(store.lastErrorMessage == nil)
-    }
-
-    @Test("Counts treat played episodes as done")
-    func countsUsePlayedState() throws {
-        let fixture = try makeFixture()
-        let playlist = try #require(
-            fixture.store.create(name: "Commute", kind: .manual, modelContext: fixture.context)
-        )
-        let added = fixture.store.add(
-            [episode("a", duration: 60), episode("b", duration: 120), episode("c", duration: nil)],
-            to: playlist.playlistID,
-            modelContext: fixture.context
-        )
-        #expect(added == 3)
-
-        let counts = fixture.store.counts(for: playlist.playlistID) { $0 == "b" }
-        let missingCounts = fixture.store.counts(for: "missing") { _ in false }
-
-        #expect(counts == PlaylistCounts(itemCount: 3, unplayedCount: 2, remainingDuration: 60))
-        #expect(missingCounts == PlaylistCounts(itemCount: 0, unplayedCount: 0, remainingDuration: 0))
+        #expect(try storedPlaylists(in: storedContext).first?.name == "Commute")
+        #expect(fixture.store.lastErrorMessage?.contains("Unable to rename the playlist") == true)
     }
 
     @Test("Sort order switches between name and most recently updated")
     func sortOrders() throws {
         let fixture = try makeFixture()
-        let beta = try #require(fixture.store.create(name: "Beta", kind: .manual, modelContext: fixture.context))
-        _ = try #require(fixture.store.create(name: "alpha", kind: .manual, modelContext: fixture.context))
-        _ = try #require(fixture.store.create(name: "Gamma", kind: .manual, modelContext: fixture.context))
+        let beta = try #require(fixture.store.create(name: "Beta", modelContext: fixture.context))
+        _ = try #require(fixture.store.create(name: "alpha", modelContext: fixture.context))
+        _ = try #require(fixture.store.create(name: "Gamma", modelContext: fixture.context))
 
         #expect(fixture.store.sortOrder == .recentlyUpdated)
         #expect(fixture.store.playlists.map(\.name) == ["Gamma", "alpha", "Beta"])
@@ -704,7 +213,7 @@ struct PlaylistStoreTests {
         fixture.store.sortOrder = .name
         #expect(fixture.store.playlists.map(\.name) == ["alpha", "Beta", "Gamma"])
 
-        #expect(fixture.store.setHidesPlayed(true, for: beta.playlistID, modelContext: fixture.context))
+        #expect(fixture.store.setRule(PlaylistRule(status: .played), for: beta.playlistID, modelContext: fixture.context))
         #expect(fixture.store.playlists.map(\.name) == ["alpha", "Beta", "Gamma"])
 
         fixture.store.sortOrder = .recentlyUpdated
@@ -715,16 +224,11 @@ struct PlaylistStoreTests {
     func mutationsBumpUpdatedAt() throws {
         let fixture = try makeFixture()
         let playlist = try #require(
-            fixture.store.create(name: "Commute", kind: .smart, modelContext: fixture.context)
-        )
-        let manual = try #require(
-            fixture.store.create(name: "Manual", kind: .manual, modelContext: fixture.context)
+            fixture.store.create(name: "Commute", modelContext: fixture.context)
         )
         var updatedAt = playlist.updatedAt
 
         #expect(fixture.store.rename(playlist.playlistID, to: "Evening", modelContext: fixture.context))
-        updatedAt = try expectBumpedUpdatedAt(playlist.playlistID, since: updatedAt, fixture: fixture)
-        #expect(fixture.store.setHidesPlayed(true, for: playlist.playlistID, modelContext: fixture.context))
         updatedAt = try expectBumpedUpdatedAt(playlist.playlistID, since: updatedAt, fixture: fixture)
         var playedRule = PlaylistRule.default
         playedRule.status = .played
@@ -732,50 +236,20 @@ struct PlaylistStoreTests {
         #expect(didSetRule)
         _ = try expectBumpedUpdatedAt(playlist.playlistID, since: updatedAt, fixture: fixture)
 
-        updatedAt = manual.updatedAt
-        let added = fixture.store.add(
-            [episode("a"), episode("b")],
-            to: manual.playlistID,
-            modelContext: fixture.context
-        )
-        #expect(added == 2)
-        updatedAt = try expectBumpedUpdatedAt(manual.playlistID, since: updatedAt, fixture: fixture)
-        #expect(
-            fixture.store.move(
-                fromOffsets: IndexSet(integer: 1),
-                toOffset: 0,
-                in: manual.playlistID,
-                modelContext: fixture.context
-            )
-        )
-        updatedAt = try expectBumpedUpdatedAt(manual.playlistID, since: updatedAt, fixture: fixture)
-        #expect(fixture.store.itemsByPlaylistID[manual.playlistID]?.first?.updatedAt == updatedAt)
-        let removedItemID = try #require(fixture.store.itemsByPlaylistID[manual.playlistID]?.first?.itemID)
-        #expect(
-            fixture.store.remove(
-                itemIDs: [removedItemID],
-                from: manual.playlistID,
-                modelContext: fixture.context
-            )
-        )
-        _ = try expectBumpedUpdatedAt(manual.playlistID, since: updatedAt, fixture: fixture)
-
         let storedContext = ModelContext(fixture.container)
         let storedRecords = try storedPlaylists(in: storedContext)
         let storedSmart = try #require(storedRecords.first(where: { $0.playlistID == playlist.playlistID }))
         #expect(storedSmart.name == "Evening")
-        #expect(storedSmart.hidesPlayed)
         #expect(storedSmart.ruleJSON == playedRule.encodedJSON())
     }
 
-    @Test("Smart playlists take the least-used tint and reject manual adds")
+    @Test("Playlists take the least-used tint")
     func smartPlaylistsTakeLeastUsedTint() throws {
         let fixture = try makeFixture()
-        let first = try #require(fixture.store.create(name: "One", kind: .smart, modelContext: fixture.context))
-        let second = try #require(fixture.store.create(name: "Two", kind: .smart, modelContext: fixture.context))
-        let manual = try #require(fixture.store.create(name: "Manual", kind: .manual, modelContext: fixture.context))
+        let first = try #require(fixture.store.create(name: "One", modelContext: fixture.context))
+        let second = try #require(fixture.store.create(name: "Two", modelContext: fixture.context))
         let third = try #require(
-            fixture.store.create(name: "Three", kind: .smart, origin: .ai, modelContext: fixture.context)
+            fixture.store.create(name: "Three", origin: .ai, modelContext: fixture.context)
         )
 
         #expect(
@@ -785,13 +259,12 @@ struct PlaylistStoreTests {
                 PlaylistTint.yellow.rawValue
             ]
         )
-        #expect(manual.tintKey == nil)
         #expect(first.ruleJSON == PlaylistRule.default.encodedJSON())
         #expect(first.rule == .default)
         #expect(third.origin == .ai)
 
         #expect(fixture.store.delete(second.playlistID, modelContext: fixture.context))
-        let fourth = try #require(fixture.store.create(name: "Four", kind: .smart, modelContext: fixture.context))
+        let fourth = try #require(fixture.store.create(name: "Four", modelContext: fixture.context))
         #expect(fourth.tintKey == PlaylistTint.orange.rawValue)
 
         let storedContext = ModelContext(fixture.container)
@@ -799,11 +272,6 @@ struct PlaylistStoreTests {
         let storedFourth = try #require(storedRecords.first(where: { $0.playlistID == fourth.playlistID }))
         #expect(storedFourth.kind == .smart)
         #expect(storedFourth.tintKey == PlaylistTint.orange.rawValue)
-
-        let added = fixture.store.add([episode("a")], to: first.playlistID, modelContext: fixture.context)
-        #expect(added == 0)
-        #expect(fixture.store.lastErrorMessage?.contains("smart playlists") == true)
-        #expect(try storedItems(in: storedContext).isEmpty)
     }
 
     @Test("A smart create stores the default rule and the first eight take distinct tints in case order")
@@ -812,11 +280,11 @@ struct PlaylistStoreTests {
         var created: [PlaylistSummary] = []
         for index in 1 ... PlaylistTint.allCases.count {
             let summary = try #require(
-                fixture.store.create(name: "Smart \(index)", kind: .smart, modelContext: fixture.context)
+                fixture.store.create(name: "Smart \(index)", modelContext: fixture.context)
             )
             created.append(summary)
         }
-        let ninth = try #require(fixture.store.create(name: "Smart 9", kind: .smart, modelContext: fixture.context))
+        let ninth = try #require(fixture.store.create(name: "Smart 9", modelContext: fixture.context))
 
         #expect(created.map(\.tintKey) == PlaylistTint.allCases.map(\.rawValue))
         #expect(created.compactMap(\.tint) == PlaylistTint.allCases)
@@ -832,35 +300,29 @@ struct PlaylistStoreTests {
         #expect(reloaded.playlists.allSatisfy { $0.rule == .default })
     }
 
-    @Test("A smart create stores the given rule normalized, and a manual create stores no rule")
-    func createStoresGivenRuleForSmartOnly() throws {
+    @Test("A create stores the given rule normalized")
+    func createStoresGivenRuleNormalized() throws {
         let fixture = try makeFixture()
         let rule = PlaylistRule(podcastIDs: [], status: .played, maximumAgeDays: -1, sortOrder: .longestFirst, limit: 50)
         let smart = try #require(
-            fixture.store.create(name: "Smart", kind: .smart, rule: rule, modelContext: fixture.context)
-        )
-        let manual = try #require(
-            fixture.store.create(name: "Manual", kind: .manual, rule: rule, modelContext: fixture.context)
+            fixture.store.create(name: "Smart", rule: rule, modelContext: fixture.context)
         )
 
         #expect(smart.rule == rule.normalized())
         #expect(smart.rule?.podcastIDs == nil)
         #expect(smart.rule?.maximumAgeDays == nil)
         #expect(smart.rule?.status == .played)
+        #expect(smart.rule?.sortOrder == .oldestFirst)
         #expect(smart.ruleJSON == rule.normalized().encodedJSON())
-        #expect(manual.rule == nil)
-        #expect(manual.ruleJSON == nil)
-        #expect(manual.tint == nil)
-        #expect(!manual.hasUnreadableRule)
         let storedRecords = try storedPlaylists(in: ModelContext(fixture.container))
-        #expect(storedRecords.map(\.ruleJSON) == [rule.normalized().encodedJSON(), nil])
+        #expect(storedRecords.map(\.ruleJSON) == [rule.normalized().encodedJSON()])
     }
 
     @Test("Setting a rule stores its canonical form, bumps updatedAt, and saves and notifies once")
     func setRulePersistsCanonicalRule() throws {
         let fixture = try makeFixture()
         let playlist = try #require(
-            fixture.store.create(name: "Fresh", kind: .smart, modelContext: fixture.context)
+            fixture.store.create(name: "Fresh", modelContext: fixture.context)
         )
         let saveCount = fixture.probe.saveCount
         var changeCount = 0
@@ -877,7 +339,8 @@ struct PlaylistStoreTests {
         let didSetRule = fixture.store.setRule(rule, for: playlist.playlistID, modelContext: fixture.context)
 
         #expect(didSetRule)
-        #expect(expected.podcastIDs == ["https://example.com/a.xml", "https://example.com/b.xml"])
+        #expect(expected.podcastIDs == ["https://example.com/b.xml", "https://example.com/a.xml"])
+        #expect(expected.sortOrder == .oldestFirst)
         #expect(expected.status == .all)
         #expect(expected.downloadedOnly)
         #expect(expected.limit == nil)
@@ -899,7 +362,7 @@ struct PlaylistStoreTests {
     func setIdenticalRuleIsNoOp() throws {
         let fixture = try makeFixture()
         let playlist = try #require(
-            fixture.store.create(name: "Fresh", kind: .smart, modelContext: fixture.context)
+            fixture.store.create(name: "Fresh", modelContext: fixture.context)
         )
         let saveCount = fixture.probe.saveCount
         var changeCount = 0
@@ -948,12 +411,13 @@ struct PlaylistStoreTests {
         #expect(store.lastErrorMessage == nil)
     }
 
-    @Test("Setting a rule refuses a manual playlist and a missing one without saving")
+    @Test("Setting a rule refuses a retired hand-picked playlist and a missing one without saving")
     func setRuleRefusesManualAndMissing() throws {
         let fixture = try makeFixture()
-        let manual = try #require(
-            fixture.store.create(name: "Manual", kind: .manual, modelContext: fixture.context)
-        )
+        fixture.context.insert(PlaylistRecord(playlistID: "manual", name: "Manual"))
+        try fixture.context.save()
+        fixture.store.reload(modelContext: fixture.context)
+        let manual = try #require(fixture.store.playlists.first)
         let saveCount = fixture.probe.saveCount
         var changeCount = 0
         fixture.store.onPlaylistsChanged = { changeCount += 1 }
@@ -1070,8 +534,8 @@ struct PlaylistStoreTests {
     @Test("Deleting a playlist drops only its memoized evaluation, and a failed delete keeps it")
     func deleteDropsMemoizedEvaluation() throws {
         let fixture = try makeFixture()
-        let first = try #require(fixture.store.create(name: "First", kind: .smart, modelContext: fixture.context))
-        let second = try #require(fixture.store.create(name: "Second", kind: .smart, modelContext: fixture.context))
+        let first = try #require(fixture.store.create(name: "First", modelContext: fixture.context))
+        let second = try #require(fixture.store.create(name: "Second", modelContext: fixture.context))
         let cache = fixture.store.smartEvaluations
         let key = memoKey()
         _ = cache.evaluation(for: first.playlistID, key: key) { [episode("a")] }
@@ -1099,8 +563,8 @@ struct PlaylistStoreTests {
     @Test("A data nuke clears every memoized evaluation")
     func nukeClearsMemoizedEvaluations() throws {
         let fixture = try makeFixture()
-        let first = try #require(fixture.store.create(name: "First", kind: .smart, modelContext: fixture.context))
-        let second = try #require(fixture.store.create(name: "Second", kind: .smart, modelContext: fixture.context))
+        let first = try #require(fixture.store.create(name: "First", modelContext: fixture.context))
+        let second = try #require(fixture.store.create(name: "Second", modelContext: fixture.context))
         let cache = fixture.store.smartEvaluations
         let key = memoKey()
         _ = cache.evaluation(for: first.playlistID, key: key) { [episode("a")] }
@@ -1120,10 +584,9 @@ struct PlaylistStoreTests {
     func noOpMutationsStayHonest() throws {
         let fixture = try makeFixture()
         let playlist = try #require(
-            fixture.store.create(name: "Commute", kind: .manual, modelContext: fixture.context)
+            fixture.store.create(name: "Commute", modelContext: fixture.context)
         )
-        let firstAdded = fixture.store.add([episode("a")], to: playlist.playlistID, modelContext: fixture.context)
-        #expect(firstAdded == 1)
+        try seedItems([episode("a")], in: playlist.playlistID, fixture: fixture)
         var changeCount = 0
         fixture.store.onPlaylistsChanged = { changeCount += 1 }
         #expect(!fixture.store.rename(playlist.playlistID, to: " ", modelContext: fixture.context))
@@ -1131,19 +594,8 @@ struct PlaylistStoreTests {
         let saveCount = fixture.probe.saveCount
         let updatedAt = fixture.store.playlists.first?.updatedAt
 
-        let added = fixture.store.add([episode("a")], to: playlist.playlistID, modelContext: fixture.context)
-        #expect(added == 0)
         #expect(fixture.store.rename(playlist.playlistID, to: "Commute", modelContext: fixture.context))
-        #expect(fixture.store.setHidesPlayed(false, for: playlist.playlistID, modelContext: fixture.context))
-        #expect(fixture.store.remove(itemIDs: ["missing"], from: playlist.playlistID, modelContext: fixture.context))
-        #expect(
-            fixture.store.move(
-                fromOffsets: IndexSet(integer: 0),
-                toOffset: 1,
-                in: playlist.playlistID,
-                modelContext: fixture.context
-            )
-        )
+        #expect(fixture.store.setRule(.default, for: playlist.playlistID, modelContext: fixture.context))
         #expect(fixture.store.delete("missing", modelContext: fixture.context))
 
         #expect(fixture.store.lastErrorMessage == error)
@@ -1160,270 +612,31 @@ struct PlaylistStoreTests {
         fixture.store.onPlaylistsChanged = { changeCount += 1 }
 
         let playlist = try #require(
-            fixture.store.create(name: "Commute", kind: .manual, modelContext: fixture.context)
+            fixture.store.create(name: "Commute", modelContext: fixture.context)
         )
         #expect(changeCount == 1)
-        let added = fixture.store.add(
-            [episode("a"), episode("b")],
-            to: playlist.playlistID,
-            modelContext: fixture.context
-        )
-        #expect(added == 2)
-        #expect(changeCount == 2)
         #expect(fixture.store.rename(playlist.playlistID, to: "Evening", modelContext: fixture.context))
+        #expect(changeCount == 2)
+        #expect(fixture.store.setRule(PlaylistRule(status: .played), for: playlist.playlistID, modelContext: fixture.context))
         #expect(changeCount == 3)
-        #expect(fixture.store.setHidesPlayed(true, for: playlist.playlistID, modelContext: fixture.context))
-        #expect(changeCount == 4)
-        #expect(fixture.store.setHidesPlayed(false, for: playlist.playlistID, modelContext: fixture.context))
-        #expect(changeCount == 5)
-        #expect(
-            fixture.store.move(
-                fromOffsets: IndexSet(integer: 1),
-                toOffset: 0,
-                in: playlist.playlistID,
-                modelContext: fixture.context
-            )
-        )
-        #expect(changeCount == 6)
-        let removedItemID = try #require(fixture.store.itemsByPlaylistID[playlist.playlistID]?.first?.itemID)
-        #expect(
-            fixture.store.remove(
-                itemIDs: [removedItemID],
-                from: playlist.playlistID,
-                modelContext: fixture.context
-            )
-        )
-        #expect(changeCount == 7)
 
         fixture.probe.failsSaves = true
         #expect(!fixture.store.rename(playlist.playlistID, to: "Night", modelContext: fixture.context))
-        let failedAdd = fixture.store.add([episode("c")], to: playlist.playlistID, modelContext: fixture.context)
-        #expect(failedAdd == 0)
         #expect(!fixture.store.delete(playlist.playlistID, modelContext: fixture.context))
-        #expect(changeCount == 7)
+        #expect(changeCount == 3)
 
         fixture.probe.failsSaves = false
         #expect(fixture.store.delete(playlist.playlistID, modelContext: fixture.context))
-        #expect(changeCount == 8)
-    }
-
-    @Test("A move over rows changed behind the store adopts them so the retry succeeds")
-    func staleMoveAdoptsStoredRows() throws {
-        let fixture = try makeFixture()
-        let playlist = try #require(
-            fixture.store.create(name: "Commute", kind: .manual, modelContext: fixture.context)
-        )
-        let added = fixture.store.add(
-            ["a", "b", "c"].map { episode($0) },
-            to: playlist.playlistID,
-            modelContext: fixture.context
-        )
-        #expect(added == 3)
-        let otherContext = ModelContext(fixture.container)
-        let otherRecords = try storedItems(in: otherContext)
-        let departed = try #require(otherRecords.first(where: { $0.episodeID == "b" }))
-        otherContext.delete(departed)
-        try otherContext.save()
-        var changeCount = 0
-        fixture.store.onPlaylistsChanged = { changeCount += 1 }
-        let saveCount = fixture.probe.saveCount
-
-        #expect(
-            !fixture.store.move(
-                fromOffsets: IndexSet(integer: 2),
-                toOffset: 0,
-                in: playlist.playlistID,
-                modelContext: fixture.context
-            )
-        )
-
-        #expect(fixture.store.lastErrorMessage?.contains("because it changed") == true)
-        #expect(fixture.store.itemsByPlaylistID[playlist.playlistID]?.map(\.episodeID) == ["a", "c"])
-        #expect(fixture.store.playlists.first?.itemCount == 2)
-        #expect(fixture.store.playlists.first?.totalDuration == 120)
-        #expect(fixture.store.playlistIDs(containing: "b").isEmpty)
-        #expect(fixture.probe.saveCount == saveCount)
-        #expect(changeCount == 1)
-
-        #expect(
-            fixture.store.move(
-                fromOffsets: IndexSet(integer: 1),
-                toOffset: 0,
-                in: playlist.playlistID,
-                modelContext: fixture.context
-            )
-        )
-
-        let storedContext = ModelContext(fixture.container)
-        #expect(fixture.store.itemsByPlaylistID[playlist.playlistID]?.map(\.episodeID) == ["c", "a"])
-        #expect(try storedItems(in: storedContext).map(\.episodeID) == ["c", "a"])
-        #expect(fixture.store.lastErrorMessage == nil)
-    }
-
-    @Test("Sorting oldest or newest first rewrites the keys in one save and bumps updatedAt")
-    func sortItemsRewritesKeysInOneSave() throws {
-        let fixture = try makeFixture()
-        let playlist = try #require(
-            fixture.store.create(name: "Commute", kind: .manual, modelContext: fixture.context)
-        )
-        let added = fixture.store.add(
-            [
-                episode("march", publishedAt: Self.march),
-                episode("january", publishedAt: Self.january),
-                episode("february", publishedAt: Self.february)
-            ],
-            to: playlist.playlistID,
-            modelContext: fixture.context
-        )
-        #expect(added == 3)
-        var updatedAt = try #require(fixture.store.playlists.first?.updatedAt)
-        let saveCount = fixture.probe.saveCount
-
-        #expect(fixture.store.sortItems(in: playlist.playlistID, by: .oldestFirst, modelContext: fixture.context))
-
-        let oldestFirst = ["january", "february", "march"]
-        #expect(fixture.probe.saveCount == saveCount + 1)
-        #expect(fixture.store.itemsByPlaylistID[playlist.playlistID]?.map(\.episodeID) == oldestFirst)
-        #expect(try storedItems(in: ModelContext(fixture.container)).map(\.episodeID) == oldestFirst)
-        #expect(isStrictlyAscending(fixture.store.itemsByPlaylistID[playlist.playlistID]?.map(\.sortKey) ?? []))
-        #expect(fixture.store.lastErrorMessage == nil)
-        updatedAt = try expectBumpedUpdatedAt(playlist.playlistID, since: updatedAt, fixture: fixture)
-
-        #expect(fixture.store.sortItems(in: playlist.playlistID, by: .newestFirst, modelContext: fixture.context))
-
-        let newestFirst = ["march", "february", "january"]
-        #expect(fixture.probe.saveCount == saveCount + 2)
-        #expect(fixture.store.itemsByPlaylistID[playlist.playlistID]?.map(\.episodeID) == newestFirst)
-        let storedRecords = try storedItems(in: ModelContext(fixture.container))
-        #expect(storedRecords.map(\.episodeID) == newestFirst)
-        #expect(isStrictlyAscending(storedRecords.map(\.sortKey)))
-        #expect(fixture.store.itemsByPlaylistID[playlist.playlistID]?.map(\.sortKey) == storedRecords.map(\.sortKey))
-        _ = try expectBumpedUpdatedAt(playlist.playlistID, since: updatedAt, fixture: fixture)
-
-        let reloaded = PlaylistStore(saveSyncedStore: SyncedStoreSelfSaveLedger().save)
-        reloaded.load(modelContext: ModelContext(fixture.container))
-        #expect(reloaded.itemsByPlaylistID[playlist.playlistID]?.map(\.episodeID) == newestFirst)
-    }
-
-    @Test("Sorting keeps equal dates in their order and undated episodes last in theirs")
-    func sortItemsKeepsTiesAndUndatedOrder() throws {
-        let fixture = try makeFixture()
-        let playlist = try #require(
-            fixture.store.create(name: "Commute", kind: .manual, modelContext: fixture.context)
-        )
-        let added = fixture.store.add(
-            [
-                episode("undated-1"),
-                episode("february", publishedAt: Self.february),
-                episode("january-1", publishedAt: Self.january),
-                episode("undated-2"),
-                episode("january-2", publishedAt: Self.january)
-            ],
-            to: playlist.playlistID,
-            modelContext: fixture.context
-        )
-        #expect(added == 5)
-
-        #expect(fixture.store.sortItems(in: playlist.playlistID, by: .oldestFirst, modelContext: fixture.context))
-        let oldestFirst = ["january-1", "january-2", "february", "undated-1", "undated-2"]
-        #expect(fixture.store.itemsByPlaylistID[playlist.playlistID]?.map(\.episodeID) == oldestFirst)
-        #expect(try storedItems(in: ModelContext(fixture.container)).map(\.episodeID) == oldestFirst)
-
-        #expect(fixture.store.sortItems(in: playlist.playlistID, by: .newestFirst, modelContext: fixture.context))
-        let newestFirst = ["february", "january-1", "january-2", "undated-1", "undated-2"]
-        #expect(fixture.store.itemsByPlaylistID[playlist.playlistID]?.map(\.episodeID) == newestFirst)
-        #expect(try storedItems(in: ModelContext(fixture.container)).map(\.episodeID) == newestFirst)
-    }
-
-    @Test("Sorting an already sorted or empty playlist succeeds without a save")
-    func sortItemsAlreadySortedSavesNothing() throws {
-        let fixture = try makeFixture()
-        let playlist = try #require(
-            fixture.store.create(name: "Commute", kind: .manual, modelContext: fixture.context)
-        )
-        let empty = try #require(
-            fixture.store.create(name: "Empty", kind: .manual, modelContext: fixture.context)
-        )
-        let added = fixture.store.add(
-            [
-                episode("january", publishedAt: Self.january),
-                episode("february", publishedAt: Self.february),
-                episode("undated")
-            ],
-            to: playlist.playlistID,
-            modelContext: fixture.context
-        )
-        #expect(added == 3)
-        let playlistsBefore = fixture.store.playlists
-        let itemsBefore = fixture.store.itemsByPlaylistID
-        let keysBefore = try storedKeysByItemID(in: fixture.container)
-        let saveCount = fixture.probe.saveCount
-        var changeCount = 0
-        fixture.store.onPlaylistsChanged = { changeCount += 1 }
-
-        #expect(fixture.store.sortItems(in: playlist.playlistID, by: .oldestFirst, modelContext: fixture.context))
-        #expect(fixture.store.sortItems(in: empty.playlistID, by: .newestFirst, modelContext: fixture.context))
-
-        #expect(fixture.probe.saveCount == saveCount)
-        #expect(changeCount == 0)
-        #expect(fixture.store.playlists == playlistsBefore)
-        #expect(fixture.store.itemsByPlaylistID == itemsBefore)
-        #expect(try storedKeysByItemID(in: fixture.container) == keysBefore)
-    }
-
-    @Test("Sorting refuses a smart or missing playlist without saving")
-    func sortItemsRefusesSmartAndMissing() throws {
-        let fixture = try makeFixture()
-        let smart = try #require(
-            fixture.store.create(name: "Smart", kind: .smart, modelContext: fixture.context)
-        )
-        let saveCount = fixture.probe.saveCount
-
-        #expect(!fixture.store.sortItems(in: smart.playlistID, by: .oldestFirst, modelContext: fixture.context))
-        #expect(fixture.store.consumeLastErrorMessage() == "Smart playlists choose their own order.")
-
-        #expect(!fixture.store.sortItems(in: "missing", by: .newestFirst, modelContext: fixture.context))
-        #expect(fixture.store.consumeLastErrorMessage()?.contains("no longer exists") == true)
-        #expect(fixture.probe.saveCount == saveCount)
-    }
-
-    @Test("A failed sort leaves memory, keys and storage unchanged")
-    func sortItemsRollsBack() throws {
-        let fixture = try makeFixture()
-        let playlist = try #require(
-            fixture.store.create(name: "Commute", kind: .manual, modelContext: fixture.context)
-        )
-        let added = fixture.store.add(
-            [
-                episode("february", publishedAt: Self.february),
-                episode("january", publishedAt: Self.january)
-            ],
-            to: playlist.playlistID,
-            modelContext: fixture.context
-        )
-        #expect(added == 2)
-        let summaryBefore = fixture.store.playlists
-        let itemsBefore = fixture.store.itemsByPlaylistID
-        let keysBefore = try storedKeysByItemID(in: fixture.container)
-        fixture.probe.failsSaves = true
-
-        #expect(!fixture.store.sortItems(in: playlist.playlistID, by: .oldestFirst, modelContext: fixture.context))
-
-        #expect(fixture.store.playlists == summaryBefore)
-        #expect(fixture.store.itemsByPlaylistID == itemsBefore)
-        #expect(try storedKeysByItemID(in: fixture.container) == keysBefore)
-        #expect(try storedItems(in: fixture.context).map(\.episodeID) == ["february", "january"])
-        #expect(fixture.store.lastErrorMessage?.contains("Unable to sort the playlist") == true)
+        #expect(changeCount == 4)
     }
 
     @Test("Reset after a data nuke clears loaded playlists")
     func resetAfterDataNukeClearsMemory() throws {
         let fixture = try makeFixture()
         let playlist = try #require(
-            fixture.store.create(name: "Commute", kind: .manual, modelContext: fixture.context)
+            fixture.store.create(name: "Commute", modelContext: fixture.context)
         )
-        let added = fixture.store.add([episode("a")], to: playlist.playlistID, modelContext: fixture.context)
-        #expect(added == 1)
+        try seedItems([episode("a")], in: playlist.playlistID, fixture: fixture)
         #expect(!fixture.store.rename(playlist.playlistID, to: "", modelContext: fixture.context))
         var changeCount = 0
         fixture.store.onPlaylistsChanged = { changeCount += 1 }
@@ -1433,15 +646,13 @@ struct PlaylistStoreTests {
         #expect(fixture.store.playlists.isEmpty)
         #expect(fixture.store.itemsByPlaylistID.isEmpty)
         #expect(fixture.store.lastErrorMessage == nil)
-        #expect(fixture.store.playlistIDs(containing: "a").isEmpty)
         #expect(changeCount == 1)
     }
 
     @Test("Consuming the error clears it")
     func consumeLastErrorMessage() throws {
         let fixture = try makeFixture()
-        let added = fixture.store.add([episode("a")], to: "missing", modelContext: fixture.context)
-        #expect(added == 0)
+        #expect(!fixture.store.rename("missing", to: "Commute", modelContext: fixture.context))
 
         let message = fixture.store.consumeLastErrorMessage()
 
@@ -1456,10 +667,9 @@ struct PlaylistStoreTests {
     func deleteWritesOnePlaylistTombstone() throws {
         let fixture = try makeFixture()
         let playlist = try #require(
-            fixture.store.create(name: "Commute", kind: .manual, modelContext: fixture.context)
+            fixture.store.create(name: "Commute", modelContext: fixture.context)
         )
-        let added = fixture.store.add([episode("a"), episode("b")], to: playlist.playlistID, modelContext: fixture.context)
-        #expect(added == 2)
+        try seedItems([episode("a"), episode("b")], in: playlist.playlistID, fixture: fixture)
         let saveCount = fixture.probe.saveCount
 
         #expect(fixture.store.delete(playlist.playlistID, modelContext: fixture.context))
@@ -1493,7 +703,7 @@ struct PlaylistStoreTests {
     func deleteOfMemoryOnlyPlaylistWritesTombstone() throws {
         let fixture = try makeFixture()
         let playlist = try #require(
-            fixture.store.create(name: "Commute", kind: .manual, modelContext: fixture.context)
+            fixture.store.create(name: "Commute", modelContext: fixture.context)
         )
         let otherContext = ModelContext(fixture.container)
         for record in try storedPlaylists(in: otherContext) {
@@ -1511,70 +721,14 @@ struct PlaylistStoreTests {
         #expect(tombstones.first?.episodeID == nil)
     }
 
-    @Test("Removing an episode writes one item tombstone for the pair and deletes its twin row")
-    func removeWritesItemTombstoneAndDeletesTwin() throws {
-        let fixture = try makeFixture()
-        let playlist = try #require(
-            fixture.store.create(name: "Commute", kind: .manual, modelContext: fixture.context)
-        )
-        let added = fixture.store.add([episode("a"), episode("b")], to: playlist.playlistID, modelContext: fixture.context)
-        #expect(added == 2)
-        let listedB = try #require(fixture.store.itemsByPlaylistID[playlist.playlistID]?.last)
-        fixture.context.insert(
-            itemRow(itemID: "b-twin", playlistID: playlist.playlistID, episodeID: "b", dedupeUUID: Self.lastDedupeUUID)
-        )
-        try fixture.context.save()
-        let saveCount = fixture.probe.saveCount
-
-        #expect(fixture.store.remove(itemIDs: [listedB.itemID], from: playlist.playlistID, modelContext: fixture.context))
-
-        #expect(fixture.probe.saveCount == saveCount + 1)
-        let storedContext = ModelContext(fixture.container)
-        #expect(try storedItems(in: storedContext).map(\.episodeID) == ["a"])
-        let tombstones = try storedTombstones(in: storedContext)
-        #expect(tombstones.count == 1)
-        #expect(tombstones.first?.playlistID == playlist.playlistID)
-        #expect(tombstones.first?.episodeID == "b")
-        #expect(tombstones.first?.deletedAt == fixture.probe.latestDate)
-        #expect(fixture.store.itemsByPlaylistID[playlist.playlistID]?.map(\.episodeID) == ["a"])
-    }
-
-    @Test("Removing an item whose row is already gone still writes its tombstone")
-    func removeOfMemoryOnlyItemWritesTombstone() throws {
-        let fixture = try makeFixture()
-        let playlist = try #require(
-            fixture.store.create(name: "Commute", kind: .manual, modelContext: fixture.context)
-        )
-        let added = fixture.store.add([episode("a"), episode("b")], to: playlist.playlistID, modelContext: fixture.context)
-        #expect(added == 2)
-        let listedB = try #require(fixture.store.itemsByPlaylistID[playlist.playlistID]?.last)
-        let otherContext = ModelContext(fixture.container)
-        let rowB = try #require(try storedItems(in: otherContext).first { $0.episodeID == "b" })
-        otherContext.delete(rowB)
-        try otherContext.save()
-
-        #expect(fixture.store.remove(itemIDs: [listedB.itemID], from: playlist.playlistID, modelContext: fixture.context))
-
-        let tombstones = try storedTombstones(in: ModelContext(fixture.container))
-        #expect(tombstones.map(\.episodeID) == ["b"])
-        #expect(tombstones.first?.playlistID == playlist.playlistID)
-        #expect(fixture.store.itemsByPlaylistID[playlist.playlistID]?.map(\.episodeID) == ["a"])
-    }
-
-    @Test("A failed delete or remove rolls the tombstone back with the rows")
+    @Test("A failed delete rolls the tombstone back with the rows")
     func failedSaveRollsBackTombstones() throws {
         let fixture = try makeFixture()
         let playlist = try #require(
-            fixture.store.create(name: "Commute", kind: .manual, modelContext: fixture.context)
+            fixture.store.create(name: "Commute", modelContext: fixture.context)
         )
-        let added = fixture.store.add([episode("a"), episode("b")], to: playlist.playlistID, modelContext: fixture.context)
-        #expect(added == 2)
-        let itemID = try #require(fixture.store.itemsByPlaylistID[playlist.playlistID]?.first?.itemID)
+        try seedItems([episode("a"), episode("b")], in: playlist.playlistID, fixture: fixture)
         fixture.probe.failsSaves = true
-
-        #expect(!fixture.store.remove(itemIDs: [itemID], from: playlist.playlistID, modelContext: fixture.context))
-        #expect(try fixture.context.fetch(FetchDescriptor<PlaylistTombstoneRecord>()).isEmpty)
-        #expect(try fixture.context.fetch(FetchDescriptor<PlaylistItemRecord>()).count == 2)
 
         #expect(!fixture.store.delete(playlist.playlistID, modelContext: fixture.context))
         #expect(try fixture.context.fetch(FetchDescriptor<PlaylistTombstoneRecord>()).isEmpty)
@@ -1587,10 +741,9 @@ struct PlaylistStoreTests {
     func reloadWithoutChangesIsQuiet() throws {
         let fixture = try makeFixture()
         let playlist = try #require(
-            fixture.store.create(name: "Commute", kind: .manual, modelContext: fixture.context)
+            fixture.store.create(name: "Commute", modelContext: fixture.context)
         )
-        let added = fixture.store.add([episode("a"), episode("b")], to: playlist.playlistID, modelContext: fixture.context)
-        #expect(added == 2)
+        try seedItems([episode("a"), episode("b")], in: playlist.playlistID, fixture: fixture)
         let playlistsBefore = fixture.store.playlists
         let itemsBefore = fixture.store.itemsByPlaylistID
         var changeCount = 0
@@ -1662,11 +815,10 @@ struct PlaylistStoreTests {
     @Test("A reload hides a tombstoned playlist and a shadowed item, reports repair, and deletes no row")
     func reloadHidesShadowedRows() throws {
         let fixture = try makeFixture()
-        let kept = try #require(fixture.store.create(name: "Kept", kind: .manual, modelContext: fixture.context))
-        let deleted = try #require(fixture.store.create(name: "Deleted", kind: .manual, modelContext: fixture.context))
-        let added = fixture.store.add([episode("a"), episode("b")], to: kept.playlistID, modelContext: fixture.context)
-        #expect(added == 2)
-        let addedAt = fixture.probe.latestDate
+        let kept = try #require(fixture.store.create(name: "Kept", modelContext: fixture.context))
+        let deleted = try #require(fixture.store.create(name: "Deleted", modelContext: fixture.context))
+        try seedItems([episode("a"), episode("b")], in: kept.playlistID, fixture: fixture)
+        let addedAt = Self.march
         fixture.context.insert(PlaylistTombstoneRecord(playlistID: deleted.playlistID, deletedAt: .distantPast))
         fixture.context.insert(PlaylistTombstoneRecord(playlistID: kept.playlistID, episodeID: "a", deletedAt: addedAt))
         try fixture.context.save()
@@ -1687,9 +839,9 @@ struct PlaylistStoreTests {
     @Test("A reload reports the playlists that left and the ones renamed behind the store")
     func reloadReportsRemovedAndRenamed() throws {
         let fixture = try makeFixture()
-        let unchanged = try #require(fixture.store.create(name: "Unchanged", kind: .manual, modelContext: fixture.context))
-        let removed = try #require(fixture.store.create(name: "Removed", kind: .manual, modelContext: fixture.context))
-        let renamed = try #require(fixture.store.create(name: "Renamed", kind: .manual, modelContext: fixture.context))
+        let unchanged = try #require(fixture.store.create(name: "Unchanged", modelContext: fixture.context))
+        let removed = try #require(fixture.store.create(name: "Removed", modelContext: fixture.context))
+        let renamed = try #require(fixture.store.create(name: "Renamed", modelContext: fixture.context))
         for record in try storedPlaylists(in: fixture.context) {
             if record.playlistID == removed.playlistID {
                 fixture.context.delete(record)
@@ -1715,8 +867,8 @@ struct PlaylistStoreTests {
     @Test("A reload drops the smart evaluations of the playlists that left")
     func reloadDropsRemovedEvaluations() throws {
         let fixture = try makeFixture()
-        let removed = try #require(fixture.store.create(name: "Removed", kind: .smart, modelContext: fixture.context))
-        let kept = try #require(fixture.store.create(name: "Kept", kind: .smart, modelContext: fixture.context))
+        let removed = try #require(fixture.store.create(name: "Removed", modelContext: fixture.context))
+        let kept = try #require(fixture.store.create(name: "Kept", modelContext: fixture.context))
         let cache = fixture.store.smartEvaluations
         let key = memoKey()
         _ = cache.evaluation(for: removed.playlistID, key: key) { [episode("a")] }
@@ -1744,10 +896,9 @@ struct PlaylistStoreTests {
         let successorPodcastID = "https://example.com/new.xml"
         let fixture = try makeFixture()
         let playlist = try #require(
-            fixture.store.create(name: "Commute", kind: .manual, modelContext: fixture.context)
+            fixture.store.create(name: "Commute", modelContext: fixture.context)
         )
-        let added = fixture.store.add([episode("a"), episode("old")], to: playlist.playlistID, modelContext: fixture.context)
-        #expect(added == 2)
+        try seedItems([episode("a"), episode("old")], in: playlist.playlistID, fixture: fixture)
         var changeCount = 0
         fixture.store.onPlaylistsChanged = { changeCount += 1 }
 
@@ -1779,7 +930,7 @@ struct PlaylistStoreTests {
     @Test("A reload never rolls back the context's pending changes")
     func reloadKeepsPendingChanges() throws {
         let fixture = try makeFixture()
-        _ = try #require(fixture.store.create(name: "Commute", kind: .manual, modelContext: fixture.context))
+        _ = try #require(fixture.store.create(name: "Commute", modelContext: fixture.context))
         fixture.context.insert(SubscriptionRecord(feedURL: "https://example.com/pending.xml", title: "Pending Show"))
         #expect(fixture.context.hasChanges)
 
@@ -1787,75 +938,6 @@ struct PlaylistStoreTests {
 
         #expect(fixture.context.hasChanges)
         #expect(fixture.context.insertedModelsArray.contains { $0 is SubscriptionRecord })
-    }
-
-    @Test("Move and sort work on the listed rows while a twin item row waits for repair")
-    func moveAndSortIgnoreTwinRows() throws {
-        let fixture = try makeFixture()
-        let playlist = try #require(
-            fixture.store.create(name: "Commute", kind: .manual, modelContext: fixture.context)
-        )
-        let added = fixture.store.add(
-            [
-                episode("a", publishedAt: Self.march),
-                episode("b", publishedAt: Self.march.addingTimeInterval(60)),
-                episode("c", publishedAt: Self.march.addingTimeInterval(120))
-            ],
-            to: playlist.playlistID,
-            modelContext: fixture.context
-        )
-        #expect(added == 3)
-        fixture.context.insert(
-            itemRow(itemID: "b-twin", playlistID: playlist.playlistID, episodeID: "b", dedupeUUID: Self.lastDedupeUUID)
-        )
-        try fixture.context.save()
-        let saveCount = fixture.probe.saveCount
-
-        #expect(
-            fixture.store.move(
-                fromOffsets: IndexSet(integer: 2),
-                toOffset: 0,
-                in: playlist.playlistID,
-                modelContext: fixture.context
-            )
-        )
-        #expect(fixture.store.itemsByPlaylistID[playlist.playlistID]?.map(\.episodeID) == ["c", "a", "b"])
-        #expect(fixture.probe.saveCount == saveCount + 1)
-
-        #expect(fixture.store.sortItems(in: playlist.playlistID, by: .oldestFirst, modelContext: fixture.context))
-        #expect(fixture.store.itemsByPlaylistID[playlist.playlistID]?.map(\.episodeID) == ["a", "b", "c"])
-        #expect(fixture.probe.saveCount == saveCount + 2)
-        #expect(fixture.store.lastErrorMessage == nil)
-
-        let change = fixture.store.reload(modelContext: fixture.context)
-        #expect(!change.didChange)
-        #expect(change.needsRepair)
-        #expect(try storedItems(in: ModelContext(fixture.container)).contains { $0.itemID == "b-twin" })
-    }
-
-    @Test("Adding treats an episode whose row a tombstone shadows as not a member")
-    func addTreatsShadowedRowAsNonMember() throws {
-        let fixture = try makeFixture()
-        let playlist = try #require(
-            fixture.store.create(name: "Commute", kind: .manual, modelContext: fixture.context)
-        )
-        let firstAdded = fixture.store.add([episode("a")], to: playlist.playlistID, modelContext: fixture.context)
-        #expect(firstAdded == 1)
-        let shadowedItemID = try #require(fixture.store.itemsByPlaylistID[playlist.playlistID]?.first?.itemID)
-        fixture.context.insert(
-            PlaylistTombstoneRecord(playlistID: playlist.playlistID, episodeID: "a", deletedAt: fixture.probe.latestDate)
-        )
-        try fixture.context.save()
-        let change = fixture.store.reload(modelContext: fixture.context)
-        #expect(change.needsRepair)
-        #expect(fixture.store.itemsByPlaylistID[playlist.playlistID]?.isEmpty != false)
-
-        let added = fixture.store.add([episode("a")], to: playlist.playlistID, modelContext: fixture.context)
-
-        #expect(added == 1)
-        let listed = try #require(fixture.store.itemsByPlaylistID[playlist.playlistID])
-        #expect(listed.map(\.episodeID) == ["a"])
-        #expect(listed.first?.itemID != shadowedItemID)
     }
 
     @Test("Item rows whose playlist is not listed stay out of memory and stay in the store")
@@ -1867,10 +949,9 @@ struct PlaylistStoreTests {
         #expect(fixture.store.itemsByPlaylistID["ghost"] == nil)
 
         let playlist = try #require(
-            fixture.store.create(name: "Commute", kind: .manual, modelContext: fixture.context)
+            fixture.store.create(name: "Commute", modelContext: fixture.context)
         )
-        let added = fixture.store.add([episode("a")], to: playlist.playlistID, modelContext: fixture.context)
-        #expect(added == 1)
+        try seedItems([episode("a")], in: playlist.playlistID, fixture: fixture)
         let change = fixture.store.reload(modelContext: fixture.context)
 
         #expect(!change.didChange)
@@ -1905,6 +986,39 @@ struct PlaylistStoreTests {
             duration: 60,
             dedupeUUID: dedupeUUID
         )
+    }
+
+    /// Item rows from the retired hand-picked playlists, inserted directly
+    /// and reloaded, as they arrive by sync.
+    private func seedItems(
+        _ episodes: [EpisodeListItemSnapshot],
+        in playlistID: String,
+        fixture: (
+            store: PlaylistStore,
+            probe: PlaylistStoreProbe,
+            context: ModelContext,
+            container: ModelContainer
+        )
+    ) throws {
+        let sortKeys = PlaylistSortKey.renumbered(count: episodes.count)
+        for (offset, episode) in episodes.enumerated() {
+            fixture.context.insert(
+                PlaylistItemRecord(
+                    itemID: UUID().uuidString,
+                    playlistID: playlistID,
+                    episodeID: episode.episodeID,
+                    podcastID: episode.podcastID,
+                    sortKey: sortKeys[offset],
+                    addedAt: Self.march,
+                    updatedAt: Self.march,
+                    episodeTitle: episode.title,
+                    podcastTitle: episode.podcastTitle,
+                    duration: episode.duration
+                )
+            )
+        }
+        try fixture.context.save()
+        fixture.store.reload(modelContext: fixture.context)
     }
 
     private func storedTombstones(in context: ModelContext) throws -> [PlaylistTombstoneRecord] {

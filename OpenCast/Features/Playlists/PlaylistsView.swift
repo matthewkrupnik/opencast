@@ -3,9 +3,9 @@ import SwiftUI
 
 /// Every playlist, as a grid of covers or a list of rows. It follows the
 /// Library's stored layout, except that Automatic always means the grid
-/// here: covers are how playlists are told apart. A new smart playlist opens
-/// through `onOpenPlaylist` once its name prompt has dismissed; a new manual
-/// one stays on the collection.
+/// here: covers are how playlists are told apart. A new playlist opens
+/// through `onOpenPlaylist` once its name prompt has dismissed, so its rule
+/// can be set.
 struct PlaylistsView: View {
     @Environment(OpenCastAppModel.self) private var appModel
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -19,8 +19,6 @@ struct PlaylistsView: View {
     /// Bumped each time the collection reappears, so a drain that finished
     /// while a playlist was pushed still shows its brief finished state.
     @State private var adDetectionIndicatorAppearance = 0
-    @State private var sheetDestination: SheetDestination?
-    @State private var pendingOrganizerPodcastID: String?
 
     var onOpenPlaylist: (String) -> Void = { _ in }
     /// Shows the ad-detection queue indicator; only the Playlists tab root
@@ -59,17 +57,11 @@ struct PlaylistsView: View {
                 }
 
                 ToolbarItem(placement: .topBarPinnedTrailing) {
-                    addMenu
+                    Button("New Playlist…", systemImage: "plus", action: promptNewPlaylist)
+                        .accessibilityIdentifier("New Playlist")
                 }
             }
             .playlistNamePrompt($namePromptRequest, onCommit: commitName)
-            .sheet(item: $sheetDestination, onDismiss: presentPendingOrganizer) { destination in
-                SheetDestinationView(
-                    destination: destination,
-                    onDismiss: dismissSheet,
-                    onChooseOrganizerShow: chooseOrganizerShow
-                )
-            }
             .onChange(of: namePromptRequest) {
                 openPendingPlaylistAfterPrompt()
             }
@@ -88,19 +80,11 @@ struct PlaylistsView: View {
             ContentUnavailableView {
                 Label("No Playlists", systemImage: "music.note.list")
             } description: {
-                Text("Make a playlist, then add episodes from any episode menu.")
+                Text("A playlist gathers episodes from the shows you choose, show by show in your order.")
             } actions: {
                 Button("New Playlist…", action: promptNewPlaylist)
                     .buttonStyle(.glassProminent)
                     .accessibilityIdentifier("Playlists Empty New Playlist")
-                if canMakePlaylist {
-                    Button(
-                        PlaylistOrganizerCopy.menuItemTitle,
-                        systemImage: "apple.intelligence",
-                        action: showOrganizerShowPicker
-                    )
-                    .accessibilityIdentifier("Playlists Empty Make a Playlist")
-                }
             }
         } else if layout == .grid {
             grid(playlists: playlists)
@@ -108,7 +92,7 @@ struct PlaylistsView: View {
         } else {
             List {
                 ForEach(playlists) { summary in
-                    PlaylistRowView(summary: summary, sources: coverSources(for: summary))
+                    PlaylistRowView(summary: summary)
                         .modifier(
                             PlaylistCollectionActionsModifier(
                                 summary: summary,
@@ -136,7 +120,7 @@ struct PlaylistsView: View {
             ScrollView {
                 LazyVGrid(columns: metrics.columns, spacing: metrics.rowSpacing) {
                     ForEach(playlists) { summary in
-                        PlaylistTileView(summary: summary, sources: coverSources(for: summary), metrics: metrics)
+                        PlaylistTileView(summary: summary, metrics: metrics)
                             .modifier(
                                 PlaylistCollectionActionsModifier(
                                     summary: summary,
@@ -152,28 +136,6 @@ struct PlaylistsView: View {
             .contentMargins(.horizontal, metrics.horizontalMargin, for: .scrollContent)
             .contentMargins(.bottom, 72, for: .scrollContent)
         }
-    }
-
-    private var addMenu: some View {
-        Menu {
-            Button("New Playlist…", systemImage: "text.badge.plus", action: promptNewPlaylist)
-                .accessibilityIdentifier("New Playlist")
-            Button("New Smart Playlist…", systemImage: "sparkles", action: promptNewSmartPlaylist)
-                .accessibilityIdentifier("New Smart Playlist")
-            if canMakePlaylist {
-                Section(PlaylistOrganizerCopy.menuSectionTitle) {
-                    Button(
-                        PlaylistOrganizerCopy.menuItemTitle,
-                        systemImage: "apple.intelligence",
-                        action: showOrganizerShowPicker
-                    )
-                    .accessibilityIdentifier("Make a Playlist")
-                }
-            }
-        } label: {
-            Label("Add", systemImage: "plus")
-        }
-        .accessibilityIdentifier("Playlists Add Menu")
     }
 
     private var optionsMenu: some View {
@@ -218,24 +180,8 @@ struct PlaylistsView: View {
         }
     }
 
-    private func coverSources(for summary: PlaylistSummary) -> PlaylistCoverSources {
-        PlaylistCoverSources.make(
-            summary: summary,
-            items: appModel.playlists.itemsByPlaylistID[summary.playlistID] ?? [],
-            podcastArtworkURL: podcastArtworkURL
-        )
-    }
-
-    private func podcastArtworkURL(for podcastID: String) -> URL? {
-        appModel.library.podcastCache(for: podcastID)?.artworkURL.flatMap(URL.init(string:))
-    }
-
     private func promptNewPlaylist() {
         namePromptRequest = PlaylistNamePromptRequest.create()
-    }
-
-    private func promptNewSmartPlaylist() {
-        namePromptRequest = PlaylistNamePromptRequest.createSmart()
     }
 
     private func requestRename(_ summary: PlaylistSummary) {
@@ -245,12 +191,8 @@ struct PlaylistsView: View {
     private func commitName(_ request: PlaylistNamePromptRequest, name: String) {
         switch request.kind {
         case .create:
-            appModel.performPlaylistMutation {
-                appModel.playlists.create(name: name, kind: .manual, modelContext: modelContext)
-            }
-        case .createSmart:
             let summary = appModel.performPlaylistMutation {
-                appModel.playlists.create(name: name, kind: .smart, modelContext: modelContext)
+                appModel.playlists.create(name: name, modelContext: modelContext)
             }
             pendingOpenPlaylistID = summary?.playlistID
         case .rename(let playlistID):
@@ -259,7 +201,7 @@ struct PlaylistsView: View {
     }
 
     /// Pushing from the alert's own action would race its dismissal, so the
-    /// new smart playlist opens once the prompt's request has cleared. Both
+    /// new playlist opens once the prompt's request has cleared. Both
     /// orders of the two state changes end here.
     private func openPendingPlaylistAfterPrompt() {
         guard namePromptRequest == nil, let playlistID = pendingOpenPlaylistID else {
@@ -267,33 +209,5 @@ struct PlaylistsView: View {
         }
         pendingOpenPlaylistID = nil
         onOpenPlaylist(playlistID)
-    }
-
-    private var canMakePlaylist: Bool {
-        appModel.transcriptIntelligence.isVisible && PlaylistOrganizerFeatureFlags.isEnabledForProcess
-    }
-
-    private func showOrganizerShowPicker() {
-        sheetDestination = .playlistOrganizerShowPicker
-    }
-
-    private func chooseOrganizerShow(_ podcastID: String) {
-        pendingOrganizerPodcastID = podcastID
-        sheetDestination = nil
-    }
-
-    /// Presenting from the picker's own action would race its dismissal, so the
-    /// organizer opens from the sheet's `onDismiss`, which also runs for the
-    /// organizer itself and then finds nothing pending.
-    private func presentPendingOrganizer() {
-        guard let podcastID = pendingOrganizerPodcastID else {
-            return
-        }
-        pendingOrganizerPodcastID = nil
-        sheetDestination = .playlistOrganizer(podcastID: podcastID)
-    }
-
-    private func dismissSheet() {
-        sheetDestination = nil
     }
 }

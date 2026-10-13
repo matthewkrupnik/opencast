@@ -13,9 +13,6 @@ struct PodcastActionsMenu: View {
     let downloadCount: Int
     let onSearch: () -> Void
     let onPlaybackSettings: () -> Void
-    /// Nil hides Make a Playlist (hidden, never disabled): Apple Intelligence
-    /// can never work here, the flag is off, or the show has too few episodes.
-    let onMakePlaylist: (() -> Void)?
     let adAutoDetectBinding: Binding<Bool>
     @Binding var isConfirmingAdAutoDetect: Bool
     @Binding var isConfirmingMarkAllPlayed: Bool
@@ -69,12 +66,6 @@ struct PodcastActionsMenu: View {
                     systemImage: "megaphone",
                     isOn: adAutoDetectBinding
                 )
-            }
-
-            if let onMakePlaylist {
-                Section(PlaylistOrganizerCopy.menuSectionTitle) {
-                    Button(PlaylistOrganizerCopy.menuItemTitle, systemImage: "sparkles", action: onMakePlaylist)
-                }
             }
 
             Section {

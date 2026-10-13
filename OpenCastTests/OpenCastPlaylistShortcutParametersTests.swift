@@ -7,10 +7,10 @@ struct OpenCastPlaylistShortcutParametersTests {
         let fixture = try await OpenCastSystemActionFixture.make()
         await fixture.model.ensurePlaybackSurfaceHydrated(modelContext: fixture.context)
         let store = fixture.model.playlists
-        let first = try #require(store.create(name: "Commute", kind: .manual, modelContext: fixture.context))
+        let first = try #require(store.create(name: "Commute", modelContext: fixture.context))
         let original = OpenCastPlaylistShortcutParameters(playlists: store.playlists)
 
-        _ = try #require(store.create(name: "Commute", kind: .manual, modelContext: fixture.context))
+        _ = try #require(store.create(name: "Commute", modelContext: fixture.context))
         let duplicated = OpenCastPlaylistShortcutParameters(playlists: store.playlists)
         #expect(duplicated != original)
 
@@ -26,12 +26,11 @@ struct OpenCastPlaylistShortcutParametersTests {
         let fixture = try await OpenCastSystemActionFixture.make()
         await fixture.model.ensurePlaybackSurfaceHydrated(modelContext: fixture.context)
         let store = fixture.model.playlists
-        let playlist = try #require(store.create(name: "Commute", kind: .manual, modelContext: fixture.context))
-        _ = try #require(store.create(name: "Weekend", kind: .manual, modelContext: fixture.context))
+        let playlist = try #require(store.create(name: "Commute", modelContext: fixture.context))
+        _ = try #require(store.create(name: "Weekend", modelContext: fixture.context))
         let original = OpenCastPlaylistShortcutParameters(playlists: store.playlists)
 
-        let episode = try #require(fixture.model.episodeSnapshot(for: "episode-1"))
-        #expect(store.add([episode], to: playlist.playlistID, modelContext: fixture.context) == 1)
+        #expect(store.setRule(PlaylistRule(status: .all), for: playlist.playlistID, modelContext: fixture.context))
         #expect(OpenCastPlaylistShortcutParameters(playlists: Array(store.playlists.reversed())) == original)
 
         #expect(store.rename(playlist.playlistID, to: "Morning", modelContext: fixture.context))

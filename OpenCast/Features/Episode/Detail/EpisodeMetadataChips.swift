@@ -6,8 +6,7 @@ enum EpisodeMetadataChips {
         duration: TimeInterval?,
         progress: EpisodeProgressSummary?,
         isDownloaded: Bool,
-        downloadedByteCount: Int64?,
-        playlistCount: Int = 0
+        downloadedByteCount: Int64?
     ) -> [EpisodeMetadataChip] {
         var chips: [EpisodeMetadataChip] = []
 
@@ -30,10 +29,6 @@ enum EpisodeMetadataChips {
 
         if progress?.isCompleted == true {
             chips.append(.played)
-        }
-
-        if playlistCount >= 1 {
-            chips.append(.playlists(count: playlistCount))
         }
 
         return chips

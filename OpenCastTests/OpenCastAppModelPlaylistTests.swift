@@ -12,7 +12,12 @@ struct OpenCastAppModelPlaylistTests {
     private static let otherPodcastID = "https://example.com/playlist-other-show.xml"
     private static let commuteID = "playlist-commute"
     private static let emptyID = "playlist-empty"
-    private static let commuteItemIDs = ["commute-item-1", "commute-item-2", "commute-item-3"]
+    /// The show's episodes, oldest first: raising Commute's limit adds them
+    /// in this order.
+    private static let publishOrder = ["first", "second", "third", "fourth", "silent"]
+    /// Commute lists the show's first two episodes, played or not, oldest
+    /// first: "first" and "second".
+    private static let commuteRule = PlaylistRule(podcastIDs: [podcastID], status: .all, limit: 2)
     private static let departedFeedURL = "https://old.example.com/playlist-moved-show.xml"
     private static let movedFeedURL = "https://example.com/playlist-moved-show.xml"
 
@@ -21,7 +26,8 @@ struct OpenCastAppModelPlaylistTests {
         let fixture = try await makeFixture()
 
         #expect(fixture.appModel.playlists.playlists.map(\.playlistID).sorted() == [Self.commuteID, Self.emptyID])
-        #expect(fixture.appModel.playlists.itemsByPlaylistID[Self.commuteID]?.map(\.itemID) == Self.commuteItemIDs)
+        let commute = try playlistSummary(Self.commuteID, appModel: fixture.appModel)
+        #expect(commute.rule == Self.commuteRule)
         #expect(fixture.appModel.lastPlaylistError == nil)
     }
 
@@ -59,11 +65,8 @@ struct OpenCastAppModelPlaylistTests {
         #expect(fixture.appModel.playlists.itemsByPlaylistID == itemsBefore)
         let playlistRecords = try fixture.context.fetch(FetchDescriptor<PlaylistRecord>())
         #expect(playlistRecords.map(\.playlistID).sorted() == [Self.commuteID, Self.emptyID])
-        let itemRecords = try fixture.context.fetch(FetchDescriptor<PlaylistItemRecord>())
-        #expect(itemRecords.map(\.itemID).sorted() == Self.commuteItemIDs)
-        #expect(itemRecords.map(\.episodeID).sorted() == ["elsewhere", "first", "second"])
 
-        // A reload from the rows must not prune the now-unresolvable items.
+        // A reload from the rows keeps the playlists whose shows are gone.
         fixture.appModel.playlists.load(modelContext: fixture.context)
 
         #expect(fixture.appModel.playlists.playlists == playlistsBefore)
@@ -98,14 +101,14 @@ struct OpenCastAppModelPlaylistTests {
         let context = fixture.context
 
         let created = appModel.performPlaylistMutation {
-            appModel.playlists.create(name: "Walks", kind: .manual, modelContext: context)
+            appModel.playlists.create(name: "Walks", modelContext: context)
         }
 
         #expect(created?.name == "Walks")
         #expect(appModel.lastPlaylistError == nil)
 
         let unnamed = appModel.performPlaylistMutation {
-            appModel.playlists.create(name: " ", kind: .manual, modelContext: context)
+            appModel.playlists.create(name: " ", modelContext: context)
         }
 
         #expect(unnamed == nil)
@@ -135,7 +138,7 @@ struct OpenCastAppModelPlaylistTests {
         #expect(departedEpisodeID != successorEpisodeID)
         let appModel = try makeAppModel(library: fixture.makeLibrary())
         await appModel.ensureCoreStoresLoaded(modelContext: fixture.context)
-        #expect(appModel.playlists.playlistIDs(containing: departedEpisodeID) == ["departed-only", "both-episodes"])
+        #expect(memberPlaylistIDs(appModel, containing: departedEpisodeID) == ["departed-only", "both-episodes"])
 
         try await appModel.library.migrateSubscription(
             from: Self.departedFeedURL,
@@ -143,12 +146,12 @@ struct OpenCastAppModelPlaylistTests {
             modelContext: fixture.context
         )
 
-        #expect(appModel.playlists.playlistIDs(containing: departedEpisodeID).isEmpty)
-        #expect(appModel.playlists.playlistIDs(containing: successorEpisodeID) == ["departed-only", "both-episodes"])
+        #expect(memberPlaylistIDs(appModel, containing: departedEpisodeID).isEmpty)
+        #expect(memberPlaylistIDs(appModel, containing: successorEpisodeID) == ["departed-only", "both-episodes"])
         #expect(appModel.playlists.itemsByPlaylistID["both-episodes"]?.map(\.itemID) == ["both-successor-item"])
-        let resolved = appModel.playlists.resolvedItems(in: "departed-only") { appModel.episodeSnapshot(for: $0) }
-        #expect(resolved.map(\.item.itemID) == ["departed-only-item"])
-        #expect(resolved.first?.snapshot?.episodeID == successorEpisodeID)
+        let departedOnly = appModel.playlists.itemsByPlaylistID["departed-only"] ?? []
+        #expect(departedOnly.map(\.itemID) == ["departed-only-item"])
+        #expect(departedOnly.first?.episodeID == successorEpisodeID)
 
         // Memory must match what the next launch loads from the migrated rows.
         let reloaded = PlaylistStore(saveSyncedStore: SyncedStoreSelfSaveLedger().save)
@@ -182,10 +185,9 @@ struct OpenCastAppModelPlaylistTests {
         #expect(changeCount == 0)
         #expect(appModel.playlists.playlists == playlistsBefore)
         #expect(appModel.playlists.itemsByPlaylistID == itemsBefore)
-        #expect(appModel.playlists.playlistIDs(containing: departedEpisodeID) == ["departed-only", "both-episodes"])
-        #expect(appModel.playlists.playlistIDs(containing: successorEpisodeID) == ["both-episodes"])
-        let resolved = appModel.playlists.resolvedItems(in: "departed-only") { appModel.episodeSnapshot(for: $0) }
-        #expect(resolved.first?.snapshot?.episodeID == departedEpisodeID)
+        #expect(memberPlaylistIDs(appModel, containing: departedEpisodeID) == ["departed-only", "both-episodes"])
+        #expect(memberPlaylistIDs(appModel, containing: successorEpisodeID) == ["both-episodes"])
+        #expect(appModel.playlists.itemsByPlaylistID["departed-only"]?.first?.episodeID == departedEpisodeID)
 
         // Memory must match what a relaunch loads from the rows the failed
         // save left behind.
@@ -240,21 +242,8 @@ struct OpenCastAppModelPlaylistTests {
         #expect(appModel.lastPlaybackError == nil)
         #expect(appModel.lastUpNextError == nil)
         // Playing copies from the playlist; it never consumes it.
-        #expect(appModel.playlists.itemsByPlaylistID[Self.commuteID]?.count == 4)
-    }
-
-    @Test("Shuffle starts one unplayed episode and queues the other")
-    func playShuffleStartsOneUnplayedAndQueuesTheOther() async throws {
-        let fixture = try await makePlayableFixture()
-        let appModel = fixture.appModel
-
-        let started = appModel.playPlaylist(Self.commuteID, shuffle: true, modelContext: fixture.context)
-
-        #expect(started)
-        let current = try #require(appModel.playback.currentEpisode?.id.rawValue)
-        let queued = appModel.upNextQueue.items.map(\.episodeID)
-        #expect(queued.count == 1)
-        #expect(Set([current] + queued) == ["first", "third"])
+        let commute = try playlistSummary(Self.commuteID, appModel: appModel)
+        #expect(appModel.smartPlaylistEvaluation(for: commute).count == 3)
     }
 
     @Test("Add after with an idle player queues the playlist and starts its first episode")
@@ -315,16 +304,16 @@ struct OpenCastAppModelPlaylistTests {
         let fixture = try await makeFixture()
         let appModel = fixture.appModel
         let context = fixture.context
-        let silent = try #require(appModel.episodeSnapshot(for: "silent"))
-        let third = try #require(appModel.episodeSnapshot(for: "third"))
-        let addedCount = appModel.performPlaylistMutation {
-            appModel.playlists.add([silent, third], to: Self.emptyID, modelContext: context)
-        }
-        #expect(addedCount == 2)
+        // A playlist whose first episode, "silent", has no audio.
+        let silentFirst = try createSmartPlaylist(
+            PlaylistRule(podcastIDs: [Self.podcastID], sortOrder: .newestFirst),
+            appModel: appModel,
+            context: context
+        )
         let queuedUnrelated = appModel.upNextQueue.enqueueLast(unrelatedSnapshot(), modelContext: context)
         #expect(queuedUnrelated)
 
-        let started = appModel.playPlaylist(Self.emptyID, modelContext: context)
+        let started = appModel.playPlaylist(silentFirst.playlistID, modelContext: context)
 
         #expect(!started)
         #expect(appModel.lastPlaybackError != nil)
@@ -403,131 +392,6 @@ struct OpenCastAppModelPlaylistTests {
         #expect(appModel.remainingQueuedCount(forPlaylist: Self.commuteID) == 2)
     }
 
-    @Test("Tapping a row plays from there and puts the rest next, ahead of hand-queued episodes, without clearing")
-    func playPlaylistItemPlaysFromHere() async throws {
-        let fixture = try await makePlayableFixture()
-        let appModel = fixture.appModel
-        let context = fixture.context
-        try addToCommute(["fourth"], fixture: fixture)
-        let third = try #require(appModel.episodeSnapshot(for: "third"))
-        #expect(appModel.upNextQueue.enqueueLast(unrelatedSnapshot(), modelContext: context))
-        #expect(appModel.upNextQueue.enqueueLast(third, modelContext: context))
-
-        let tappedItemID = try itemID(for: "first", in: Self.commuteID, appModel: appModel)
-
-        let started = appModel.playPlaylistItem(tappedItemID, in: Self.commuteID, modelContext: context)
-
-        #expect(started)
-        #expect(appModel.playback.currentEpisode?.id.rawValue == "first")
-        // The already-queued third moves into the poured run and takes its tag.
-        #expect(appModel.upNextQueue.items.map(\.episodeID) == ["third", "fourth", "unrelated"])
-        #expect(appModel.upNextQueue.items.map(\.sourcePlaylistID) == [Self.commuteID, Self.commuteID, nil])
-        #expect(appModel.currentPlaylistSourceID == Self.commuteID)
-        #expect(appModel.remainingQueuedCount(forPlaylist: Self.commuteID) == 2)
-        #expect(appModel.lastPlaylistError == nil)
-        #expect(appModel.lastPlaybackError == nil)
-        #expect(appModel.lastUpNextError == nil)
-        #expect(appModel.playlists.itemsByPlaylistID[Self.commuteID]?.count == 5)
-    }
-
-    @Test("A played row is still tappable and queues only the unplayed, resolvable rows after it")
-    func playPlaylistItemFromPlayedRow() async throws {
-        let fixture = try await makePlayableFixture()
-        let appModel = fixture.appModel
-        let context = fixture.context
-        try addToCommute(["fourth"], fixture: fixture)
-
-        let tappedItemID = try itemID(for: "second", in: Self.commuteID, appModel: appModel)
-
-        let started = appModel.playPlaylistItem(tappedItemID, in: Self.commuteID, modelContext: context)
-
-        #expect(started)
-        #expect(appModel.playback.currentEpisode?.id.rawValue == "second")
-        #expect(appModel.upNextQueue.items.map(\.episodeID) == ["third", "fourth"])
-        #expect(appModel.currentPlaylistSourceID == Self.commuteID)
-    }
-
-    @Test("Tapping an unresolvable row reports it and leaves playback and Up Next alone")
-    func playPlaylistItemUnresolvableRowSurfacesError() async throws {
-        let fixture = try await makePlayableFixture()
-        let appModel = fixture.appModel
-        let context = fixture.context
-        #expect(appModel.upNextQueue.enqueueLast(unrelatedSnapshot(), modelContext: context))
-
-        let tappedItemID = try itemID(for: "elsewhere", in: Self.commuteID, appModel: appModel)
-
-        let started = appModel.playPlaylistItem(tappedItemID, in: Self.commuteID, modelContext: context)
-
-        #expect(!started)
-        #expect(appModel.lastPlaylistError == "This episode is no longer available.")
-        #expect(appModel.playback.currentEpisode == nil)
-        #expect(appModel.currentPlaylistSourceID == nil)
-        #expect(appModel.upNextQueue.items.map(\.episodeID) == ["unrelated"])
-    }
-
-    @Test("A row whose episode fails to start reports it and leaves Up Next untouched")
-    func playPlaylistItemFailedStartLeavesQueueUntouched() async throws {
-        let fixture = try await makeFixture()
-        let appModel = fixture.appModel
-        let context = fixture.context
-        let silent = try #require(appModel.episodeSnapshot(for: "silent"))
-        let third = try #require(appModel.episodeSnapshot(for: "third"))
-        let addedCount = appModel.performPlaylistMutation {
-            appModel.playlists.add([silent, third], to: Self.emptyID, modelContext: context)
-        }
-        #expect(addedCount == 2)
-        #expect(appModel.upNextQueue.enqueueLast(unrelatedSnapshot(), modelContext: context))
-
-        let tappedItemID = try itemID(for: "silent", in: Self.emptyID, appModel: appModel)
-
-        let started = appModel.playPlaylistItem(tappedItemID, in: Self.emptyID, modelContext: context)
-
-        #expect(!started)
-        #expect(appModel.lastPlaybackError != nil)
-        #expect(appModel.lastUpNextError == nil)
-        #expect(appModel.playback.currentEpisode == nil)
-        #expect(appModel.currentPlaylistSourceID == nil)
-        #expect(appModel.upNextQueue.items.map(\.episodeID) == ["unrelated"])
-    }
-
-    @Test("Shuffle plays a permutation of the same unplayed episodes, each exactly once, all tagged")
-    func shuffleIsPermutationOfCandidates() async throws {
-        let fixture = try await makePlayableFixture()
-        let appModel = fixture.appModel
-        try addToCommute(["fourth"], fixture: fixture)
-
-        let started = appModel.playPlaylist(Self.commuteID, shuffle: true, modelContext: fixture.context)
-
-        #expect(started)
-        let current = try #require(appModel.playback.currentEpisode?.id.rawValue)
-        let queued = appModel.upNextQueue.items.map(\.episodeID)
-        #expect(([current] + queued).count == 3)
-        #expect(Set([current] + queued) == ["first", "third", "fourth"])
-        #expect(appModel.upNextQueue.items.allSatisfy { $0.sourcePlaylistID == Self.commuteID })
-        #expect(appModel.currentPlaylistSourceID == Self.commuteID)
-    }
-
-    @Test("Shuffle is ignored for a smart playlist, which plays its evaluation in rule order")
-    func shuffleIgnoredForSmartPlaylist() async throws {
-        let fixture = try await makePlayableFixture()
-        let appModel = fixture.appModel
-        let context = fixture.context
-        let smart = try createSmartPlaylist(.default, appModel: appModel, context: context)
-        #expect((appModel.playlists.itemsByPlaylistID[smart.playlistID] ?? []).isEmpty)
-
-        // Four candidates keep their rule order by chance one shuffle in 24,
-        // so repeat the replace: a regression survives all eight only about
-        // once in 110 billion runs.
-        for _ in 0 ..< 8 {
-            let started = appModel.playPlaylist(smart.playlistID, shuffle: true, modelContext: context)
-
-            #expect(started)
-            #expect(appModel.playback.currentEpisode?.id.rawValue == "first")
-            #expect(appModel.upNextQueue.items.map(\.episodeID) == ["fourth", "silent", "third"])
-            #expect(appModel.currentPlaylistSourceID == smart.playlistID)
-        }
-    }
-
     @Test("Smart Play replaces Up Next with the evaluation's unplayed episodes in rule order, all tagged")
     func smartPlayReplacesUpNextWithEvaluation() async throws {
         let fixture = try await makePlayableFixture()
@@ -544,12 +408,12 @@ struct OpenCastAppModelPlaylistTests {
         let evaluation = appModel.smartPlaylistEvaluation(for: smart)
         let started = appModel.playPlaylist(smart.playlistID, modelContext: context)
 
-        // The feed has no publish dates, so Newest First falls back to titles.
-        #expect(evaluation.episodes.map(\.episodeID) == ["first", "fourth", "silent", "third"])
+        // Oldest first, by publish date.
+        #expect(evaluation.episodes.map(\.episodeID) == ["first", "third", "fourth", "silent"])
         #expect(evaluation.totalDuration == 240)
         #expect(started)
         #expect(appModel.playback.currentEpisode?.id.rawValue == "first")
-        #expect(appModel.upNextQueue.items.map(\.episodeID) == ["fourth", "silent", "third"])
+        #expect(appModel.upNextQueue.items.map(\.episodeID) == ["third", "fourth", "silent"])
         #expect(appModel.upNextQueue.items.allSatisfy { $0.sourcePlaylistID == smart.playlistID })
         #expect(appModel.currentPlaylistSourceID == smart.playlistID)
         #expect(
@@ -575,10 +439,10 @@ struct OpenCastAppModelPlaylistTests {
         let evaluation = appModel.smartPlaylistEvaluation(for: smart)
         let started = appModel.playPlaylist(smart.playlistID, modelContext: context)
 
-        #expect(evaluation.episodes.map(\.episodeID) == ["first", "fourth", "second"])
+        #expect(evaluation.episodes.map(\.episodeID) == ["first", "second", "third"])
         #expect(started)
         #expect(appModel.playback.currentEpisode?.id.rawValue == "first")
-        #expect(appModel.upNextQueue.items.map(\.episodeID) == ["fourth"])
+        #expect(appModel.upNextQueue.items.map(\.episodeID) == ["third"])
         #expect(appModel.upNextQueue.items.map(\.sourcePlaylistID) == [smart.playlistID])
     }
 
@@ -644,7 +508,7 @@ struct OpenCastAppModelPlaylistTests {
         let playedEpisodes = appModel.smartPlaylistEvaluation(for: played).episodes
         let everyEpisode = appModel.smartPlaylistEvaluation(for: everything).episodes
 
-        #expect(playedEpisodes.map(\.episodeID) == ["fourth", "second"])
+        #expect(playedEpisodes.map(\.episodeID) == ["second", "fourth"])
         #expect(PlaylistPrimaryAction.resolve(smartEpisodes: playedEpisodes, library: appModel.library) == nil)
         #expect(PlaylistPrimaryAction.resolve(smartEpisodes: everyEpisode, library: appModel.library) == .play)
         #expect(appModel.playlistDownloadAllCandidates(played.playlistID).isEmpty)
@@ -662,7 +526,7 @@ struct OpenCastAppModelPlaylistTests {
 
         #expect(playedFromHere)
         #expect(appModel.playback.currentEpisode?.id.rawValue == "first")
-        #expect(appModel.upNextQueue.items.map(\.episodeID) == ["silent", "third", "unrelated"])
+        #expect(appModel.upNextQueue.items.map(\.episodeID) == ["third", "silent", "unrelated"])
         #expect(appModel.lastPlaylistError == nil)
     }
 
@@ -680,18 +544,21 @@ struct OpenCastAppModelPlaylistTests {
         )
         #expect(
             appModel.smartPlaylistEvaluation(for: smart).episodes.map(\.episodeID)
-                == ["first", "fourth", "second", "silent", "third"]
+                == ["first", "second", "third", "fourth", "silent"]
         )
 
-        let started = appModel.playPlaylistEpisode("fourth", in: smart.playlistID, modelContext: context)
+        let started = appModel.playPlaylistEpisode("first", in: smart.playlistID, modelContext: context)
 
         #expect(started)
-        #expect(appModel.playback.currentEpisode?.id.rawValue == "fourth")
+        #expect(appModel.playback.currentEpisode?.id.rawValue == "first")
         // The played second stays out of the queue.
-        #expect(appModel.upNextQueue.items.map(\.episodeID) == ["silent", "third", "unrelated"])
-        #expect(appModel.upNextQueue.items.map(\.sourcePlaylistID) == [smart.playlistID, smart.playlistID, nil])
+        #expect(appModel.upNextQueue.items.map(\.episodeID) == ["third", "fourth", "silent", "unrelated"])
+        #expect(
+            appModel.upNextQueue.items.map(\.sourcePlaylistID)
+                == [smart.playlistID, smart.playlistID, smart.playlistID, nil]
+        )
         #expect(appModel.currentPlaylistSourceID == smart.playlistID)
-        #expect(appModel.remainingQueuedCount(forPlaylist: smart.playlistID) == 2)
+        #expect(appModel.remainingQueuedCount(forPlaylist: smart.playlistID) == 3)
         #expect(appModel.lastPlaylistError == nil)
         #expect(appModel.lastPlaybackError == nil)
         #expect(appModel.lastUpNextError == nil)
@@ -724,43 +591,9 @@ struct OpenCastAppModelPlaylistTests {
 
         #expect(started)
         #expect(appModel.playback.currentEpisode?.id.rawValue == "second")
-        #expect(appModel.upNextQueue.items.map(\.episodeID) == ["silent", "third", "unrelated"])
+        #expect(appModel.upNextQueue.items.map(\.episodeID) == ["third", "fourth", "silent", "unrelated"])
         #expect(appModel.currentPlaylistSourceID == everything.playlistID)
         #expect(appModel.lastPlaylistError == nil)
-    }
-
-    @Test("Tapping a manual row by episode plays from there, and a missing or unresolvable episode reports it")
-    func playPlaylistEpisodePlaysFromHereForManual() async throws {
-        let fixture = try await makePlayableFixture()
-        let appModel = fixture.appModel
-        let context = fixture.context
-        try addToCommute(["fourth"], fixture: fixture)
-        #expect(appModel.upNextQueue.enqueueLast(unrelatedSnapshot(), modelContext: context))
-
-        let missing = appModel.playPlaylistEpisode("silent", in: Self.commuteID, modelContext: context)
-
-        #expect(!missing)
-        #expect(appModel.lastPlaylistError == "This episode is no longer available.")
-
-        appModel.lastPlaylistError = nil
-        let unresolvable = appModel.playPlaylistEpisode("elsewhere", in: Self.commuteID, modelContext: context)
-
-        #expect(!unresolvable)
-        #expect(appModel.lastPlaylistError == "This episode is no longer available.")
-        #expect(appModel.playback.currentEpisode == nil)
-        #expect(appModel.upNextQueue.items.map(\.episodeID) == ["unrelated"])
-
-        appModel.lastPlaylistError = nil
-        let started = appModel.playPlaylistEpisode("second", in: Self.commuteID, modelContext: context)
-
-        #expect(started)
-        #expect(appModel.playback.currentEpisode?.id.rawValue == "second")
-        #expect(appModel.upNextQueue.items.map(\.episodeID) == ["third", "fourth", "unrelated"])
-        #expect(appModel.upNextQueue.items.map(\.sourcePlaylistID) == [Self.commuteID, Self.commuteID, nil])
-        #expect(appModel.currentPlaylistSourceID == Self.commuteID)
-        #expect(appModel.lastPlaylistError == nil)
-        #expect(appModel.lastPlaybackError == nil)
-        #expect(appModel.lastUpNextError == nil)
     }
 
     @Test("A smart evaluation recomputes after Mark Played edits an existing progress row, and not on unrelated reads")
@@ -789,7 +622,7 @@ struct OpenCastAppModelPlaylistTests {
         _ = appModel.library.progressSummary(for: first)
         let afterUnrelated = appModel.smartPlaylistEvaluation(for: smart)
 
-        #expect(before.episodes.map(\.episodeID) == ["first", "fourth", "silent", "third"])
+        #expect(before.episodes.map(\.episodeID) == ["first", "third", "fourth", "silent"])
         #expect(reread == before)
         #expect(afterUnrelated == before)
         #expect(cache.computeCount == computeCount)
@@ -801,7 +634,7 @@ struct OpenCastAppModelPlaylistTests {
         // membership change reports.
         #expect(appModel.library.progressRecord(for: "first") === existingRow)
         #expect(existingRow.isPlayed)
-        #expect(after.episodes.map(\.episodeID) == ["fourth", "silent", "third"])
+        #expect(after.episodes.map(\.episodeID) == ["third", "fourth", "silent"])
         #expect(cache.computeCount == computeCount + 1)
     }
 
@@ -875,7 +708,7 @@ struct OpenCastAppModelPlaylistTests {
 
         #expect(didSetRule)
         #expect(appModel.lastPlaylistError == nil)
-        #expect(played.episodes.map(\.episodeID) == ["fourth", "second"])
+        #expect(played.episodes.map(\.episodeID) == ["second", "fourth"])
         #expect(cache.computeCount == computeCount + 1)
     }
 
@@ -899,7 +732,7 @@ struct OpenCastAppModelPlaylistTests {
             context: context
         )
 
-        #expect(appModel.playlistDownloadAllCandidates(smart.playlistID).map(\.episodeID) == ["fourth", "silent", "third"])
+        #expect(appModel.playlistDownloadAllCandidates(smart.playlistID).map(\.episodeID) == ["third", "fourth", "silent"])
         #expect(appModel.hasPlaylistDownloadAllCandidates(smart.playlistID))
         #expect(appModel.smartPlaylistEvaluation(for: downloaded).episodes.map(\.episodeID) == ["first"])
         #expect(appModel.playlistDownloadAllCandidates(downloaded.playlistID).isEmpty)
@@ -996,16 +829,14 @@ struct OpenCastAppModelPlaylistTests {
         appModel.playlists.load(modelContext: context)
         let unset = try playlistSummary("smart-unset", appModel: appModel)
         let newer = try playlistSummary("smart-newer", appModel: appModel)
-        let commute = try playlistSummary(Self.commuteID, appModel: appModel)
 
         #expect(unset.rule == .default)
         #expect(
             appModel.smartPlaylistEvaluation(for: unset).episodes.map(\.episodeID)
-                == ["first", "fourth", "silent", "third"]
+                == ["first", "third", "fourth", "silent"]
         )
         #expect(newer.hasUnreadableRule)
         #expect(appModel.smartPlaylistEvaluation(for: newer) == .empty)
-        #expect(appModel.smartPlaylistEvaluation(for: commute) == .empty)
 
         let started = appModel.playPlaylist("smart-newer", modelContext: context)
 
@@ -1118,83 +949,6 @@ struct OpenCastAppModelPlaylistTests {
         #expect(appModel.upNextQueue.items.map(\.sourcePlaylistID) == [Self.commuteID])
     }
 
-    @Test("Finished episodes leave the playlist, which loops over what remains until it is empty")
-    func finishingPlaylistLoopsUntilEmpty() async throws {
-        let fixture = try await makePlayableFixture()
-        let appModel = fixture.appModel
-        let context = fixture.context
-        func playlistEpisodeIDs() -> [String]? {
-            appModel.playlists.itemsByPlaylistID[Self.commuteID]?.map(\.episodeID)
-        }
-        func finishCurrent() throws {
-            let episode = try #require(appModel.playback.currentEpisode)
-            appModel.handlePlaybackEpisodeFinished(episode, policy: .advanceIfQueued, modelContext: context)
-        }
-        #expect(appModel.playPlaylist(Self.commuteID, modelContext: context))
-
-        try finishCurrent()
-        #expect(playlistEpisodeIDs() == ["second", "elsewhere", "third"])
-        #expect(appModel.playback.currentEpisode?.id.rawValue == "third")
-        #expect(appModel.upNextQueue.items.isEmpty)
-
-        // The queue ran out: loop to what is left. "second" was played
-        // before Play skipped it; the unresolvable row cannot play.
-        try finishCurrent()
-        #expect(playlistEpisodeIDs() == ["second", "elsewhere"])
-        #expect(appModel.playback.currentEpisode?.id.rawValue == "second")
-        #expect(appModel.playback.position == 0)
-        #expect(appModel.currentPlaylistSourceID == Self.commuteID)
-        #expect(appModel.upNextQueue.items.isEmpty)
-
-        // Nothing playable remains, so playback stops instead of looping.
-        try finishCurrent()
-        #expect(playlistEpisodeIDs() == ["elsewhere"])
-        #expect(appModel.playback.currentEpisode == nil)
-        #expect(appModel.upNextQueue.items.isEmpty)
-        #expect(appModel.lastPlaybackError == nil)
-        #expect(appModel.lastUpNextError == nil)
-        #expect(appModel.lastPlaylistError == nil)
-    }
-
-    @Test("Mark Played removes the episode from playlists, and Mark All Played removes the show's episodes")
-    func markPlayedRemovesFromPlaylists() async throws {
-        let fixture = try await makePlayableFixture()
-        let appModel = fixture.appModel
-        let context = fixture.context
-        func playlistEpisodeIDs() -> [String]? {
-            appModel.playlists.itemsByPlaylistID[Self.commuteID]?.map(\.episodeID)
-        }
-        let first = try #require(appModel.episodeSnapshot(for: "first"))
-
-        #expect(appModel.markEpisodePlayed(first, modelContext: context))
-        #expect(playlistEpisodeIDs() == ["second", "elsewhere", "third"])
-
-        #expect(appModel.markAllEpisodesPlayed(forPodcastID: Self.podcastID, modelContext: context))
-        // "elsewhere" belongs to another show.
-        #expect(playlistEpisodeIDs() == ["elsewhere"])
-        #expect(appModel.lastPlaylistError == nil)
-    }
-
-    @Test("A finished episode leaves every manual playlist that holds it, however it was started")
-    func finishedEpisodeLeavesEveryPlaylist() async throws {
-        let fixture = try await makePlayableFixture()
-        let appModel = fixture.appModel
-        let context = fixture.context
-        let third = try #require(appModel.episodeSnapshot(for: "third"))
-        let otherID = try #require(appModel.playlists.create(name: "Other", kind: .manual, modelContext: context)).playlistID
-        #expect(appModel.performPlaylistMutation {
-            appModel.playlists.add([third], to: otherID, modelContext: context)
-        } == 1)
-        try appModel.playEpisode(third, presentsNowPlaying: false, modelContext: context)
-
-        let playing = try #require(appModel.playback.currentEpisode)
-        appModel.handlePlaybackEpisodeFinished(playing, policy: .advanceIfQueued, modelContext: context)
-
-        #expect(appModel.playlists.itemsByPlaylistID[Self.commuteID]?.map(\.episodeID) == ["first", "second", "elsewhere"])
-        #expect(appModel.playlists.itemsByPlaylistID[otherID]?.isEmpty != false)
-        #expect(appModel.playback.currentEpisode == nil)
-    }
-
     @Test("The end-of-episode sleep timer and untagged episodes stop at the end instead of looping")
     func stopPolicyAndUntaggedEpisodesDoNotLoop() async throws {
         let fixture = try await makePlayableFixture()
@@ -1206,8 +960,6 @@ struct OpenCastAppModelPlaylistTests {
         let first = try #require(appModel.playback.currentEpisode)
         appModel.handlePlaybackEpisodeFinished(first, policy: .stop, modelContext: context)
         #expect(appModel.playback.currentEpisode == nil)
-        // Finished under the sleep timer still counts as listened to.
-        #expect(appModel.playlists.itemsByPlaylistID[Self.commuteID]?.map(\.episodeID) == ["second", "elsewhere", "third"])
 
         let fourth = try #require(appModel.episodeSnapshot(for: "fourth"))
         try appModel.playEpisode(fourth, presentsNowPlaying: false, modelContext: context)
@@ -1431,11 +1183,9 @@ struct OpenCastAppModelPlaylistTests {
         let fixture = try await makePlayableFixture()
         let appModel = fixture.appModel
         let context = fixture.context
-        let thirdItemID = try itemID(for: "third", in: Self.commuteID, appModel: appModel)
-
         #expect(appModel.playPlaylist(Self.commuteID, presentsNowPlaying: false, modelContext: context))
         #expect(appModel.playback.currentEpisode?.id.rawValue == "first")
-        #expect(appModel.playPlaylistItem(thirdItemID, in: Self.commuteID, presentsNowPlaying: false, modelContext: context))
+        #expect(appModel.playPlaylistEpisode("third", in: Self.commuteID, presentsNowPlaying: false, modelContext: context))
         #expect(appModel.playback.currentEpisode?.id.rawValue == "third")
         #expect(appModel.playPlaylistEpisode("first", in: Self.commuteID, presentsNowPlaying: false, modelContext: context))
         #expect(appModel.playback.currentEpisode?.id.rawValue == "first")
@@ -1496,25 +1246,29 @@ struct OpenCastAppModelPlaylistTests {
         let appModel = fixture.appModel
         let context = fixture.context
         try addToCommute(["silent"], fixture: fixture)
-        #expect(appModel.playlistDownloadAllCandidates(Self.commuteID).map(\.episodeID) == ["first", "third", "silent"])
+        #expect(
+            appModel.playlistDownloadAllCandidates(Self.commuteID).map(\.episodeID)
+                == ["first", "third", "fourth", "silent"]
+        )
 
         #expect(!appModel.downloadAllPlaylistEpisodes(Self.commuteID, modelContext: context))
 
-        #expect(await waitUntil { downloader.requestCount == 2 })
+        #expect(await waitUntil { downloader.requestCount == 3 })
         #expect(appModel.downloads.record(for: "first")?.state == .downloading)
         #expect(appModel.downloads.record(for: "third")?.state == .downloading)
+        #expect(appModel.downloads.record(for: "fourth")?.state == .downloading)
         #expect(appModel.downloads.record(for: "silent")?.state == .failed)
         let reason = EpisodeDownloadError.invalidAudioURL.localizedDescription
-        #expect(appModel.lastPlaylistError == "1 of 3 episodes could not be downloaded. \(reason)")
+        #expect(appModel.lastPlaylistError == "1 of 4 episodes could not be downloaded. \(reason)")
 
-        // The in-flight pair drops out, so the retry fails outright.
+        // The in-flight ones drop out, so the retry fails outright.
         appModel.lastPlaylistError = nil
         #expect(appModel.playlistDownloadAllCandidates(Self.commuteID).map(\.episodeID) == ["silent"])
         #expect(!appModel.downloadAllPlaylistEpisodes(Self.commuteID, modelContext: context))
         #expect(appModel.lastPlaylistError == "1 episode could not be downloaded. \(reason)")
-        #expect(downloader.requestCount == 2)
+        #expect(downloader.requestCount == 3)
 
-        for episodeID in ["first", "third"] {
+        for episodeID in ["first", "third", "fourth"] {
             appModel.downloads.cancelDownload(episodeID: episodeID, modelContext: context)
         }
     }
@@ -1624,20 +1378,16 @@ struct OpenCastAppModelPlaylistTests {
         )
         let appModel = fixture.appModel
         let context = fixture.context
-        let third = try #require(appModel.episodeSnapshot(for: "third"))
-        let addedCount = appModel.performPlaylistMutation {
-            appModel.playlists.add([third], to: Self.commuteID, modelContext: context)
-        }
-        #expect(addedCount == 1)
+        try addToCommute(["third"], fixture: fixture)
         let second = try #require(appModel.episodeSnapshot(for: "second"))
-        // Played before it joined the playlist, so it stays listed; the app
-        // model's Mark Played would remove it.
+        // Commute's rule lists played episodes too, so it stays listed.
         let markedPlayed = appModel.library.markEpisodePlayed(second, modelContext: context)
         #expect(markedPlayed)
         #expect(appModel.library.progressRecord(for: "second")?.isPlayed == true)
+        let commute = try playlistSummary(Self.commuteID, appModel: appModel)
         #expect(
-            appModel.playlists.itemsByPlaylistID[Self.commuteID]?.map(\.episodeID)
-                == ["first", "second", "elsewhere", "third"]
+            appModel.smartPlaylistEvaluation(for: commute).episodes.map(\.episodeID)
+                == ["first", "second", "third"]
         )
         #expect(appModel.lastPlaylistError == nil)
         return fixture
@@ -1652,7 +1402,7 @@ struct OpenCastAppModelPlaylistTests {
 
         var credits = library.syncedStoreSelfSaveCount
         let created = appModel.performPlaylistMutation {
-            appModel.playlists.create(name: "Walks", kind: .manual, modelContext: context)
+            appModel.playlists.create(name: "Walks", modelContext: context)
         }
         #expect(created != nil)
         #expect(library.syncedStoreSelfSaveCount == credits + 1)
@@ -1674,48 +1424,7 @@ struct OpenCastAppModelPlaylistTests {
         #expect(library.syncedStoreSelfSaveCount == credits + 1)
 
         credits = library.syncedStoreSelfSaveCount
-        let didHidePlayed = appModel.performPlaylistMutation {
-            appModel.playlists.setHidesPlayed(true, for: Self.commuteID, modelContext: context)
-        }
-        #expect(didHidePlayed)
-        #expect(library.syncedStoreSelfSaveCount == credits + 1)
-
-        credits = library.syncedStoreSelfSaveCount
         try addToCommute(["third"], fixture: fixture)
-        #expect(library.syncedStoreSelfSaveCount == credits + 1)
-
-        credits = library.syncedStoreSelfSaveCount
-        let didRemove = appModel.performPlaylistMutation {
-            appModel.playlists.remove(itemIDs: [Self.commuteItemIDs[0]], from: Self.commuteID, modelContext: context)
-        }
-        #expect(didRemove)
-        #expect(library.syncedStoreSelfSaveCount == credits + 1)
-
-        credits = library.syncedStoreSelfSaveCount
-        let didMove = appModel.performPlaylistMutation {
-            appModel.playlists.move(fromOffsets: IndexSet(integer: 1), toOffset: 0, in: Self.commuteID, modelContext: context)
-        }
-        #expect(didMove)
-        #expect(library.syncedStoreSelfSaveCount == credits + 1)
-
-        let dated = try #require(created)
-        let datedAdded = appModel.performPlaylistMutation {
-            appModel.playlists.add(
-                [
-                    datedEpisode("later", publishedAt: Date(timeIntervalSince1970: 1_775_000_600)),
-                    datedEpisode("earlier", publishedAt: Date(timeIntervalSince1970: 1_775_000_000))
-                ],
-                to: dated.playlistID,
-                modelContext: context
-            )
-        }
-        #expect(datedAdded == 2)
-        credits = library.syncedStoreSelfSaveCount
-        let didSort = appModel.performPlaylistMutation {
-            appModel.playlists.sortItems(in: dated.playlistID, by: .oldestFirst, modelContext: context)
-        }
-        #expect(didSort)
-        #expect(appModel.playlists.itemsByPlaylistID[dated.playlistID]?.map(\.episodeID) == ["earlier", "later"])
         #expect(library.syncedStoreSelfSaveCount == credits + 1)
 
         credits = library.syncedStoreSelfSaveCount
@@ -1824,7 +1533,6 @@ struct OpenCastAppModelPlaylistTests {
         #expect(result?.playlistRowsChanged == true)
         #expect(appModel.playlists.playlists.filter { $0.playlistID == Self.commuteID }.count == 1)
         #expect(appModel.playlist(Self.commuteID)?.name == "Commute Elsewhere")
-        #expect(appModel.playlists.itemsByPlaylistID[Self.commuteID]?.map(\.itemID) == Self.commuteItemIDs)
         let stored = try ModelContext(fixture.container).fetch(FetchDescriptor<PlaylistRecord>())
         #expect(stored.filter { $0.playlistID == Self.commuteID }.count == 1)
     }
@@ -1930,18 +1638,6 @@ struct OpenCastAppModelPlaylistTests {
         #expect(appModel.lastPlaylistError == nil)
     }
 
-    private func datedEpisode(_ episodeID: String, publishedAt: Date) -> EpisodeListItemSnapshot {
-        .fixture(
-            episodeID: episodeID,
-            podcastID: Self.podcastID,
-            podcastTitle: "Playlist Show",
-            title: "Episode \(episodeID)",
-            publishedAt: publishedAt,
-            audioURL: "https://example.com/\(episodeID).mp3",
-            guid: episodeID
-        )
-    }
-
     private func makeFixture(
         upNextQueue: UpNextQueueStore = UpNextQueueStore(),
         playlistDisplaySettings: PlaylistDisplaySettingsStore = PlaylistDisplaySettingsStore(),
@@ -2015,6 +1711,8 @@ struct OpenCastAppModelPlaylistTests {
         )
     }
 
+    /// Raises Commute's limit until it lists `episodeIDs`, adding every
+    /// episode published before them too (see `publishOrder`).
     private func addToCommute(
         _ episodeIDs: [String],
         fixture: (
@@ -2025,15 +1723,13 @@ struct OpenCastAppModelPlaylistTests {
         )
     ) throws {
         let appModel = fixture.appModel
-        var episodes: [EpisodeListItemSnapshot] = []
-        for episodeID in episodeIDs {
-            let episode = try #require(appModel.episodeSnapshot(for: episodeID))
-            episodes.append(episode)
+        let positions = try episodeIDs.map { try #require(Self.publishOrder.firstIndex(of: $0)) }
+        var rule = try #require(try playlistSummary(Self.commuteID, appModel: appModel).rule)
+        rule.limit = max(rule.limit ?? 0, (positions.max() ?? 0) + 1)
+        let didSet = appModel.performPlaylistMutation {
+            appModel.playlists.setRule(rule, for: Self.commuteID, modelContext: fixture.context)
         }
-        let addedCount = appModel.performPlaylistMutation {
-            appModel.playlists.add(episodes, to: Self.commuteID, modelContext: fixture.context)
-        }
-        #expect(addedCount == episodes.count)
+        #expect(didSet)
     }
 
     private func createSmartPlaylist(
@@ -2043,20 +1739,23 @@ struct OpenCastAppModelPlaylistTests {
         context: ModelContext
     ) throws -> PlaylistSummary {
         let created = appModel.performPlaylistMutation {
-            appModel.playlists.create(name: name, kind: .smart, rule: rule, modelContext: context)
+            appModel.playlists.create(name: name, rule: rule, modelContext: context)
         }
         #expect(appModel.lastPlaylistError == nil)
         return try #require(created)
     }
 
-    private func playlistSummary(_ playlistID: String, appModel: OpenCastAppModel) throws -> PlaylistSummary {
-        try #require(appModel.playlists.playlists.first(where: { $0.playlistID == playlistID }))
+    /// The playlists whose stored item rows hold `episodeID`.
+    private func memberPlaylistIDs(_ appModel: OpenCastAppModel, containing episodeID: String) -> Set<String> {
+        Set(
+            appModel.playlists.itemsByPlaylistID.compactMap { playlistID, items in
+                items.contains { $0.episodeID == episodeID } ? playlistID : nil
+            }
+        )
     }
 
-    private func itemID(for episodeID: String, in playlistID: String, appModel: OpenCastAppModel) throws -> String {
-        try #require(
-            appModel.playlists.itemsByPlaylistID[playlistID]?.first { $0.episodeID == episodeID }?.itemID
-        )
+    private func playlistSummary(_ playlistID: String, appModel: OpenCastAppModel) throws -> PlaylistSummary {
+        try #require(appModel.playlists.playlists.first(where: { $0.playlistID == playlistID }))
     }
 
     private func preferenceValues(forKey key: String, in container: ModelContainer) throws -> [String] {
@@ -2109,42 +1808,23 @@ struct OpenCastAppModelPlaylistTests {
             PlaylistRecord(
                 playlistID: Self.commuteID,
                 name: "Commute",
+                kind: .smart,
+                ruleJSON: Self.commuteRule.encodedJSON(),
                 createdAt: createdAt,
                 updatedAt: createdAt
             )
         )
+        // Lists only a show the library does not hold, so it matches nothing.
         context.insert(
             PlaylistRecord(
                 playlistID: Self.emptyID,
                 name: "Empty",
+                kind: .smart,
+                ruleJSON: PlaylistRule(podcastIDs: [Self.otherPodcastID]).encodedJSON(),
                 createdAt: createdAt.addingTimeInterval(-60),
                 updatedAt: createdAt.addingTimeInterval(-60)
             )
         )
-        let sortKeys = PlaylistSortKey.renumbered(count: Self.commuteItemIDs.count)
-        let members: [(episodeID: String, podcastID: String, podcastTitle: String)] = [
-            ("first", Self.podcastID, "Playlist Show"),
-            ("second", Self.podcastID, "Playlist Show"),
-            ("elsewhere", Self.otherPodcastID, "Other Show")
-        ]
-        for (index, member) in members.enumerated() {
-            let addedAt = createdAt.addingTimeInterval(Double(index))
-            context.insert(
-                PlaylistItemRecord(
-                    itemID: Self.commuteItemIDs[index],
-                    playlistID: Self.commuteID,
-                    episodeID: member.episodeID,
-                    podcastID: member.podcastID,
-                    sortKey: sortKeys[index],
-                    addedAt: addedAt,
-                    updatedAt: addedAt,
-                    episodeTitle: "Episode \(member.episodeID)",
-                    podcastTitle: member.podcastTitle,
-                    audioURL: "https://example.com/\(member.episodeID).mp3",
-                    duration: 60
-                )
-            )
-        }
     }
 
     private func feedSnapshot() throws -> FeedSnapshot {
@@ -2163,6 +1843,8 @@ struct OpenCastAppModelPlaylistTests {
                     podcastID: podcast.id,
                     podcastTitle: podcast.title,
                     title: "Episode \(id)",
+                    publishedAt: Date(timeIntervalSince1970: 1_700_000_000)
+                        .addingTimeInterval(Double(Self.publishOrder.firstIndex(of: id) ?? 0) * 86_400),
                     duration: 60,
                     audioURL: id == "silent" ? nil : URL(string: "https://example.com/\(id).mp3"),
                     guid: id

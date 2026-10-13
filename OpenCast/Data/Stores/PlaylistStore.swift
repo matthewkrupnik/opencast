@@ -4,10 +4,9 @@ import OpenCastCore
 import SwiftData
 
 /// Owns the synced playlists with `UpNextQueueStore`'s save and rollback
-/// mechanics, minus consumption: playback never removes an item, load never
-/// prunes rows whose episode stopped resolving (they render from their
-/// fallbacks), and adding an existing member skips it rather than moving it.
-/// Every save dirties a playlist, item or playlist tombstone row, because it
+/// mechanics. Every playlist is a saved rule. Item rows, from the retired
+/// hand-picked playlists, still load, sync and repair with their playlists,
+/// but nothing adds to them. Every save dirties a playlist, item or playlist tombstone row, because it
 /// carries a self-save credit that would otherwise swallow a remote change.
 @Observable
 final class PlaylistStore {
@@ -63,7 +62,8 @@ final class PlaylistStore {
                     playlistID: Self.defaultAllPlaylistID,
                     name: "All",
                     kind: .smart,
-                    ruleJSON: PlaylistRule(version: PlaylistRule.currentVersion).encodedJSON(),
+                    // Every unplayed episode, newest first: the list the Inbox was.
+                    ruleJSON: PlaylistRule(sortOrder: .newestFirst).encodedJSON(),
                     origin: .user
                 ))
                 try saveSyncedStore(modelContext)
@@ -133,12 +133,10 @@ final class PlaylistStore {
         return change
     }
 
-    /// A smart playlist stores `rule`, or the default rule without one; a
-    /// manual playlist ignores it.
+    /// Stores `rule`, or the default rule without one.
     @discardableResult
     func create(
         name: String,
-        kind: PlaylistKind,
         rule: PlaylistRule? = nil,
         origin: PlaylistOrigin = .user,
         modelContext: ModelContext
@@ -150,13 +148,11 @@ final class PlaylistStore {
         }
 
         let timestamp = now()
-        let tintKey = kind == .smart
-            ? PlaylistTint.next(after: playlists.compactMap(\.tintKey)).rawValue
-            : nil
+        let tintKey = PlaylistTint.next(after: playlists.compactMap(\.tintKey)).rawValue
         let record = PlaylistRecord(
             name: trimmedName,
-            kind: kind,
-            ruleJSON: kind == .smart ? (rule ?? .default).normalized().encodedJSON() : nil,
+            kind: .smart,
+            ruleJSON: (rule ?? .default).normalized().encodedJSON(),
             tintKey: tintKey,
             origin: origin,
             createdAt: timestamp,
@@ -193,21 +189,6 @@ final class PlaylistStore {
             modelContext: modelContext
         ) { summary in
             summary.name = trimmedName
-        }
-    }
-
-    @discardableResult
-    func setHidesPlayed(
-        _ hidesPlayed: Bool,
-        for playlistID: String,
-        modelContext: ModelContext
-    ) -> Bool {
-        updatePlaylist(
-            playlistID,
-            failure: "Unable to update Hide Played",
-            modelContext: modelContext
-        ) { summary in
-            summary.hidesPlayed = hidesPlayed
         }
     }
 
@@ -289,372 +270,6 @@ final class PlaylistStore {
         }
     }
 
-    /// Appends the episodes that are not already members, in order, and
-    /// returns how many were added.
-    @discardableResult
-    func add(
-        _ episodes: [EpisodeListItemSnapshot],
-        to playlistID: String,
-        modelContext: ModelContext
-    ) -> Int {
-        let failure = episodes.count == 1
-            ? "Unable to add the episode to the playlist"
-            : "Unable to add episodes to the playlist"
-        guard let summary = playlists.first(where: { $0.playlistID == playlistID }) else {
-            lastErrorMessage = "\(failure) because the playlist no longer exists."
-            return 0
-        }
-        guard summary.kind == .manual else {
-            lastErrorMessage = "\(failure) because smart playlists choose their own episodes."
-            return 0
-        }
-
-        let previousPlaylists = playlists
-        let previousItems = itemsByPlaylistID
-
-        do {
-            let playlistRecords = try fetchPlaylistRecords(playlistID, modelContext: modelContext)
-            guard !playlistRecords.isEmpty else {
-                lastErrorMessage = "\(failure) because the playlist no longer exists."
-                return 0
-            }
-
-            var itemRecords = try listedItemRecords(
-                playlistID,
-                playlistRecords: playlistRecords,
-                modelContext: modelContext
-            )
-            // Listed rows count as members too: an identity re-key can change a
-            // row's episode behind the loaded items. A row a tombstone shadows
-            // is not a member, so adding its episode again keeps the new row.
-            var memberEpisodeIDs = Set(itemRecords.map(\.episodeID))
-            memberEpisodeIDs.formUnion((itemsByPlaylistID[playlistID] ?? []).map(\.episodeID))
-            let newEpisodes = episodes.filter { memberEpisodeIDs.insert($0.episodeID).inserted }
-            guard !newEpisodes.isEmpty else {
-                return 0
-            }
-
-            let timestamp = now()
-            Self.renumberIfUnordered(itemRecords, timestamp: timestamp)
-            let keys = Self.keys(
-                count: newEpisodes.count,
-                between: itemRecords.last?.sortKey,
-                and: nil
-            )
-            for (episode, sortKey) in zip(newEpisodes, keys) {
-                let record = PlaylistItemRecord(
-                    playlistID: playlistID,
-                    episodeID: episode.episodeID,
-                    podcastID: episode.podcastID,
-                    sortKey: sortKey,
-                    addedAt: timestamp,
-                    updatedAt: timestamp,
-                    episodeTitle: episode.title,
-                    podcastTitle: episode.podcastTitle,
-                    artworkURL: episode.artworkURL,
-                    audioURL: episode.audioURL,
-                    duration: episode.duration,
-                    publishedAt: episode.publishedAt
-                )
-                modelContext.insert(record)
-                itemRecords.append(record)
-            }
-            Self.renumberIfTooLong(itemRecords, timestamp: timestamp)
-
-            try commitItems(
-                itemRecords,
-                playlistRecords: playlistRecords,
-                in: playlistID,
-                timestamp: timestamp,
-                modelContext: modelContext
-            )
-            didMutate()
-            return newEpisodes.count
-        } catch {
-            modelContext.rollback()
-            playlists = previousPlaylists
-            itemsByPlaylistID = previousItems
-            lastErrorMessage = "\(failure): \(error.localizedDescription)"
-            return 0
-        }
-    }
-
-    @discardableResult
-    func remove(
-        itemIDs: Set<String>,
-        from playlistID: String,
-        modelContext: ModelContext
-    ) -> Bool {
-        guard !itemIDs.isEmpty else {
-            return true
-        }
-
-        let previousPlaylists = playlists
-        let previousItems = itemsByPlaylistID
-
-        do {
-            let itemRecords = try fetchItemRecords(playlistID, modelContext: modelContext)
-            let loadedItems = itemsByPlaylistID[playlistID] ?? []
-            guard itemRecords.contains(where: { itemIDs.contains($0.itemID) })
-                || loadedItems.contains(where: { itemIDs.contains($0.itemID) })
-            else {
-                return true
-            }
-            // Memory counts too: a row can already be gone while memory still
-            // lists it, and its pair still needs a tombstone. An empty
-            // `episodeID` is not a pair, so such a row goes by `itemID` alone.
-            let removedEpisodeIDs = Set(
-                itemRecords.lazy.filter { itemIDs.contains($0.itemID) }.map(\.episodeID)
-            ).union(
-                loadedItems.lazy.filter { itemIDs.contains($0.itemID) }.map(\.episodeID)
-            ).subtracting([""])
-
-            let playlistRecords = try fetchPlaylistRecords(playlistID, modelContext: modelContext)
-            let timestamp = now()
-            // Removal is by episode, not by row: a twin row of the pair that
-            // another device minted under another `itemID` goes too, or it
-            // would list the episode again until repair.
-            var remainingRecords: [PlaylistItemRecord] = []
-            var deletedRowCount = 0
-            for record in itemRecords {
-                if itemIDs.contains(record.itemID) || removedEpisodeIDs.contains(record.episodeID) {
-                    modelContext.delete(record)
-                    deletedRowCount += 1
-                } else {
-                    remainingRecords.append(record)
-                }
-            }
-            guard deletedRowCount > 0 || !removedEpisodeIDs.isEmpty || !playlistRecords.isEmpty else {
-                // Only memory listed a keyless row whose playlist row is gone
-                // too: nothing synced would change, so there is no save to make.
-                itemsByPlaylistID[playlistID] = loadedItems.filter { !itemIDs.contains($0.itemID) }
-                didMutate()
-                return true
-            }
-            for episodeID in removedEpisodeIDs {
-                modelContext.insert(
-                    PlaylistTombstoneRecord(
-                        playlistID: playlistID,
-                        episodeID: episodeID,
-                        deletedAt: timestamp
-                    )
-                )
-            }
-            try commitItems(
-                listedRows(
-                    playlistRecords: playlistRecords,
-                    itemRecords: remainingRecords,
-                    modelContext: modelContext
-                ).items,
-                playlistRecords: playlistRecords,
-                in: playlistID,
-                timestamp: timestamp,
-                modelContext: modelContext
-            )
-            didMutate()
-            return true
-        } catch {
-            modelContext.rollback()
-            playlists = previousPlaylists
-            itemsByPlaylistID = previousItems
-            let operation = itemIDs.count == 1
-                ? "Unable to remove the episode from the playlist"
-                : "Unable to remove episodes from the playlist"
-            lastErrorMessage = "\(operation): \(error.localizedDescription)"
-            return false
-        }
-    }
-
-    /// Moves items within the loaded order. Only the moved rows get new keys,
-    /// unless a key grows past the renumber threshold, in which case the whole
-    /// playlist is renumbered in the same save.
-    @discardableResult
-    func move(
-        fromOffsets offsets: IndexSet,
-        toOffset destination: Int,
-        in playlistID: String,
-        modelContext: ModelContext
-    ) -> Bool {
-        let staleMessage = "Unable to reorder the playlist because it changed. Try again."
-        let currentItems = itemsByPlaylistID[playlistID] ?? []
-        guard let firstOffset = offsets.first, let lastOffset = offsets.last else {
-            return true
-        }
-        guard firstOffset >= 0,
-              lastOffset < currentItems.count,
-              (0...currentItems.count).contains(destination)
-        else {
-            lastErrorMessage = staleMessage
-            return false
-        }
-
-        let movedItems = offsets.map { currentItems[$0] }
-        var reorderedItems = currentItems
-        for offset in offsets.reversed() {
-            reorderedItems.remove(at: offset)
-        }
-        let insertionIndex = destination - offsets.count(where: { $0 < destination })
-        reorderedItems.insert(contentsOf: movedItems, at: insertionIndex)
-        guard reorderedItems.map(\.itemID) != currentItems.map(\.itemID) else {
-            return true
-        }
-
-        let previousPlaylists = playlists
-        let previousItems = itemsByPlaylistID
-
-        do {
-            let playlistRecords = try fetchPlaylistRecords(playlistID, modelContext: modelContext)
-            // Twin and shadowed rows are left for repair; comparing them would
-            // refuse every reorder until it runs.
-            let itemRecords = try listedItemRecords(
-                playlistID,
-                playlistRecords: playlistRecords,
-                modelContext: modelContext
-            )
-            guard itemRecords.map(\.itemID) == currentItems.map(\.itemID) else {
-                // The rows changed behind the loaded order (an identity re-key
-                // can delete a duplicate row, an import can land) and no reload
-                // has run yet; adopting them lets the retry succeed.
-                publishItems(itemRecords, in: playlistID, updatedAt: nil)
-                onPlaylistsChanged?()
-                lastErrorMessage = staleMessage
-                return false
-            }
-
-            let recordsByItemID = Dictionary(
-                itemRecords.map { ($0.itemID, $0) },
-                uniquingKeysWith: { first, _ in first }
-            )
-            let orderedRecords = reorderedItems.compactMap { recordsByItemID[$0.itemID] }
-            let timestamp = now()
-            if Self.keysAreOrdered(itemRecords) {
-                let movedRange = insertionIndex..<(insertionIndex + movedItems.count)
-                let lower = insertionIndex > 0 ? orderedRecords[insertionIndex - 1].sortKey : nil
-                let upper = movedRange.upperBound < orderedRecords.count
-                    ? orderedRecords[movedRange.upperBound].sortKey
-                    : nil
-                let keys = Self.keys(count: movedItems.count, between: lower, and: upper)
-                for (record, sortKey) in zip(orderedRecords[movedRange], keys) {
-                    record.sortKey = sortKey
-                    record.updatedAt = timestamp
-                }
-                Self.renumberIfTooLong(orderedRecords, timestamp: timestamp)
-            } else {
-                Self.renumber(orderedRecords, timestamp: timestamp)
-            }
-
-            try commitItems(
-                orderedRecords,
-                playlistRecords: playlistRecords,
-                in: playlistID,
-                timestamp: timestamp,
-                modelContext: modelContext
-            )
-            didMutate()
-            return true
-        } catch {
-            modelContext.rollback()
-            playlists = previousPlaylists
-            itemsByPlaylistID = previousItems
-            lastErrorMessage = "Unable to reorder the playlist: \(error.localizedDescription)"
-            return false
-        }
-    }
-
-    /// Reorders a manual playlist by each row's stored publication date and
-    /// renumbers it in one save. Equal and missing dates keep their current
-    /// relative order; an already-sorted playlist is left untouched.
-    @discardableResult
-    func sortItems(
-        in playlistID: String,
-        by order: PlaylistItemSortOrder,
-        modelContext: ModelContext
-    ) -> Bool {
-        let failure = "Unable to sort the playlist"
-        guard let summary = playlists.first(where: { $0.playlistID == playlistID }) else {
-            lastErrorMessage = "\(failure) because the playlist no longer exists."
-            return false
-        }
-        guard summary.kind == .manual else {
-            lastErrorMessage = "Smart playlists choose their own order."
-            return false
-        }
-
-        let currentItems = itemsByPlaylistID[playlistID] ?? []
-        let sortedItems = order.sorted(currentItems, date: \.publishedAt)
-        guard sortedItems.map(\.itemID) != currentItems.map(\.itemID) else {
-            return true
-        }
-
-        let previousPlaylists = playlists
-        let previousItems = itemsByPlaylistID
-
-        do {
-            let playlistRecords = try fetchPlaylistRecords(playlistID, modelContext: modelContext)
-            let itemRecords = try listedItemRecords(
-                playlistID,
-                playlistRecords: playlistRecords,
-                modelContext: modelContext
-            )
-            guard itemRecords.map(\.itemID) == currentItems.map(\.itemID) else {
-                // Same recovery as `move`: adopt the rows so the retry succeeds.
-                publishItems(itemRecords, in: playlistID, updatedAt: nil)
-                onPlaylistsChanged?()
-                lastErrorMessage = "\(failure) because it changed. Try again."
-                return false
-            }
-
-            let orderedRecords = order.sorted(itemRecords, date: \.publishedAt)
-            let timestamp = now()
-            Self.renumber(orderedRecords, timestamp: timestamp)
-            try commitItems(
-                orderedRecords,
-                playlistRecords: playlistRecords,
-                in: playlistID,
-                timestamp: timestamp,
-                modelContext: modelContext
-            )
-            didMutate()
-            return true
-        } catch {
-            modelContext.rollback()
-            playlists = previousPlaylists
-            itemsByPlaylistID = previousItems
-            lastErrorMessage = "\(failure): \(error.localizedDescription)"
-            return false
-        }
-    }
-
-    func playlistIDs(containing episodeID: String) -> Set<String> {
-        Set(
-            itemsByPlaylistID.compactMap { playlistID, items in
-                items.contains { $0.episodeID == episodeID } ? playlistID : nil
-            }
-        )
-    }
-
-    func resolvedItems(
-        in playlistID: String,
-        resolve: (String) -> EpisodeListItemSnapshot?
-    ) -> [PlaylistResolvedItem] {
-        (itemsByPlaylistID[playlistID] ?? []).map { item in
-            PlaylistResolvedItem(item: item, snapshot: resolve(item.episodeID))
-        }
-    }
-
-    /// Played state lives in the library's progress index, so these figures
-    /// are computed on demand instead of being held on the summaries. Manual
-    /// playlists only: a smart playlist's figures come from its evaluation.
-    func counts(for playlistID: String, isPlayed: (String) -> Bool) -> PlaylistCounts {
-        let items = itemsByPlaylistID[playlistID] ?? []
-        let unplayedItems = items.filter { !isPlayed($0.episodeID) }
-        return PlaylistCounts(
-            itemCount: items.count,
-            unplayedCount: unplayedItems.count,
-            remainingDuration: Self.totalDuration(of: unplayedItems)
-        )
-    }
-
     func resetAfterDataNuke() {
         playlists = []
         itemsByPlaylistID = [:]
@@ -715,43 +330,6 @@ final class PlaylistStore {
         }
     }
 
-    /// Publishes the playlist's rows in their new order, touches the
-    /// playlist's `updatedAt`, and saves.
-    private func commitItems(
-        _ orderedRecords: [PlaylistItemRecord],
-        playlistRecords: [PlaylistRecord],
-        in playlistID: String,
-        timestamp: Date,
-        modelContext: ModelContext
-    ) throws {
-        publishItems(orderedRecords, in: playlistID, updatedAt: timestamp)
-        for record in playlistRecords {
-            record.updatedAt = timestamp
-        }
-        try saveSyncedStore(modelContext)
-    }
-
-    /// Rebuilding the items from the rows rather than patching them keeps
-    /// memory in step with anything that changed the rows since load.
-    private func publishItems(
-        _ orderedRecords: [PlaylistItemRecord],
-        in playlistID: String,
-        updatedAt: Date?
-    ) {
-        let items = orderedRecords.map { Self.item(from: $0) }
-        itemsByPlaylistID[playlistID] = items
-        guard let index = playlists.firstIndex(where: { $0.playlistID == playlistID }) else {
-            return
-        }
-
-        var summary = Self.summary(playlists[index], items: items)
-        if let updatedAt {
-            summary.updatedAt = updatedAt
-        }
-        playlists[index] = summary
-        playlists = Self.sorted(playlists, by: sortOrder)
-    }
-
     private func fetchPlaylistRecords(
         _ playlistID: String,
         modelContext: ModelContext
@@ -779,18 +357,6 @@ final class PlaylistStore {
                 sortBy: Self.itemSortDescriptors
             )
         )
-    }
-
-    private func listedItemRecords(
-        _ playlistID: String,
-        playlistRecords: [PlaylistRecord],
-        modelContext: ModelContext
-    ) throws -> [PlaylistItemRecord] {
-        try listedRows(
-            playlistRecords: playlistRecords,
-            itemRecords: fetchItemRecords(playlistID, modelContext: modelContext),
-            modelContext: modelContext
-        ).items
     }
 
     /// Both tables in full: they are small, and memory must match every row.
@@ -910,54 +476,6 @@ final class PlaylistStore {
             SortDescriptor(\.addedAt),
             SortDescriptor(\.itemID, comparator: .lexical)
         ]
-    }
-
-    private static func keysAreOrdered(_ records: [PlaylistItemRecord]) -> Bool {
-        records.allSatisfy { PlaylistSortKey.isValid($0.sortKey) }
-            && !zip(records, records.dropFirst()).contains { $0.sortKey >= $1.sortKey }
-    }
-
-    /// Rows with empty, malformed, tied or over-long keys (a model default,
-    /// or a future synced edit) cannot anchor a midpoint, so the playlist is
-    /// renumbered in its current order first.
-    private static func renumberIfUnordered(_ records: [PlaylistItemRecord], timestamp: Date) {
-        guard !keysAreOrdered(records)
-            || records.contains(where: { PlaylistSortKey.needsRenumbering($0.sortKey) })
-        else {
-            return
-        }
-        renumber(records, timestamp: timestamp)
-    }
-
-    private static func renumberIfTooLong(_ records: [PlaylistItemRecord], timestamp: Date) {
-        guard records.contains(where: { PlaylistSortKey.needsRenumbering($0.sortKey) }) else {
-            return
-        }
-        renumber(records, timestamp: timestamp)
-    }
-
-    private static func renumber(_ records: [PlaylistItemRecord], timestamp: Date) {
-        for (record, sortKey) in zip(records, PlaylistSortKey.renumbered(count: records.count)) {
-            guard record.sortKey != sortKey else {
-                continue
-            }
-            record.sortKey = sortKey
-            record.updatedAt = timestamp
-        }
-    }
-
-    /// `count` increasing keys strictly between `lower` and `upper`, split
-    /// from the middle out so a block insert stays as short as a single one.
-    private static func keys(count: Int, between lower: String?, and upper: String?) -> [String] {
-        guard count > 0 else {
-            return []
-        }
-
-        let middle = PlaylistSortKey.between(lower, upper)
-        let lowerCount = count / 2
-        return keys(count: lowerCount, between: lower, and: middle)
-            + [middle]
-            + keys(count: count - lowerCount - 1, between: middle, and: upper)
     }
 
     private static func sorted(

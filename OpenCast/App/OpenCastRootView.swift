@@ -37,7 +37,6 @@ struct OpenCastRootView: View {
     @State private var hasStartedPCCBackgroundProbe = false
     @State private var hasStartedTranscriptIntelligenceToolProbe = false
     @State private var hasStartedTranscriptIntelligenceEvaluation = false
-    @State private var hasStartedPlaylistOrganizerEvaluation = false
     #endif
 
     var body: some View {
@@ -150,9 +149,6 @@ struct OpenCastRootView: View {
         }
         .task {
             await runTranscriptIntelligenceEvaluationIfRequested()
-        }
-        .task {
-            await runPlaylistOrganizerEvaluationIfRequested()
         }
         .task {
             await runAdFreePassAutoStartIfRequested()
@@ -416,15 +412,6 @@ struct OpenCastRootView: View {
 
         hasStartedTranscriptIntelligenceEvaluation = true
         await TranscriptIntelligenceEvaluationRunner.runIfRequested()
-    }
-
-    private func runPlaylistOrganizerEvaluationIfRequested() async {
-        guard !hasStartedPlaylistOrganizerEvaluation else {
-            return
-        }
-
-        hasStartedPlaylistOrganizerEvaluation = true
-        await PlaylistOrganizerEvaluationRunner.runIfRequested()
     }
 
     private func runAdFreePassAutoStartIfRequested() async {

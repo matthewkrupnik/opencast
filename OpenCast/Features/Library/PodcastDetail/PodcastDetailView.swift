@@ -311,7 +311,6 @@ struct PodcastDetailView: View {
                         downloadCount: downloadCount,
                         onSearch: showSearch,
                         onPlaybackSettings: showPlaybackSettings,
-                        onMakePlaylist: makePlaylistAction(episodeCount: allEpisodes.count),
                         adAutoDetectBinding: adAutoDetectBinding,
                         isConfirmingAdAutoDetect: $isConfirmingAdAutoDetect,
                         isConfirmingMarkAllPlayed: $isConfirmingMarkAllPlayed,
@@ -329,20 +328,6 @@ struct PodcastDetailView: View {
 
     private func showPlaybackSettings() {
         sheetDestination = .podcastPlaybackSettings(feedURL: feedURL)
-    }
-
-    private func makePlaylistAction(episodeCount: Int) -> (() -> Void)? {
-        guard appModel.transcriptIntelligence.isVisible,
-              PlaylistOrganizerFeatureFlags.isEnabledForProcess,
-              episodeCount >= PlaylistOrganizerFeatureFlags.minimumEpisodeCount
-        else {
-            return nil
-        }
-        return showPlaylistOrganizer
-    }
-
-    private func showPlaylistOrganizer() {
-        sheetDestination = .playlistOrganizer(podcastID: feedURL)
     }
 
     private func dismissSheet() {

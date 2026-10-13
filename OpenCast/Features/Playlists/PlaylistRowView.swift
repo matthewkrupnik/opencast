@@ -6,7 +6,6 @@ struct PlaylistRowView: View {
     private static let artworkSide = 56.0
 
     let summary: PlaylistSummary
-    let sources: PlaylistCoverSources
 
     static func accessibilityIdentifier(for playlistID: String) -> String {
         "playlist-row-\(playlistID)"
@@ -15,7 +14,7 @@ struct PlaylistRowView: View {
     var body: some View {
         NavigationLink(value: AppRoute.playlistDetail(id: summary.playlistID)) {
             HStack(spacing: 14) {
-                PlaylistCoverView(summary: summary, sources: sources, cornerRadius: 8)
+                PlaylistCoverView(summary: summary, cornerRadius: 8)
                     .frame(width: Self.artworkSide, height: Self.artworkSide)
 
                 VStack(alignment: .leading, spacing: 4) {

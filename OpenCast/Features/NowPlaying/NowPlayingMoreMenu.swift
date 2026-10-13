@@ -13,7 +13,6 @@ struct NowPlayingMoreMenu: View {
     let onShowDescription: () -> Void
     let onShowShow: () -> Void
     let onShowPlaylist: () -> Void
-    let onAddToPlaylist: () -> Void
     let onStopPlayback: () -> Void
 
     var body: some View {
@@ -38,9 +37,6 @@ struct NowPlayingMoreMenu: View {
                     systemImage: "music.note.list",
                     action: onShowPlaylist
                 )
-            }
-            if episode != nil {
-                Button("Add to Playlist…", systemImage: "music.note.list", action: onAddToPlaylist)
             }
             Divider()
             Button("Stop Playback", systemImage: "stop.circle", action: onStopPlayback)

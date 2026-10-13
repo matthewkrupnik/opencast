@@ -18,23 +18,8 @@ enum OpenCastUITestSeedData {
     ]
     static let playedPlaylistEpisodeID = "ui-test-playlist-episode-2"
     static let playedPlaylistEpisodeTitle = "Playlist UI Episode 2"
-    /// Never in any seeded feed or download, so the item renders from its
-    /// stored fallbacks.
-    static let missingPlaylistEpisodeID = "ui-test-playlist-missing-episode"
-    static let missingPlaylistEpisodeTitle = "Removed Show Episode"
-    static let missingPlaylistPodcastTitle = "Removed UI Show"
     static let commutePlaylistID = "ui-test-playlist-commute"
     static let commutePlaylistName = "Seeded Commute"
-    static let commutePlaylistItemIDs = [
-        "ui-test-playlist-commute-item-1",
-        "ui-test-playlist-commute-item-2",
-        "ui-test-playlist-commute-item-3"
-    ]
-    static let commutePlaylistQueueItemIDs = [
-        "ui-test-playlist-commute-item-4",
-        "ui-test-playlist-commute-item-5",
-        "ui-test-playlist-commute-item-6"
-    ]
     static let emptyPlaylistID = "ui-test-playlist-empty"
     static let emptyPlaylistName = "Seeded Empty"
     static let smartPlaylistID = "ui-test-playlist-smart-unplayed"
@@ -51,6 +36,7 @@ enum OpenCastUITestSeedData {
     private static let playlistsEnvironmentKey = "OPENCAST_SEED_PLAYLISTS"
     private static let playlistQueueItemsEnvironmentKey = "OPENCAST_SEED_PLAYLIST_QUEUE_ITEMS"
     private static let playlistPlaybackSourceEnvironmentKey = "OPENCAST_SEED_PLAYLIST_PLAYBACK_SOURCE"
+    /// In no seeded feed, so the empty playlist's rule matches nothing.
     private static let missingPlaylistPodcastID = "https://example.com/ui-test-removed-show.xml"
     private static let libraryRecentCompletedEpisodeID = "ui-test-recent-completed-episode"
     private static let secondsPerHour: TimeInterval = 60 * 60
@@ -440,10 +426,11 @@ enum OpenCastUITestSeedData {
     }
 
     /// Inserts rows directly, as the Up Next seed does, so the fixture needs no
-    /// store. The commute playlist holds an unplayed item, a played item and
-    /// one whose episode resolves nowhere, then any queued episodes passed in;
-    /// the second playlist stays empty; the third is a smart playlist on the
-    /// default rule, so it has no item rows.
+    /// store. The commute playlist lists the seeded show's unplayed episodes
+    /// newest first: the seeded episode, then any queued episodes passed in
+    /// (without them its limit keeps it to the seeded episode). The second
+    /// lists only a show the library does not hold, so it stays empty; the
+    /// third keeps the default rule.
     private static func seedPlaylists(
         seededEpisode: Episode,
         playedEpisode: Episode,
@@ -451,10 +438,18 @@ enum OpenCastUITestSeedData {
         context: ModelContext,
         createdAt: Date
     ) {
+        let commuteRule = PlaylistRule(
+            podcastIDs: [seededEpisode.podcastID.rawValue],
+            sortOrder: .newestFirst,
+            limit: queuedEpisodes.isEmpty ? 1 : nil
+        )
         context.insert(
             PlaylistRecord(
                 playlistID: commutePlaylistID,
                 name: commutePlaylistName,
+                kind: .smart,
+                ruleJSON: commuteRule.encodedJSON(),
+                tintKey: PlaylistTint.orange.rawValue,
                 createdAt: createdAt,
                 updatedAt: createdAt
             )
@@ -463,11 +458,14 @@ enum OpenCastUITestSeedData {
             PlaylistRecord(
                 playlistID: emptyPlaylistID,
                 name: emptyPlaylistName,
+                kind: .smart,
+                ruleJSON: PlaylistRule(podcastIDs: [missingPlaylistPodcastID]).encodedJSON(),
+                tintKey: PlaylistTint.green.rawValue,
                 createdAt: createdAt.addingTimeInterval(-60),
                 updatedAt: createdAt.addingTimeInterval(-60)
             )
         )
-        // Oldest and last by name, so the manual fixtures keep their places
+        // Oldest and last by name, so the other fixtures keep their places
         // under either collection sort.
         context.insert(
             PlaylistRecord(
@@ -480,59 +478,6 @@ enum OpenCastUITestSeedData {
                 updatedAt: createdAt.addingTimeInterval(-120)
             )
         )
-
-        let sortKeys = PlaylistSortKey.renumbered(count: commutePlaylistItemIDs.count + queuedEpisodes.count)
-        let resolvableItems = [seededEpisode, playedEpisode].enumerated().map { index, episode in
-            PlaylistItemRecord(
-                itemID: commutePlaylistItemIDs[index],
-                playlistID: commutePlaylistID,
-                episodeID: episode.id.rawValue,
-                podcastID: episode.podcastID.rawValue,
-                sortKey: sortKeys[index],
-                addedAt: createdAt.addingTimeInterval(Double(index)),
-                updatedAt: createdAt.addingTimeInterval(Double(index)),
-                episodeTitle: episode.title,
-                podcastTitle: episode.podcastTitle,
-                artworkURL: episode.artworkURL?.absoluteString,
-                audioURL: episode.audioURL?.absoluteString,
-                duration: episode.duration,
-                publishedAt: episode.publishedAt
-            )
-        }
-        let missingItem = PlaylistItemRecord(
-            itemID: commutePlaylistItemIDs[2],
-            playlistID: commutePlaylistID,
-            episodeID: missingPlaylistEpisodeID,
-            podcastID: missingPlaylistPodcastID,
-            sortKey: sortKeys[2],
-            addedAt: createdAt.addingTimeInterval(2),
-            updatedAt: createdAt.addingTimeInterval(2),
-            episodeTitle: missingPlaylistEpisodeTitle,
-            podcastTitle: missingPlaylistPodcastTitle,
-            duration: 900,
-            publishedAt: Date(timeIntervalSince1970: 1_777_000_000)
-        )
-        let queuedItems: [PlaylistItemRecord] = queuedEpisodes.enumerated().map { index, episode in
-            let position = commutePlaylistItemIDs.count + index
-            return PlaylistItemRecord(
-                itemID: commutePlaylistQueueItemIDs[index],
-                playlistID: commutePlaylistID,
-                episodeID: episode.id.rawValue,
-                podcastID: episode.podcastID.rawValue,
-                sortKey: sortKeys[position],
-                addedAt: createdAt.addingTimeInterval(Double(position)),
-                updatedAt: createdAt.addingTimeInterval(Double(position)),
-                episodeTitle: episode.title,
-                podcastTitle: episode.podcastTitle,
-                artworkURL: episode.artworkURL?.absoluteString,
-                audioURL: episode.audioURL?.absoluteString,
-                duration: episode.duration,
-                publishedAt: episode.publishedAt
-            )
-        }
-        for item in resolvableItems + [missingItem] + queuedItems {
-            context.insert(item)
-        }
 
         let playedDuration = playedEpisode.duration ?? 180
         context.insert(

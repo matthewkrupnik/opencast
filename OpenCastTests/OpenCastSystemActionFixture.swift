@@ -29,9 +29,10 @@ struct OpenCastSystemActionFixture {
     }
 
     /// Inserts four playlists and saves; call it before the first `perform`,
-    /// because the rows reach the store only through hydration. "All Played"
-    /// holds `episode-0` rather than a Commute episode, since played state is
-    /// per episode and Commute must stay fully unplayed.
+    /// because the rows reach the store only through hydration. "Commute"
+    /// lists the show's first two unplayed episodes, `episode-1` and `episode-2`; "All
+    /// Played" lists `episode-0`, the one marked played; "Empty" lists a show
+    /// the library does not hold; the fourth keeps the default rule.
     func seedPlaylists() async throws -> SeededPlaylists {
         let seeded = SeededPlaylists(
             commuteID: "playlist-commute",
@@ -40,11 +41,11 @@ struct OpenCastSystemActionFixture {
             smartID: "playlist-smart"
         )
         let updatedAt = Date(timeIntervalSince1970: 1_775_000_000)
-        let playlists: [(id: String, name: String, kind: PlaylistKind, episodeIDs: [String])] = [
-            (seeded.commuteID, "Commute", .manual, ["episode-1", "episode-2"]),
-            (seeded.allPlayedID, "All Played", .manual, ["episode-0"]),
-            (seeded.emptyID, "Empty", .manual, []),
-            (seeded.smartID, "Unplayed Smart", .smart, [])
+        let playlists: [(id: String, name: String, rule: PlaylistRule)] = [
+            (seeded.commuteID, "Commute", PlaylistRule(podcastIDs: [Self.feed], limit: 2)),
+            (seeded.allPlayedID, "All Played", PlaylistRule(podcastIDs: [Self.feed], status: .played)),
+            (seeded.emptyID, "Empty", PlaylistRule(podcastIDs: ["https://example.com/elsewhere.xml"])),
+            (seeded.smartID, "Unplayed Smart", .default)
         ]
         for (index, playlist) in playlists.enumerated() {
             // Distinct, descending dates give a known "most recently updated" order.
@@ -53,28 +54,12 @@ struct OpenCastSystemActionFixture {
                 PlaylistRecord(
                     playlistID: playlist.id,
                     name: playlist.name,
-                    kind: playlist.kind,
-                    ruleJSON: playlist.kind == .smart ? PlaylistRule.default.normalized().encodedJSON() : nil,
+                    kind: .smart,
+                    ruleJSON: playlist.rule.normalized().encodedJSON(),
                     createdAt: date,
                     updatedAt: date
                 )
             )
-            let sortKeys = PlaylistSortKey.renumbered(count: playlist.episodeIDs.count)
-            for (position, episodeID) in playlist.episodeIDs.enumerated() {
-                context.insert(
-                    PlaylistItemRecord(
-                        playlistID: playlist.id,
-                        episodeID: episodeID,
-                        podcastID: Self.feed,
-                        sortKey: sortKeys[position],
-                        addedAt: date,
-                        updatedAt: date,
-                        episodeTitle: "Shared Title",
-                        podcastTitle: "A Show",
-                        duration: 120
-                    )
-                )
-            }
         }
         context.insert(EpisodeProgressRecord(episodeID: "episode-0", podcastID: Self.feed, isPlayed: true, updatedAt: updatedAt))
         try context.save()

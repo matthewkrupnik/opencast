@@ -15,22 +15,10 @@ enum PlaylistPrimaryAction: Equatable {
         }
     }
 
-    /// Looks at the first resolvable item that is not marked played, the same
-    /// episode `OpenCastAppModel.playPlaylist` starts without shuffle.
-    static func resolve(items: [PlaylistResolvedItem], library: LibraryStore) -> PlaylistPrimaryAction {
-        let firstPlayable = items.lazy
-            .compactMap(\.snapshot)
-            .first { library.progressRecord(for: $0.episodeID)?.isPlayed != true }
-        guard let firstPlayable, library.progressSummary(for: firstPlayable).hasVisibleProgress else {
-            return .play
-        }
-        return .resume
-    }
-
-    /// A smart playlist's label over its evaluation, or nil when Play has
-    /// nothing to start. Smart playlists use the Episodes chip's definition
-    /// of unplayed, which also counts a position at the end as played, so
-    /// the first episode not completed is the one `playPlaylist` starts.
+    /// The label over a playlist's evaluation, or nil when Play has nothing
+    /// to start. Playlists use the Episodes chip's definition of unplayed,
+    /// which also counts a position at the end as played, so the first
+    /// episode not completed is the one `playPlaylist` starts.
     static func resolve(smartEpisodes episodes: [EpisodeListItemSnapshot], library: LibraryStore) -> PlaylistPrimaryAction? {
         for episode in episodes {
             let progress = library.progressSummary(for: episode)

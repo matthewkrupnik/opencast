@@ -1,12 +1,10 @@
 import SwiftUI
 
-/// A smart playlist's cover from its shows' artwork, most dominant first:
-/// two or three shows stack as cards on the playlist's tint with the
-/// dominant show in front, one show fills the cover, and none falls back to
-/// the tinted symbol tile. The sparkles badge sits at the top-leading corner
-/// in every case, scaled to the cover, so a cover showing a podcast's art
-/// still reads as smart. It fills the square it is offered; callers set the
-/// size and corner radius.
+/// A playlist's cover from its shows' artwork, most dominant first: two or
+/// three shows stack as cards on the playlist's tint with the dominant show
+/// in front, one show fills the cover, and none falls back to the tinted
+/// symbol tile. It fills the square it is offered; callers set the size and
+/// corner radius.
 struct PlaylistCardStackCover: View {
     // ArtworkPlaceholder clips every image to 8 pt corners. Drawing each card
     // slightly larger and cropping it pushes those corners outside the card,
@@ -27,9 +25,6 @@ struct PlaylistCardStackCover: View {
                     let side = max(min(proxy.size.width, proxy.size.height), 0)
                     cover(side: side)
                         .frame(width: side, height: side)
-                        .overlay(alignment: .topLeading) {
-                            PlaylistSmartBadge(tint: tint, coverSide: side)
-                        }
                         .frame(width: proxy.size.width, height: proxy.size.height)
                 }
             }

@@ -205,9 +205,9 @@ enum CarPlayBrowseModelBuilder {
     }
 
     /// Input order is kept: the store already sorts by the collection
-    /// preference the phone shows. A row carries one image, so a smart
-    /// playlist shows its most dominant show's artwork (its card stack's
-    /// front card) and keeps its symbol only without one.
+    /// preference the phone shows. A row carries one image, so a playlist
+    /// shows its most dominant show's artwork (its card stack's front card)
+    /// and keeps its symbol only without one.
     static func playlists(
         _ summaries: [PlaylistSummary],
         episodeCount: (PlaylistSummary) -> Int,
@@ -215,23 +215,14 @@ enum CarPlayBrowseModelBuilder {
         limits: CarPlayListLimits
     ) -> CarPlayBrowseSnapshot {
         let rows = summaries.prefix(limits.maximumItemCount * 2).map { summary -> CarPlayListRow in
-            let url: String?
-            let symbol: String?
-            switch summary.kind {
-            case .manual:
-                url = artworkURL(summary)
-                symbol = url == nil ? "music.note.list" : nil
-            case .smart:
-                url = artworkURL(summary)
-                symbol = url == nil ? PlaylistSymbolCover.defaultSymbolName : nil
-            }
+            let url = artworkURL(summary)
             return .playlist(
                 CarPlayPlaylistRow(
                     playlistID: summary.playlistID,
                     title: summary.name,
                     detailText: PlaylistSummaryText.line(itemCount: episodeCount(summary), totalDuration: 0),
                     artworkURL: url,
-                    symbolName: symbol
+                    symbolName: url == nil ? PlaylistSymbolCover.defaultSymbolName : nil
                 )
             )
         }
@@ -247,23 +238,17 @@ enum CarPlayBrowseModelBuilder {
         )
     }
 
-    /// Hide Played uses the phone's playlist predicate, the stored played
-    /// flag, not the completion the smart candidate rule reads.
     static func playlistEpisodes(
         playlistID: String,
         title: String,
         episodes: [EpisodeListItemSnapshot],
-        hidesPlayed: Bool,
         library: LibraryStore,
         downloadRecords: [EpisodeDownloadRecord],
         nowPlaying: CarPlayNowPlayingState,
         limits: CarPlayListLimits
     ) -> CarPlayBrowseSnapshot {
-        let visible = hidesPlayed
-            ? episodes.filter { library.progressRecord(for: $0.episodeID)?.isPlayed != true }
-            : episodes
         let downloadedEpisodeIDs = completedDownloadEpisodeIDs(in: downloadRecords)
-        let rows = visible.prefix(limits.maximumItemCount * 2).map { episode in
+        let rows = episodes.prefix(limits.maximumItemCount * 2).map { episode in
             CarPlayListRow.episode(
                 episodeRow(
                     for: episode,

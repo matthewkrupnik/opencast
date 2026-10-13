@@ -1,11 +1,15 @@
 import SwiftUI
 
-/// Picks the shows a smart playlist draws from. All Shows is on only while
-/// the rule names no shows, so new subscriptions join it; picking a show
-/// narrows the rule to the listed shows, and unchecking the last listed show
-/// returns to All Shows. Each pick reports the new rule at once through
-/// `onChange`, and the rows read the rule the sheet is handed, so the list
-/// updates in place and keeps its scroll position.
+/// Picks the shows a playlist draws from, and their order. All Shows is on
+/// only while the rule names no shows, so new subscriptions join it; picking
+/// a show narrows the rule to the listed shows, adding it last, and
+/// unchecking the last listed show returns to All Shows. With two or more
+/// picked, Reorder swaps the checklist for the picked shows alone, to drag
+/// into the order their episodes play in; the checklist itself never gains
+/// rows above a pick, so picking far down the list never moves it. Each
+/// change reports the new rule at once through `onChange`, and the rows read
+/// the rule the sheet is handed, so the list updates in place and keeps its
+/// scroll position.
 struct PlaylistShowsPickerSheet: View {
     /// Above this many shows the search field stays in view.
     private static let searchThreshold = 10
@@ -13,6 +17,7 @@ struct PlaylistShowsPickerSheet: View {
     @Environment(OpenCastAppModel.self) private var appModel
     @Environment(\.dismiss) private var dismiss
     @State private var searchText = ""
+    @State private var isReordering = false
 
     let rule: PlaylistRule
     let onChange: (PlaylistRule) -> Void
@@ -20,12 +25,19 @@ struct PlaylistShowsPickerSheet: View {
     var body: some View {
         @Bindable var appModel = appModel
         let shows = subscribedShows
+        let ordered = orderedShows(shows)
 
         NavigationStack {
             // Always attached: removing a conditional `.searchable` mid-update
             // can strand the system's search dismissal. A short list only
             // tucks the field away until the listener pulls down.
-            showList(shows)
+            Group {
+                if isReordering {
+                    orderList(ordered)
+                } else {
+                    showList(shows, pickedCount: ordered.count)
+                }
+            }
                 .searchable(
                     text: $searchText,
                     placement: .navigationBarDrawer(
@@ -33,9 +45,15 @@ struct PlaylistShowsPickerSheet: View {
                     ),
                     prompt: "Search Shows"
                 )
-                .navigationTitle("Shows")
+                .navigationTitle(isReordering ? "Play Order" : "Shows")
                 .navigationBarTitleDisplayMode(.inline)
                 .toolbar {
+                    if isReordering || (searchText.isEmpty && ordered.count > 1) {
+                        ToolbarItem(placement: .topBarLeading) {
+                            Button(isReordering ? "Pick Shows" : "Reorder", action: toggleReordering)
+                                .accessibilityIdentifier("Shows Picker Reorder")
+                        }
+                    }
                     ToolbarItem(placement: .confirmationAction) {
                         Button("Done", action: dismiss.callAsFunction)
                     }
@@ -52,7 +70,7 @@ struct PlaylistShowsPickerSheet: View {
         }
     }
 
-    private func showList(_ shows: [SubscriptionRecord]) -> some View {
+    private func showList(_ shows: [SubscriptionRecord], pickedCount: Int) -> some View {
         let matches = searchText.isEmpty
             ? shows
             : shows.filter { $0.title.localizedStandardContains(searchText) }
@@ -78,7 +96,7 @@ struct PlaylistShowsPickerSheet: View {
                 }
             }
 
-            Section("From Shows") {
+            Section {
                 ForEach(matches, id: \.feedURL) { show in
                     PlaylistShowsPickerRow(
                         title: show.title,
@@ -88,6 +106,12 @@ struct PlaylistShowsPickerSheet: View {
                     ) {
                         artwork(for: show)
                     }
+                }
+            } header: {
+                Text("From Shows")
+            } footer: {
+                if pickedCount > 1, searchText.isEmpty {
+                    Text("Episodes play show by show, in the order you picked them. Tap Reorder to change it.")
                 }
             }
         }
@@ -118,6 +142,55 @@ struct PlaylistShowsPickerSheet: View {
         return appModel.library.subscriptions.filter { subscription in
             seenFeedURLs.insert(subscription.feedURL).inserted
         }
+    }
+
+    /// The picked shows alone, in play order, always in edit mode so each
+    /// row shows its drag handle.
+    private func orderList(_ ordered: [SubscriptionRecord]) -> some View {
+        List {
+            Section {
+                ForEach(ordered, id: \.feedURL) { show in
+                    HStack(spacing: 12) {
+                        artwork(for: show)
+                            .frame(width: 40, height: 40)
+                            .accessibilityHidden(true)
+                        Text(show.title)
+                            .lineLimit(2)
+                    }
+                    .accessibilityIdentifier("shows-order-row-\(show.feedURL)")
+                }
+                .onMove { source, destination in
+                    move(ordered, fromOffsets: source, toOffset: destination)
+                }
+                .deleteDisabled(true)
+            } footer: {
+                Text("Episodes play show by show, in this order.")
+            }
+        }
+        .environment(\.editMode, .constant(.active))
+        .scrollContentBackground(.hidden)
+        .accessibilityIdentifier("Shows Order")
+    }
+
+    private func toggleReordering() {
+        searchText = ""
+        isReordering.toggle()
+    }
+
+    /// The picked shows that are still subscribed, in the rule's order.
+    private func orderedShows(_ shows: [SubscriptionRecord]) -> [SubscriptionRecord] {
+        let showsByID = Dictionary(shows.map { ($0.feedURL, $0) }, uniquingKeysWith: { first, _ in first })
+        return (rule.podcastIDs ?? []).compactMap { showsByID[$0] }
+    }
+
+    /// Shows no longer subscribed drop out, as they do when a show is
+    /// unchecked.
+    private func move(_ ordered: [SubscriptionRecord], fromOffsets source: IndexSet, toOffset destination: Int) {
+        var podcastIDs = ordered.map(\.feedURL)
+        podcastIDs.move(fromOffsets: source, toOffset: destination)
+        var updated = rule
+        updated.podcastIDs = podcastIDs
+        onChange(updated.normalized())
     }
 
     private func pickAllShows() {

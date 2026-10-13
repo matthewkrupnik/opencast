@@ -195,7 +195,6 @@ struct NowPlayingView: View {
                         onShowDescription: openEpisode,
                         onShowShow: openPodcast,
                         onShowPlaylist: openPlaylist,
-                        onAddToPlaylist: addCurrentEpisodeToPlaylist,
                         onStopPlayback: stopPlayback
                     )
                     .padding(.top, moreMenuTopPadding)
@@ -523,13 +522,6 @@ struct NowPlayingView: View {
 
     private func openPlaylist() {
         onOpenPlaylist()
-    }
-
-    private func addCurrentEpisodeToPlaylist() {
-        guard let currentEpisodeID else {
-            return
-        }
-        appModel.requestAddToPlaylist(episodeID: currentEpisodeID)
     }
 
     /// The unload, and so the audio stop, lands in the exit animation's

@@ -1,6 +1,6 @@
 import Foundation
 
-/// Evaluates a smart playlist's rule over the subscribed library. MainActor:
+/// Evaluates a playlist's rule over the subscribed library. MainActor:
 /// progress lookups and the status clause read MainActor stores. Inputs a
 /// rule does not need stay unread — the download records without Downloaded
 /// Only, the reference date without an age clause, progress for All
@@ -50,22 +50,35 @@ enum SmartPlaylistEvaluator {
             return rule.status.includes(progress: library.progressSummary(for: episode), isDownloaded: false)
         }
 
-        // The episode ID settles ties, since Newest First has none of its own.
+        // Listed shows play show by show in the listed order; All Shows has
+        // no order of its own and sorts across every show. The sort order
+        // applies within a show, and the episode ID settles ties, since
+        // Newest First has none of its own.
+        let showRanks = rule.podcastIDs.map { podcastIDs in
+            Dictionary(podcastIDs.enumerated().map { ($1, $0) }, uniquingKeysWith: { first, _ in first })
+        } ?? [:]
         let sortOrder = rule.sortOrder
         func precedes(_ lhs: EpisodeListItemSnapshot, _ rhs: EpisodeListItemSnapshot) -> Bool {
-            sortOrder.areInIncreasingOrder(lhs, rhs)
+            let lhsRank = showRanks[lhs.podcastID] ?? 0
+            let rhsRank = showRanks[rhs.podcastID] ?? 0
+            if lhsRank != rhsRank {
+                return lhsRank < rhsRank
+            }
+            return sortOrder.areInIncreasingOrder(lhs, rhs)
                 || (!sortOrder.areInIncreasingOrder(rhs, lhs) && lhs.episodeID < rhs.episodeID)
         }
 
         // Downloaded Only reads its handful of downloads instead of the whole
         // library. The library itself is already in Newest First order with
-        // the same episode ID tie-break, so that order needs no sort and stops
-        // at the limit.
+        // the same episode ID tie-break, so with at most one show to group
+        // that order needs no sort and stops at the limit.
         let showIDs = rule.podcastIDs.map { Set($0) }
         let source = downloadedEpisodeIDs.map { episodeIDs in
             episodeIDs.compactMap { library.episode(with: $0) }
         } ?? library.episodes
-        let isInSourceOrder = downloadedEpisodeIDs == nil && sortOrder == .newestFirst
+        let isInSourceOrder = downloadedEpisodeIDs == nil
+            && sortOrder == .newestFirst
+            && (rule.podcastIDs?.count ?? 0) <= 1
         let limit = rule.limit
         var episodes: [EpisodeListItemSnapshot] = []
         for episode in source {

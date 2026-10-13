@@ -73,7 +73,6 @@ final class OpenCastAppModel {
         }
     }
     var nowPlayingPresentationRequest = 0
-    private(set) var addToPlaylistPresentationRequest: AddToPlaylistPresentationRequest?
     /// Single source of truth for Now Playing presentation; the root layer
     /// and tab views read this directly.
     var isNowPlayingPresented = false
@@ -730,8 +729,6 @@ final class OpenCastAppModel {
         guard playback.currentEpisode?.id == episode.id else {
             return
         }
-        removeListenedEpisodesFromPlaylists(modelContext: modelContext) { $0.episodeID == episode.id.rawValue }
-
         switch policy {
         case .advanceIfQueued:
             let finishedPlaylistID = currentPlaylistSource?.playlistID
@@ -749,36 +746,16 @@ final class OpenCastAppModel {
         unloadFinishedPlayback(retainingPresentationFor: episode, modelContext: modelContext)
     }
 
-    /// A finished or marked-played episode leaves every manual playlist that
-    /// holds it, so a playlist empties as it is listened to and its loop ends.
-    private func removeListenedEpisodesFromPlaylists(
-        modelContext: ModelContext,
-        where isListened: (PlaylistItem) -> Bool
-    ) {
-        for (playlistID, items) in playlists.itemsByPlaylistID {
-            let itemIDs = Set(items.filter(isListened).map(\.itemID))
-            guard !itemIDs.isEmpty else {
-                continue
-            }
-            _ = performPlaylistMutation {
-                playlists.remove(itemIDs: itemIDs, from: playlistID, modelContext: modelContext)
-            }
-        }
-    }
-
     /// Loops a playlist whose last queued episode just finished: starts its
-    /// first remaining episode again and queues the rest behind it in
-    /// playlist order. Finished episodes have already left the playlist, so
-    /// this replays only what was skipped or played elsewhere; a played
+    /// first listed episode again and queues the rest behind it in rule
+    /// order. A rule for unplayed episodes no longer lists the finished ones,
+    /// so this replays only what was skipped or played elsewhere; a played
     /// episode resumes from the start.
     private func restartPlaylistFromBeginning(_ playlistID: String, modelContext: ModelContext) -> Bool {
-        let episodes: [EpisodeListItemSnapshot]
-        if let summary = playlist(playlistID), summary.kind == .smart {
-            episodes = Array(smartPlaylistEvaluation(for: summary).episodes.prefix(Self.smartPlaylistQueueLimit))
-        } else {
-            episodes = playlists.resolvedItems(in: playlistID) { episodeSnapshot(for: $0) }
-                .compactMap(\.snapshot)
+        guard let summary = playlist(playlistID) else {
+            return false
         }
+        let episodes = smartPlaylistEvaluation(for: summary).episodes.prefix(Self.smartPlaylistQueueLimit)
         guard let first = episodes.first else {
             return false
         }
@@ -912,24 +889,19 @@ final class OpenCastAppModel {
         return true
     }
 
-    /// Copies the playlist's unplayed, resolvable episodes into Up Next (a
-    /// smart playlist's first `smartPlaylistQueueLimit`); the playlist
-    /// itself is never consumed. `replace` starts the first episode before
-    /// touching the queue, so a failed start leaves the listener's queue as
-    /// it was. `addAfter` skips the episode already playing. Shuffle applies
-    /// to manual playlists only.
+    /// Copies the playlist's first `smartPlaylistQueueLimit` unplayed
+    /// episodes into Up Next; the playlist itself is never consumed.
+    /// `replace` starts the first episode before touching the queue, so a
+    /// failed start leaves the listener's queue as it was. `addAfter` skips
+    /// the episode already playing.
     @discardableResult
     func playPlaylist(
         _ playlistID: String,
         mode: PlaylistPlayMode = .replace,
-        shuffle: Bool = false,
         presentsNowPlaying: Bool = true,
         modelContext: ModelContext
     ) -> Bool {
-        var episodes = playlistPlaybackCandidates(playlistID, smartLimit: Self.smartPlaylistQueueLimit)
-        if shuffle, playlists.playlists.first(where: { $0.playlistID == playlistID })?.kind == .manual {
-            episodes.shuffle()
-        }
+        let episodes = playlistPlaybackCandidates(playlistID, smartLimit: Self.smartPlaylistQueueLimit)
         guard let first = episodes.first else {
             lastPlaylistError = Self.nothingToPlayMessage
             return false
@@ -971,34 +943,8 @@ final class OpenCastAppModel {
         }
     }
 
-    /// "Play from here" for a manual playlist row: starts the tapped row,
-    /// even a played one, then puts the unplayed, resolvable rows after it
-    /// at the front of Up Next, ahead of anything queued by hand. Nothing is
-    /// cleared.
-    @discardableResult
-    func playPlaylistItem(
-        _ itemID: String,
-        in playlistID: String,
-        presentsNowPlaying: Bool = true,
-        modelContext: ModelContext
-    ) -> Bool {
-        let resolvedItems = playlists.resolvedItems(in: playlistID) { episodeSnapshot(for: $0) }
-        guard let index = resolvedItems.firstIndex(where: { $0.item.itemID == itemID }) else {
-            lastPlaylistError = Self.unavailablePlaylistEpisodeMessage
-            return false
-        }
-        return playManualPlaylist(
-            from: index,
-            of: resolvedItems,
-            in: playlistID,
-            presentsNowPlaying: presentsNowPlaying,
-            modelContext: modelContext
-        )
-    }
-
-    /// "Play from here" by episode, for either kind: a manual playlist's
-    /// rows in playlist order, or a smart playlist's evaluation in rule
-    /// order, where the tapped episode and those queued after it stay within
+    /// "Play from here" by episode: the playlist's evaluation in rule order,
+    /// where the tapped episode and those queued after it stay within
     /// `smartPlaylistQueueLimit`. The tapped episode must still be listed.
     @discardableResult
     func playPlaylistEpisode(
@@ -1007,65 +953,27 @@ final class OpenCastAppModel {
         presentsNowPlaying: Bool = true,
         modelContext: ModelContext
     ) -> Bool {
-        if let summary = playlist(playlistID), summary.kind == .smart {
-            let episodes = smartPlaylistEvaluation(for: summary).episodes
-            guard let index = episodes.firstIndex(where: { $0.episodeID == episodeID }) else {
-                lastPlaylistError = Self.unavailablePlaylistEpisodeMessage
-                return false
-            }
-            let tapped = episodes[index]
-            return playPlaylistEpisodes(
-                tapped,
-                in: playlistID,
-                presentsNowPlaying: presentsNowPlaying,
-                modelContext: modelContext
-            ) {
-                var following: [EpisodeListItemSnapshot] = []
-                for episode in episodes[(index + 1)...]
-                    where episode.episodeID != tapped.episodeID && isSmartPlaylistCandidate(episode) {
-                    following.append(episode)
-                    if following.count == Self.smartPlaylistQueueLimit - 1 {
-                        break
-                    }
-                }
-                return following
-            }
-        }
-
-        let resolvedItems = playlists.resolvedItems(in: playlistID) { episodeSnapshot(for: $0) }
-        guard let index = resolvedItems.firstIndex(where: { $0.item.episodeID == episodeID }) else {
+        let episodes = playlist(playlistID).map { smartPlaylistEvaluation(for: $0).episodes } ?? []
+        guard let index = episodes.firstIndex(where: { $0.episodeID == episodeID }) else {
             lastPlaylistError = Self.unavailablePlaylistEpisodeMessage
             return false
         }
-        return playManualPlaylist(
-            from: index,
-            of: resolvedItems,
-            in: playlistID,
-            presentsNowPlaying: presentsNowPlaying,
-            modelContext: modelContext
-        )
-    }
-
-    private func playManualPlaylist(
-        from index: Int,
-        of resolvedItems: [PlaylistResolvedItem],
-        in playlistID: String,
-        presentsNowPlaying: Bool,
-        modelContext: ModelContext
-    ) -> Bool {
-        guard let tapped = resolvedItems[index].snapshot else {
-            lastPlaylistError = Self.unavailablePlaylistEpisodeMessage
-            return false
-        }
+        let tapped = episodes[index]
         return playPlaylistEpisodes(
             tapped,
             in: playlistID,
             presentsNowPlaying: presentsNowPlaying,
             modelContext: modelContext
         ) {
-            resolvedItems[(index + 1)...]
-                .compactMap(\.snapshot)
-                .filter { $0.episodeID != tapped.episodeID && isPlaylistCandidate($0) }
+            var following: [EpisodeListItemSnapshot] = []
+            for episode in episodes[(index + 1)...]
+                where episode.episodeID != tapped.episodeID && isSmartPlaylistCandidate(episode) {
+                following.append(episode)
+                if following.count == Self.smartPlaylistQueueLimit - 1 {
+                    break
+                }
+            }
+            return following
         }
     }
 
@@ -1149,15 +1057,15 @@ final class OpenCastAppModel {
     /// The Download All item's enabled state, without touching the disk: any
     /// unplayed, resolvable episode with no download in flight or completed.
     /// The tap-time list above also re-checks completed files on disk.
-    /// A smart playlist stops at its first candidate instead of building
-    /// the list, which a No Limit rule can make as long as the library.
+    /// It stops at the first candidate instead of building the list, which a
+    /// No Limit rule can make as long as the library.
     func hasPlaylistDownloadAllCandidates(_ playlistID: String) -> Bool {
-        if let summary = playlist(playlistID), summary.kind == .smart {
-            return smartPlaylistEvaluation(for: summary).episodes.contains { episode in
-                canStartDownloadAll(episode) && isSmartPlaylistCandidate(episode)
-            }
+        guard let summary = playlist(playlistID) else {
+            return false
         }
-        return playlistPlaybackCandidates(playlistID).contains { canStartDownloadAll($0) }
+        return smartPlaylistEvaluation(for: summary).episodes.contains { episode in
+            canStartDownloadAll(episode) && isSmartPlaylistCandidate(episode)
+        }
     }
 
     private func canStartDownloadAll(_ episode: EpisodeListItemSnapshot) -> Bool {
@@ -1261,14 +1169,13 @@ final class OpenCastAppModel {
         return "\(sentence) \(reason)"
     }
 
-    /// A smart playlist's episodes, memoized per playlist in the store. The
-    /// key reads only the tokens the rule depends on — progress only for a
+    /// A playlist's episodes, memoized per playlist in the store. The key
+    /// reads only the tokens the rule depends on — progress only for a
     /// played-state clause, downloads only for Downloaded Only, the
     /// reference date only for an age clause — so a view calling this
-    /// observes nothing else. Empty for a manual playlist or an unreadable
-    /// rule.
+    /// observes nothing else. Empty for an unreadable rule.
     func smartPlaylistEvaluation(for summary: PlaylistSummary) -> SmartPlaylistEvaluation {
-        guard summary.kind == .smart, let rule = summary.rule else {
+        guard let rule = summary.rule else {
             return .empty
         }
 
@@ -1290,7 +1197,7 @@ final class OpenCastAppModel {
     }
 
     /// The most episodes one Play, Play Next, Play Last or play-from-here
-    /// takes from a smart playlist (the largest Limit preset): a No Limit
+    /// takes from a playlist (the largest Limit preset): a No Limit
     /// rule can list the whole library, and every Up Next edit refetches
     /// every queued row. The list itself and Download All stay uncapped.
     static let smartPlaylistQueueLimit = 100
@@ -1302,45 +1209,37 @@ final class OpenCastAppModel {
         playlists.playlists.first { $0.playlistID == playlistID }
     }
 
-    /// The playlist's resolvable, unplayed episodes: a manual playlist's in
-    /// playlist order, a smart playlist's in rule order, stopping after
+    /// The playlist's unplayed episodes in rule order, stopping after
     /// `smartLimit` of them.
     private func playlistPlaybackCandidates(
         _ playlistID: String,
         smartLimit: Int? = nil
     ) -> [EpisodeListItemSnapshot] {
-        if let summary = playlist(playlistID), summary.kind == .smart {
-            var candidates: [EpisodeListItemSnapshot] = []
-            for episode in smartPlaylistEvaluation(for: summary).episodes where isSmartPlaylistCandidate(episode) {
-                candidates.append(episode)
-                if candidates.count == smartLimit {
-                    break
-                }
-            }
-            return candidates
+        guard let summary = playlist(playlistID) else {
+            return []
         }
-        return playlists.resolvedItems(in: playlistID) { episodeSnapshot(for: $0) }
-            .compactMap(\.snapshot)
-            .filter { isPlaylistCandidate($0) }
+        var candidates: [EpisodeListItemSnapshot] = []
+        for episode in smartPlaylistEvaluation(for: summary).episodes where isSmartPlaylistCandidate(episode) {
+            candidates.append(episode)
+            if candidates.count == smartLimit {
+                break
+            }
+        }
+        return candidates
     }
 
     /// Whether Play would start anything, without starting it: the router and
     /// the Siri handler answer "nothing to play" before touching playback.
     func hasPlaylistPlaybackCandidates(_ playlistID: String) -> Bool {
-        if let summary = playlist(playlistID), summary.kind == .smart {
-            return smartPlaylistEvaluation(for: summary).episodes.contains { isSmartPlaylistCandidate($0) }
+        guard let summary = playlist(playlistID) else {
+            return false
         }
-        return !playlistPlaybackCandidates(playlistID).isEmpty
+        return smartPlaylistEvaluation(for: summary).episodes.contains { isSmartPlaylistCandidate($0) }
     }
 
-    /// The count a collection row shows: a manual playlist's items, a smart
-    /// playlist's memoized evaluation.
+    /// The count a collection row shows: the playlist's memoized evaluation.
     func playlistEpisodeCount(for summary: PlaylistSummary) -> Int {
-        summary.kind == .smart ? smartPlaylistEvaluation(for: summary).count : summary.itemCount
-    }
-
-    private func isPlaylistCandidate(_ episode: EpisodeListItemSnapshot) -> Bool {
-        library.progressRecord(for: episode.episodeID)?.isPlayed != true
+        smartPlaylistEvaluation(for: summary).count
     }
 
     /// The Episodes chip's definition of unplayed, which also counts a
@@ -2122,10 +2021,6 @@ final class OpenCastAppModel {
         nowPlayingPresentationRequest += 1
     }
 
-    func requestAddToPlaylist(episodeID: String) {
-        addToPlaylistPresentationRequest = AddToPlaylistPresentationRequest(episodeID: episodeID, token: UUID())
-    }
-
     @discardableResult
     func dismissCurrentPlayback(modelContext: ModelContext) -> Bool {
         let hadCurrentEpisode = playback.currentEpisode != nil
@@ -2210,7 +2105,6 @@ final class OpenCastAppModel {
     ) -> Bool {
         let didSave = library.markEpisodePlayed(episode, modelContext: modelContext)
         _ = upNextQueue.remove(episodeID: episode.episodeID, modelContext: modelContext)
-        removeListenedEpisodesFromPlaylists(modelContext: modelContext) { $0.episodeID == episode.episodeID }
         if isCurrentEpisode(episode) {
             // Mark Played is a playback command too, so unload even when persistence was already complete.
             dismissNowPlayingAndDiscardFinishedPlayback()
@@ -2258,7 +2152,6 @@ final class OpenCastAppModel {
     ) -> Bool {
         let didSave = library.markAllPlayed(forPodcastID: podcastID, modelContext: modelContext)
         _ = upNextQueue.removeAll(forPodcastID: podcastID, modelContext: modelContext)
-        removeListenedEpisodesFromPlaylists(modelContext: modelContext) { $0.podcastID == podcastID }
         if playback.currentEpisode?.podcastID.rawValue == podcastID {
             dismissNowPlayingAndDiscardFinishedPlayback()
             playback.unload()

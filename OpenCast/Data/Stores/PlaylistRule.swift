@@ -1,7 +1,9 @@
 import Foundation
 
-/// A smart playlist's saved rule, stored as JSON in `PlaylistRecord.ruleJSON`.
+/// A playlist's saved rule, stored as JSON in `PlaylistRecord.ruleJSON`.
 /// Clauses combine with AND and are evaluated over the subscribed library.
+/// Listed shows play show by show, in the listed order, with `sortOrder`
+/// ordering each show's episodes; All Shows sorts across every show.
 /// Every optional defaults to nil and an absent key decodes to that nil, so
 /// only `.default` carries a limit.
 nonisolated struct PlaylistRule: Codable, Hashable, Sendable {
@@ -9,11 +11,14 @@ nonisolated struct PlaylistRule: Codable, Hashable, Sendable {
     static let statusOptions: [PodcastEpisodeFilter] = [.all, .unplayed, .inProgress, .played]
     static let agePresets: [Int?] = [nil, 7, 14, 30, 90, 365]
     static let limitPresets: [Int?] = [10, 25, 50, 100, nil]
-    /// Unplayed, all shows, newest first, 25 episodes.
+    /// The orders a show's episodes can take within a playlist.
+    static let sortOptions: [PodcastEpisodeSortOrder] = [.oldestFirst, .newestFirst]
+    /// Unplayed, all shows, oldest first, 25 episodes.
     static let `default` = PlaylistRule(limit: 25)
 
     var version = PlaylistRule.currentVersion
-    /// Canonical feed URLs; nil means every subscribed show and is never
+    /// Canonical feed URLs in the listener's order, which is the order the
+    /// shows' episodes play in; nil means every subscribed show and is never
     /// stored as an empty list.
     var podcastIDs: [String]?
     /// Never `.downloaded`: normalization moves it to `downloadedOnly`.
@@ -24,7 +29,8 @@ nonisolated struct PlaylistRule: Codable, Hashable, Sendable {
     /// Exclusive upper bound.
     var maximumMinutes: Int?
     var maximumAgeDays: Int?
-    var sortOrder: PodcastEpisodeSortOrder = .newestFirst
+    /// Within each listed show, or across All Shows; only `sortOptions`.
+    var sortOrder: PodcastEpisodeSortOrder = .oldestFirst
     /// Nil means No Limit.
     var limit: Int?
 
@@ -65,7 +71,7 @@ nonisolated extension PlaylistRule {
             minimumMinutes: try container.decodeIfPresent(Int.self, forKey: .minimumMinutes),
             maximumMinutes: try container.decodeIfPresent(Int.self, forKey: .maximumMinutes),
             maximumAgeDays: try container.decodeIfPresent(Int.self, forKey: .maximumAgeDays),
-            sortOrder: try container.decodeIfPresent(PodcastEpisodeSortOrder.self, forKey: .sortOrder) ?? .newestFirst,
+            sortOrder: try container.decodeIfPresent(PodcastEpisodeSortOrder.self, forKey: .sortOrder) ?? .oldestFirst,
             limit: try container.decodeIfPresent(Int.self, forKey: .limit)
         )
     }
@@ -91,14 +97,18 @@ nonisolated extension PlaylistRule {
         }
     }
 
-    /// The canonical form: show IDs deduplicated and sorted so toggle order
-    /// never changes the stored rule, out-of-range numbers dropped, and the
-    /// Downloaded filter moved to its own clause.
+    /// The canonical form: show IDs deduplicated in their listed order,
+    /// out-of-range numbers dropped, a sort outside `sortOptions` reset to
+    /// Oldest First, and the Downloaded filter moved to its own clause.
     func normalized() -> PlaylistRule {
         var rule = self
         if let podcastIDs {
-            let uniqueIDs = Set(podcastIDs).sorted()
+            var seenIDs = Set<String>()
+            let uniqueIDs = podcastIDs.filter { seenIDs.insert($0).inserted }
             rule.podcastIDs = uniqueIDs.isEmpty ? nil : uniqueIDs
+        }
+        if !Self.sortOptions.contains(sortOrder) {
+            rule.sortOrder = .oldestFirst
         }
         if let limit, limit <= 0 {
             rule.limit = nil

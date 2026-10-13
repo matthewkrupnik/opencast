@@ -184,7 +184,7 @@ struct LibraryView: View {
 
     private func createPlaylist(_ request: PlaylistNamePromptRequest, name: String) {
         let summary = appModel.performPlaylistMutation {
-            appModel.playlists.create(name: name, kind: .manual, modelContext: modelContext)
+            appModel.playlists.create(name: name, modelContext: modelContext)
         }
         pendingOpenPlaylistID = summary?.playlistID
     }

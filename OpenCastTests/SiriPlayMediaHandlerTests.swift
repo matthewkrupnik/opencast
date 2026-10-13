@@ -230,9 +230,10 @@ struct SiriPlayMediaHandlerTests {
     @Test("An identified playlist plays its first unplayed episode silently and tags the rest")
     func identifiedPlaylistPlaysSilentlyAndTagsTheQueue() async throws {
         let fixture = try await makeFixture()
+        // Lists "newest", "older" and "shared-one"; "older" is played.
         let playlistID = try await createPlaylist(
             "Commute",
-            episodeIDs: ["older", "newest", "shared-one"],
+            rule: PlaylistRule(podcastIDs: [Self.feedURL], status: .all, sortOrder: .newestFirst, limit: 3),
             playedEpisodeIDs: ["older"],
             fixture: fixture
         )
@@ -263,7 +264,7 @@ struct SiriPlayMediaHandlerTests {
         let fixture = try await makeFixture()
         let playlistID = try await createPlaylist(
             "Done",
-            episodeIDs: ["older"],
+            rule: PlaylistRule(podcastIDs: [Self.feedURL], status: .played),
             playedEpisodeIDs: ["older"],
             fixture: fixture
         )
@@ -305,7 +306,7 @@ struct SiriPlayMediaHandlerTests {
     @Test("A spoken playlist name resolves to a playlist media item")
     func spokenPlaylistNameResolvesToAPlaylistMediaItem() async throws {
         let fixture = try await makeFixture()
-        let playlistID = try await createPlaylist("Commute", episodeIDs: ["newest"], fixture: fixture)
+        let playlistID = try await createPlaylist("Commute", rule: .default, fixture: fixture)
         let intent = SiriPlayMediaIntentFactory.make(mediaName: "Commute", mediaType: .unknown)
 
         let results = await fixture.handler.resolveMediaItems(for: intent)
@@ -329,16 +330,14 @@ struct SiriPlayMediaHandlerTests {
     /// by a later load and the episodes resolve.
     private func createPlaylist(
         _ name: String,
-        episodeIDs: [String],
+        rule: PlaylistRule,
         playedEpisodeIDs: [String] = [],
         fixture: (handler: SiriPlayMediaHandler, appModel: OpenCastAppModel, modelContext: ModelContext)
     ) async throws -> String {
         let appModel = fixture.appModel
         let context = fixture.modelContext
         await appModel.ensurePlaybackSurfaceHydrated(modelContext: context)
-        let playlist = try #require(appModel.playlists.create(name: name, kind: .manual, modelContext: context))
-        let episodes = try episodeIDs.map { try #require(appModel.episodeSnapshot(for: $0)) }
-        #expect(appModel.playlists.add(episodes, to: playlist.playlistID, modelContext: context) == episodes.count)
+        let playlist = try #require(appModel.playlists.create(name: name, rule: rule, modelContext: context))
         for episodeID in playedEpisodeIDs {
             let episode = try #require(appModel.episodeSnapshot(for: episodeID))
             #expect(appModel.markEpisodePlayed(episode, modelContext: context))
