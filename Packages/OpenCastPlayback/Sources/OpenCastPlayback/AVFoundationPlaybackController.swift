@@ -90,6 +90,15 @@ public final class AVFoundationPlaybackController {
     @ObservationIgnored private var playbackDiagnosticsEvents: [String] = []
     @ObservationIgnored private var eventLogHandler: (@MainActor (String) -> Void)?
     @ObservationIgnored private var currentItemLocalFileIdentity: PlaybackLocalFileIdentity?
+    @ObservationIgnored private var currentItemSourceURL: URL?
+    @ObservationIgnored private var isSmartSpeedEnabled = false
+    @ObservationIgnored private var smartSpeedTask: Task<Void, Never>?
+    /// The last download trimmed for Smart Speed, kept so toggling or a
+    /// rebuild of the same file need not analyze it again.
+    @ObservationIgnored private var smartSpeedSource: SmartSpeedSource?
+    /// Set while the player item is the trimmed copy. AVPlayer then runs on
+    /// the shortened clock; see `episodeTime(fromPlayer:)`.
+    @ObservationIgnored private var currentSmartSpeedItem: SmartSpeedCompositionBuilder.Result?
     @ObservationIgnored var playbackStartBehaviorObserver: ((PlaybackStartBehavior) -> Void)?
 
     public convenience init(
@@ -147,6 +156,7 @@ public final class AVFoundationPlaybackController {
         playerTimeControlStatusObservation?.invalidate()
         removeAudioSessionObservers()
         voiceBoostTrackLoadTask?.cancel()
+        smartSpeedTask?.cancel()
         audioSessionActivationTask?.cancel()
         sleepTimerTask?.cancel()
         player.pause()
@@ -198,7 +208,7 @@ public final class AVFoundationPlaybackController {
             progressBoundaryID: snapshot.progressBoundaryID
         ))
 
-        let playerItem = makeDirectPlayerItem(audioURL: audioURL)
+        let playerItem = makePlayerItem(audioURL: audioURL)
         player.replaceCurrentItem(with: playerItem)
         observeCurrentItem(playerItem)
         refreshOutroBoundaryObserver()
@@ -217,6 +227,7 @@ public final class AVFoundationPlaybackController {
         }
         recordDiagnosticsEvent("loaded episode start=\(diagnosticsTime(snapshot.position)) url=\(audioURL.absoluteString)")
         publishPlaybackState()
+        refreshSmartSpeed()
     }
 
     public func updateVoiceBoostConfiguration(_ configuration: VoiceBoostConfiguration) {
@@ -270,6 +281,15 @@ public final class AVFoundationPlaybackController {
             return false
         }
 
+        continueOnRebuiltItem()
+        recordDiagnosticsEvent("switched to downloaded audio at \(diagnosticsTime(snapshot.position))")
+        refreshSmartSpeed()
+        return true
+    }
+
+    /// Keeps the listening session going across an item rebuild: playback
+    /// that was requested resumes, and a paused episode stays paused.
+    private func continueOnRebuiltItem() {
         if isPlaybackRequested {
             if isAudioSessionActive {
                 requestPlaybackForCurrentItem()
@@ -280,8 +300,6 @@ public final class AVFoundationPlaybackController {
             snapshot.state = .paused
             publishPlaybackState()
         }
-        recordDiagnosticsEvent("switched to downloaded audio at \(diagnosticsTime(snapshot.position))")
-        return true
     }
 
     public func setVoiceBoostEnabled(_ isEnabled: Bool) {
@@ -322,8 +340,111 @@ public final class AVFoundationPlaybackController {
         )
     }
 
+    /// Smart Speed plays a copy of the downloaded file with long pauses cut
+    /// short, at the listener's own rate. Streams play unchanged.
     public func setSmartSpeedEnabled(_ isEnabled: Bool) {
-        // Implementation handled externally by SmartSpeedManager
+        guard isSmartSpeedEnabled != isEnabled else {
+            return
+        }
+
+        isSmartSpeedEnabled = isEnabled
+        refreshSmartSpeed()
+    }
+
+    /// Puts the trimmed copy of the current download in the player while
+    /// Smart Speed is on, and the file itself otherwise. Analysis decodes the
+    /// whole file, so the episode plays untrimmed until it finishes.
+    private func refreshSmartSpeed() {
+        smartSpeedTask?.cancel()
+        smartSpeedTask = nil
+        guard snapshot.currentEpisode != nil, let sourceURL = currentItemSourceURL else {
+            return
+        }
+        guard isSmartSpeedEnabled, sourceURL.isFileURL else {
+            if currentSmartSpeedItem != nil {
+                swapCurrentItemForSmartSpeed()
+            }
+            return
+        }
+        guard currentSmartSpeedItem == nil else {
+            return
+        }
+        let fileIdentity = currentItemLocalFileIdentity
+        if smartSpeedSource?.matches(sourceURL, fileIdentity) == true {
+            swapCurrentItemForSmartSpeed()
+            return
+        }
+
+        smartSpeedTask = Task { [weak self] in
+            let composition: SmartSpeedCompositionBuilder.Result
+            do {
+                composition = try await SmartSpeedCompositionBuilder.make(url: sourceURL)
+            } catch {
+                if !(error is CancellationError) {
+                    self?.recordDiagnosticsEvent("smart speed analysis failed: \(error.localizedDescription)")
+                }
+                return
+            }
+            guard let self,
+                  !Task.isCancelled,
+                  isSmartSpeedEnabled,
+                  currentItemSourceURL == sourceURL,
+                  currentItemLocalFileIdentity == fileIdentity
+            else {
+                return
+            }
+
+            smartSpeedTask = nil
+            smartSpeedSource = SmartSpeedSource(url: sourceURL, fileIdentity: fileIdentity, composition: composition)
+            swapCurrentItemForSmartSpeed()
+        }
+    }
+
+    /// Rebuilds the item, which picks the trimmed copy or the file to match
+    /// the setting, at the listener's place on the episode clock.
+    private func swapCurrentItemForSmartSpeed() {
+        // The 1 Hz tick can trail the player by a second; resume where the
+        // listener actually is unless a seek has yet to land.
+        if player.currentItem?.status == .readyToPlay,
+           playbackPositionProtection.position == nil,
+           pendingAutoSkipTarget == nil,
+           !hasFinishedCurrentEpisode
+        {
+            let playerPosition = episodeTime(fromPlayer: player.currentTime().seconds)
+            if playerPosition.isFinite {
+                snapshot.position = clampedPosition(playerPosition)
+            }
+        }
+
+        guard rebuildCurrentItem() else {
+            return
+        }
+
+        continueOnRebuiltItem()
+        if let currentSmartSpeedItem {
+            recordDiagnosticsEvent(
+                "smart speed trimmed \(diagnosticsTime(currentSmartSpeedItem.timeline.timeSaved)) in \(currentSmartSpeedItem.timeline.segments.count - 1) cuts"
+            )
+        } else {
+            recordDiagnosticsEvent("smart speed off")
+        }
+    }
+
+    /// While Smart Speed plays, AVPlayer runs on the shortened clock. The
+    /// rest of the controller, and everything it publishes, stays on the
+    /// episode's own clock, so every player time crosses one of these.
+    private func episodeTime(fromPlayer seconds: TimeInterval) -> TimeInterval {
+        guard let timeline = currentSmartSpeedItem?.timeline, seconds.isFinite else {
+            return seconds
+        }
+        return timeline.originalTime(forComposition: seconds)
+    }
+
+    private func playerTime(fromEpisode seconds: TimeInterval) -> TimeInterval {
+        guard let timeline = currentSmartSpeedItem?.timeline, seconds.isFinite else {
+            return seconds
+        }
+        return timeline.compositionTime(forOriginal: seconds)
     }
 
     public func setAutoSkipEnabled(_ isEnabled: Bool) {
@@ -432,6 +553,10 @@ public final class AVFoundationPlaybackController {
         currentVoiceBoostTap = nil
         pendingVoiceBoostContinuationState = nil
         currentItemLocalFileIdentity = nil
+        currentItemSourceURL = nil
+        smartSpeedTask?.cancel()
+        smartSpeedTask = nil
+        currentSmartSpeedItem = nil
         playbackPositionProtection.clear()
         playbackAdSkipPolicy.setZones([])
         autoSkipEventSequence = 0
@@ -479,12 +604,6 @@ public final class AVFoundationPlaybackController {
 
     public func skip(by interval: TimeInterval) {
         seek(to: snapshot.position + interval, intent: .skipButton)
-    }
-
-    public func setInternalRate(_ rate: Float) {
-        if isPlaybackRequested, isAudioSessionActive {
-            player.rate = rate
-        }
     }
 
     public func setRate(_ rate: Float) {
@@ -629,8 +748,8 @@ public final class AVFoundationPlaybackController {
                 }
 
                 handleObservedPlaybackPosition(
-                    observedPosition,
-                    duration: observedDuration,
+                    episodeTime(fromPlayer: observedPosition),
+                    duration: episodeTime(fromPlayer: observedDuration),
                     observationGeneration: generation
                 )
             }
@@ -696,7 +815,9 @@ public final class AVFoundationPlaybackController {
             return
         }
 
-        if durationChanged {
+        // Trimmed playback outpaces the rate Now Playing extrapolates with,
+        // so its elapsed time is re-anchored on every tick.
+        if durationChanged || currentSmartSpeedItem != nil {
             publishPlaybackState()
         } else {
             syncObservableState()
@@ -747,25 +868,25 @@ public final class AVFoundationPlaybackController {
     }
 
     public var currentItemSourceIdentity: PlaybackItemSourceIdentity? {
-        guard let item = player.currentItem, let asset = item.asset as? AVURLAsset else {
+        guard let item = player.currentItem, let assetURL = currentItemSourceURL else {
             return nil
         }
 
-        let kind: PlaybackItemSourceIdentity.Kind = if asset.url.isFileURL {
+        let kind: PlaybackItemSourceIdentity.Kind = if assetURL.isFileURL {
             .localFile
         } else {
             .networkStream
         }
-        let itemDuration = item.duration.seconds
+        let itemDuration = episodeTime(fromPlayer: item.duration.seconds)
         return PlaybackItemSourceIdentity(
-            assetURL: asset.url,
+            assetURL: assetURL,
             kind: kind,
             itemDuration: itemDuration.isFinite && itemDuration > 0 ? itemDuration : nil
         )
     }
 
     private func currentMediaClockSample() -> PlaybackMediaClockSample? {
-        let seconds = player.currentTime().seconds
+        let seconds = episodeTime(fromPlayer: player.currentTime().seconds)
         guard seconds.isFinite else {
             return nil
         }
@@ -1017,11 +1138,25 @@ public final class AVFoundationPlaybackController {
         pause(reason: "old audio route unavailable")
     }
 
-    private func makeDirectPlayerItem(
+    private func makePlayerItem(
         audioURL: URL,
         continuationState: VoiceBoostContinuationState? = nil
     ) -> AVPlayerItem {
         currentItemLocalFileIdentity = PlaybackLocalFileIdentity(at: audioURL)
+        currentItemSourceURL = audioURL
+        if isSmartSpeedEnabled,
+           let smartSpeedSource,
+           smartSpeedSource.matches(audioURL, currentItemLocalFileIdentity)
+        {
+            currentSmartSpeedItem = smartSpeedSource.composition
+            let playerItem = AVPlayerItem(asset: smartSpeedSource.composition.composition)
+            // The composition's track is known up front, so the tap binds
+            // to it here with the cut fades rather than after a track load.
+            installVoiceBoostTap(on: playerItem, continuationState: continuationState)
+            return playerItem
+        }
+
+        currentSmartSpeedItem = nil
         // Local files get a precise timeline: karaoke equates item media time
         // with transcript timestamps, and estimated MP3 timing (the default)
         // can report a duration and land seeks at bytes that do not
@@ -1084,7 +1219,7 @@ public final class AVFoundationPlaybackController {
             // Retain adaptation without installing a disabled tap: a local
             // handoff must not introduce audio callbacks while Voice Boost is off.
             pendingVoiceBoostContinuationState = carriedState
-            playerItem.audioMix = nil
+            playerItem.audioMix = currentSmartSpeedItem?.audioMix
             return
         }
 
@@ -1097,6 +1232,8 @@ public final class AVFoundationPlaybackController {
             }
             let inputParameters = if let audioTrack {
                 AVMutableAudioMixInputParameters(track: audioTrack)
+            } else if let currentSmartSpeedItem {
+                currentSmartSpeedItem.makeInputParameters()
             } else {
                 AVMutableAudioMixInputParameters()
             }
@@ -1115,7 +1252,7 @@ public final class AVFoundationPlaybackController {
             } else {
                 voiceBoostTapDiagnostics?.recordTapCreationFailure(status: nil)
             }
-            playerItem.audioMix = nil
+            playerItem.audioMix = currentSmartSpeedItem?.audioMix
             currentVoiceBoostTap = nil
         }
     }
@@ -1176,7 +1313,7 @@ public final class AVFoundationPlaybackController {
                     return
                 }
                 handleObservedDuration(
-                    observedDuration,
+                    episodeTime(fromPlayer: observedDuration),
                     observationGeneration: generation
                 )
             }
@@ -1281,7 +1418,7 @@ public final class AVFoundationPlaybackController {
                 transitionToBuffering(reason: "item status unknown")
             }
         case .readyToPlay:
-            if updateDuration(from: playerItem.duration) {
+            if updateDuration(from: episodeTime(fromPlayer: playerItem.duration.seconds)) {
                 publishPlaybackState()
             }
             if isPlaybackRequested {
@@ -1414,9 +1551,10 @@ public final class AVFoundationPlaybackController {
             ?? pendingVoiceBoostContinuationState
         currentVoiceBoostTap = nil
 
-        let retryItem = makeDirectPlayerItem(audioURL: audioURL, continuationState: continuationState)
+        let retryItem = makePlayerItem(audioURL: audioURL, continuationState: continuationState)
         player.replaceCurrentItem(with: retryItem)
         observeCurrentItem(retryItem)
+        refreshOutroBoundaryObserver()
 
         if snapshot.position > 0 {
             seekPlayer(to: snapshot.position, mode: .restoredPosition)
@@ -1484,7 +1622,10 @@ public final class AVFoundationPlaybackController {
         isPlaybackRequested = false
         shouldResumeAfterInterruption = false
         player.pause()
-        let playerPosition = clampPlaybackPosition(player.currentTime().seconds, to: resolvedDuration())
+        let playerPosition = clampPlaybackPosition(
+            episodeTime(fromPlayer: player.currentTime().seconds),
+            to: resolvedDuration()
+        )
         if playerPosition > snapshot.position {
             snapshot.position = playerPosition
         }
@@ -1602,7 +1743,7 @@ public final class AVFoundationPlaybackController {
         }
         let protectedSeekGeneration = playbackPositionProtection.startSeek(to: clamped)
         let itemGeneration = currentItemObservationGeneration
-        let time = CMTime(seconds: clamped, preferredTimescale: 600)
+        let time = CMTime(seconds: playerTime(fromEpisode: clamped), preferredTimescale: 600)
         let completion: @Sendable (Bool) -> Void = { [weak self] finished in
             Task { @MainActor [weak self] in
                 guard let self, currentItemObservationGeneration == itemGeneration else {
@@ -1642,7 +1783,7 @@ public final class AVFoundationPlaybackController {
 
         playbackPositionProtection.completeSeek(generation: generation, finished: finished)
         recordDiagnosticsEvent(
-            "seek completed target=\(diagnosticsTime(position)) actual=\(diagnosticsTime(player.currentTime().seconds)) finished=\(finished) intent=\(intent)"
+            "seek completed target=\(diagnosticsTime(position)) actual=\(diagnosticsTime(episodeTime(fromPlayer: player.currentTime().seconds))) finished=\(finished) intent=\(intent)"
         )
         if finished {
             evaluateAutoSkip(
@@ -1721,12 +1862,7 @@ public final class AVFoundationPlaybackController {
     }
 
     private func resolvedDuration() -> TimeInterval? {
-        snapshot.bestFiniteDuration(preferring: player.currentItem?.duration.seconds)
-    }
-
-    @discardableResult
-    private func updateDuration(from time: CMTime?) -> Bool {
-        updateDuration(from: time?.seconds)
+        snapshot.bestFiniteDuration(preferring: player.currentItem.map { episodeTime(fromPlayer: $0.duration.seconds) })
     }
 
     @discardableResult
@@ -1785,7 +1921,7 @@ public final class AVFoundationPlaybackController {
         removeOutroBoundaryObserver()
         outroBoundaryCutoff = cutoff
         let generation = currentItemObservationGeneration
-        let boundaryTime = CMTime(seconds: cutoff, preferredTimescale: 600)
+        let boundaryTime = CMTime(seconds: playerTime(fromEpisode: cutoff), preferredTimescale: 600)
         outroBoundaryObserver = PlayerTimeObserver(token: player.addBoundaryTimeObserver(
             forTimes: [NSValue(time: boundaryTime)],
             queue: .main
@@ -1838,7 +1974,7 @@ public final class AVFoundationPlaybackController {
 
         let generation = currentItemObservationGeneration
         skipZoneBoundaryObservers = playbackAdSkipPolicy.zones.map { zone in
-            let boundaryTime = CMTime(seconds: zone.startTime, preferredTimescale: 600)
+            let boundaryTime = CMTime(seconds: playerTime(fromEpisode: zone.startTime), preferredTimescale: 600)
             return PlayerTimeObserver(token: player.addBoundaryTimeObserver(
                 forTimes: [NSValue(time: boundaryTime)],
                 queue: .main
@@ -2161,5 +2297,16 @@ public final class AVFoundationPlaybackController {
                 )
             }
         }
+    }
+}
+
+/// A download and its trimmed copy, valid while the file is unchanged.
+private struct SmartSpeedSource {
+    let url: URL
+    let fileIdentity: PlaybackLocalFileIdentity?
+    let composition: SmartSpeedCompositionBuilder.Result
+
+    func matches(_ url: URL, _ fileIdentity: PlaybackLocalFileIdentity?) -> Bool {
+        self.url == url && self.fileIdentity == fileIdentity
     }
 }

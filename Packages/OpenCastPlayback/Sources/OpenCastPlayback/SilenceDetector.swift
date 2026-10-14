@@ -1,7 +1,7 @@
 import Accelerate
 import AVFoundation
 
-struct SilenceRegion: Sendable {
+nonisolated struct SilenceRegion: Sendable {
     let startFrame: AVAudioFramePosition
     let endFrame: AVAudioFramePosition
 }
@@ -9,16 +9,16 @@ struct SilenceRegion: Sendable {
 nonisolated final class SilenceDetector: @unchecked Sendable {
     private let thresholdLinear: Float
     private let minimumSilenceFrames: Int
-    private let attackFrames: Int
-    private let releaseFrames: Int
     private let windowSize = 512
     private let hopSize = 64
 
-    init(settings: SmartSpeedSettings, sampleRate: Double) {
-        thresholdLinear = Float(pow(10.0, settings.silenceThresholdDBFS / 20.0))
-        minimumSilenceFrames = Int(settings.minimumSilenceDuration * sampleRate)
-        attackFrames = Int(settings.attackDuration * sampleRate)
-        releaseFrames = Int(settings.releaseDuration * sampleRate)
+    init(
+        sampleRate: Double,
+        thresholdDBFS: Double = -45,
+        minimumSilenceDuration: TimeInterval = 0.25
+    ) {
+        thresholdLinear = Float(pow(10.0, thresholdDBFS / 20.0))
+        minimumSilenceFrames = Int(minimumSilenceDuration * sampleRate)
     }
 
     // Silence still open at the end of the previous buffer, so pauses that

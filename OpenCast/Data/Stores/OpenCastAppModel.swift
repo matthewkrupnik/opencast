@@ -47,7 +47,6 @@ final class OpenCastAppModel {
     let libraryDisplaySettings: LibraryDisplaySettingsStore
     let recentSearches: RecentSearchesStore
     let playbackSettings: PlaybackSettingsStore
-    @ObservationIgnored private var smartSpeedManager: Any?
     let notificationSettings: NotificationSettingsStore
     let onboardingState: OnboardingStateStore
     let voiceBoostDiagnostics: VoiceBoostAudioTapDiagnostics?
@@ -328,7 +327,6 @@ final class OpenCastAppModel {
         self.libraryDisplaySettings = libraryDisplaySettings
         self.recentSearches = recentSearches
         self.playbackSettings = playbackSettings
-        self.smartSpeedManager = SmartSpeedManager(playback: self.playback, settingsStore: self.playbackSettings)
         self.notificationSettings = notificationSettings
         self.onboardingState = onboardingState
         self.voiceBoostDiagnostics = voiceBoostDiagnostics

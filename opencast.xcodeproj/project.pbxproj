@@ -104,20 +104,13 @@
 		0FA60CF4265491A26D59B58C /* Info.plist */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		192CD3FA3C8CE63DAC9FCE45 /* OpenCastWidgets.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = OpenCastWidgets.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		1B8D930945FAD5C4384C9167 /* ResumeWidgetView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = ResumeWidgetView.swift; sourceTree = "<group>"; };
-		3F9CBC2767E058DC362D6449 /* MusicDetector.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = MusicDetector.swift; sourceTree = "<group>"; };
-		4FCBD42A3F4EADBADD0D13A2 /* SmartSpeedSettings.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = SmartSpeedSettings.swift; sourceTree = "<group>"; };
 		55C6C49AEC88516661DAA219 /* ResumeWidgetEntry.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = ResumeWidgetEntry.swift; sourceTree = "<group>"; };
-		636A7C94B5BE2822B855953B /* SmartSpeedManager.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = SmartSpeedManager.swift; sourceTree = "<group>"; };
-		639C385012BCFB50CEDFC00F /* HybridSmartSpeedIntegration.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = HybridSmartSpeedIntegration.swift; sourceTree = "<group>"; };
-		75BD1F0491D6199865670F84 /* SmartSpeedEngine.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = SmartSpeedEngine.swift; sourceTree = "<group>"; };
-		8343CDA661E2144B0E0D3504 /* PCMDecoder.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = PCMDecoder.swift; sourceTree = "<group>"; };
 		9ADC9EA0833D889E83D30AA8 /* ResumeWidgetProvider.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = ResumeWidgetProvider.swift; sourceTree = "<group>"; };
 		A10000000000000000000009 /* OpenCast.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = OpenCast.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		A1000000000000000000000A /* OpenCastTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = OpenCastTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		A1000000000000000000000B /* OpenCastUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = OpenCastUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		A10000000000000000000033 /* OpenCastNotificationService.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = OpenCastNotificationService.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		A79CF2197DE30D17D4348C0D /* OpenCastWidgets.entitlements */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.plist.entitlements; path = OpenCastWidgets.entitlements; sourceTree = "<group>"; };
-		A7D7E9055599547D36CD6ABE /* SilenceMap.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = SilenceMap.swift; sourceTree = "<group>"; };
 		B20000000000000000000001 /* OpenCastNotificationServiceTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = OpenCastNotificationServiceTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		B20000000000000000000010 /* OpenCastNotificationService/ImageFormat.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenCastNotificationService/ImageFormat.swift; sourceTree = "<group>"; };
 		B20000000000000000000011 /* OpenCastNotificationService/NotificationAttachmentFactory.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenCastNotificationService/NotificationAttachmentFactory.swift; sourceTree = "<group>"; };
@@ -130,16 +123,13 @@
 		C30000000000000000000022 /* OpenCastNotificationContent/EpisodeNotificationArtworkView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenCastNotificationContent/EpisodeNotificationArtworkView.swift; sourceTree = "<group>"; };
 		C30000000000000000000023 /* OpenCastNotificationContent/EpisodeNotificationCardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenCastNotificationContent/EpisodeNotificationCardView.swift; sourceTree = "<group>"; };
 		C30000000000000000000025 /* OpenCastNotificationContent/EpisodeNotificationViewModel+Preview.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "OpenCastNotificationContent/EpisodeNotificationViewModel+Preview.swift"; sourceTree = "<group>"; };
-		CEFFA28C8D632E5CB95E3120 /* SilenceDetector.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = SilenceDetector.swift; sourceTree = "<group>"; };
 		D40000000000000000000004 /* OpenCast/Notifications/NotificationArtworkAttachmentIdentifier.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenCast/Notifications/NotificationArtworkAttachmentIdentifier.swift; sourceTree = "<group>"; };
 		D40000000000000000000007 /* OpenCastNotificationService/ArtworkDownloadAccumulator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenCastNotificationService/ArtworkDownloadAccumulator.swift; sourceTree = "<group>"; };
 		D40000000000000000000008 /* OpenCastNotificationService/ArtworkDownloadRequest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenCastNotificationService/ArtworkDownloadRequest.swift; sourceTree = "<group>"; };
-		E2F0A99C05303FF6E87B150B /* RateController.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = RateController.swift; sourceTree = "<group>"; };
 		E5C0FF1C00000000000000A1 /* Config/OpenCast.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Config/OpenCast.xcconfig; sourceTree = "<group>"; };
 		EE562EA9B50391FB2A7C2564 /* ResumeWidgetSnapshot.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = ResumeWidgetSnapshot.swift; path = OpenCast/Widgets/ResumeWidgetSnapshot.swift; sourceTree = "<group>"; };
 		EEEC57972BE60B1502C491A0 /* Foundation.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Foundation.framework; path = System/Library/Frameworks/Foundation.framework; sourceTree = SDKROOT; };
 		F2D8080B3436C189323BFF97 /* OpenCastResumeWidget.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = OpenCastResumeWidget.swift; sourceTree = "<group>"; };
-		F746813825C1BED0B081F4DC /* Speedometer.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = Speedometer.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
@@ -236,23 +226,6 @@
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
-		1485448E7E651C89A1D54C47 /* SmartSpeed */ = {
-			isa = PBXGroup;
-			children = (
-				3F9CBC2767E058DC362D6449 /* MusicDetector.swift */,
-				8343CDA661E2144B0E0D3504 /* PCMDecoder.swift */,
-				E2F0A99C05303FF6E87B150B /* RateController.swift */,
-				CEFFA28C8D632E5CB95E3120 /* SilenceDetector.swift */,
-				A7D7E9055599547D36CD6ABE /* SilenceMap.swift */,
-				75BD1F0491D6199865670F84 /* SmartSpeedEngine.swift */,
-				4FCBD42A3F4EADBADD0D13A2 /* SmartSpeedSettings.swift */,
-				F746813825C1BED0B081F4DC /* Speedometer.swift */,
-				639C385012BCFB50CEDFC00F /* HybridSmartSpeedIntegration.swift */,
-				636A7C94B5BE2822B855953B /* SmartSpeedManager.swift */,
-			);
-			name = SmartSpeed;
-			sourceTree = "<group>";
-		};
 		2920835A4112A0E49462666A /* iOS */ = {
 			isa = PBXGroup;
 			children = (
@@ -298,7 +271,6 @@
 				63B0F4656B957D1718E7708B /* Frameworks */,
 				47581C8F56081E48C609223F /* OpenCastWidgets */,
 				EE562EA9B50391FB2A7C2564 /* ResumeWidgetSnapshot.swift */,
-				F1DCB6B67FD16A13CAB68863 /* OpenCast */,
 			);
 			sourceTree = "<group>";
 		};
@@ -341,14 +313,6 @@
 				C30000000000000000000025 /* OpenCastNotificationContent/EpisodeNotificationViewModel+Preview.swift */,
 			);
 			name = "Recovered References";
-			sourceTree = "<group>";
-		};
-		F1DCB6B67FD16A13CAB68863 /* OpenCast */ = {
-			isa = PBXGroup;
-			children = (
-				1485448E7E651C89A1D54C47 /* SmartSpeed */,
-			);
-			name = OpenCast;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */

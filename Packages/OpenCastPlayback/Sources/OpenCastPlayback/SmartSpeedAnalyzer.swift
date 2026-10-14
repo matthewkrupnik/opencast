@@ -16,10 +16,10 @@ nonisolated struct SmartSpeedAnalysis: Sendable {
 }
 
 nonisolated enum SmartSpeedAnalyzer {
-    static func analyze(url: URL, settings: SmartSpeedSettings = SmartSpeedSettings()) throws -> SmartSpeedAnalysis {
+    static func analyze(url: URL) throws -> SmartSpeedAnalysis {
         let file = try AVAudioFile(forReading: url)
         let format = file.processingFormat
-        let detector = SilenceDetector(settings: settings, sampleRate: format.sampleRate)
+        let detector = SilenceDetector(sampleRate: format.sampleRate)
         let chunkFrames = AVAudioFrameCount(format.sampleRate)
         guard let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: chunkFrames) else {
             throw CocoaError(.fileReadUnknown)
@@ -27,6 +27,7 @@ nonisolated enum SmartSpeedAnalyzer {
 
         var silences: [SilenceRegion] = []
         while file.framePosition < file.length {
+            try Task.checkCancellation()
             let offset = file.framePosition
             try file.read(into: buffer, frameCount: chunkFrames)
             guard buffer.frameLength > 0 else { break }

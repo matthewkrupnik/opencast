@@ -1,7 +1,7 @@
 import AVFoundation
 import Foundation
 import Testing
-@testable import OpenCast
+@testable import OpenCastPlayback
 
 @MainActor
 @Suite("Smart Speed composition")
