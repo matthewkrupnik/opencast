@@ -11,18 +11,28 @@ nonisolated struct PrivateCloudComputeAdAnalysisClient: Sendable {
     static let callDeadline: Duration = .seconds(120)
 
     let makeModelClient: @MainActor @Sendable () -> any TranscriptIntelligenceModelClient
+    let crashBreaker: AppleAdAnalysisCrashBreaker
 
     init(
         makeModelClient: @escaping @MainActor @Sendable () -> any TranscriptIntelligenceModelClient = {
             PrivateCloudComputeTranscriptIntelligenceClient()
-        }
+        },
+        crashBreaker: AppleAdAnalysisCrashBreaker = AppleAdAnalysisCrashBreaker()
     ) {
         self.makeModelClient = makeModelClient
+        self.crashBreaker = crashBreaker
     }
 
     /// Why a run can't start right now, or nil when the model is ready.
     @MainActor
     func unavailability() -> Error? {
+        if crashBreaker.suspension() != nil {
+            return EpisodeAdAnalysisHTTPError(
+                statusCode: 503,
+                code: "apple_intelligence_unavailable",
+                detail: "Apple Intelligence stopped unexpectedly during the last run. Detect Ads will try it again later."
+            )
+        }
         let client = makeModelClient()
         let reason: String? = switch client.modelAvailability {
         case .available:
@@ -47,7 +57,9 @@ nonisolated struct PrivateCloudComputeAdAnalysisClient: Sendable {
     /// Throws `TranscriptIntelligenceFailure` when Apple's model can't answer,
     /// and `EpisodeAdAnalysisHTTPError` when its answer fails validation.
     func analyze(_ request: EpisodeAdAnalysisAPIRequest) async throws -> EpisodeAdAnalysisAPIResponse {
-        try await GeminiBackgroundAssertion.run(named: "Detect Ads") {
+        crashBreaker.begin()
+        defer { crashBreaker.end() }
+        return try await GeminiBackgroundAssertion.run(named: "Detect Ads") {
             try await run(request)
         }
     }

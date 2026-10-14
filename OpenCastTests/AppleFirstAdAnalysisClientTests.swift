@@ -109,19 +109,93 @@ struct AppleFirstAdAnalysisClientTests {
         #expect(AppleFirstAdAnalysisClient.unavailableMessage(configuration: noKey, usesApple: false) == GeminiConfiguration.missingKeyMessage)
     }
 
+    @Test("An Apple call cut off by a crash skips Apple next launch and falls back to Gemini")
+    func crashMidCallFallsBackToGemini() async throws {
+        let defaults = try Self.defaults()
+        AppleAdAnalysisCrashBreaker(defaults: defaults, processID: "crashed").begin()
+        let (client, scripted, transport) = makeClient(
+            turns: [.json(try Self.answer([Self.span(306)]))],
+            geminiReplies: [.init(status: 200, body: try Self.geminiAnswer([Self.span(306)]))],
+            defaults: defaults
+        )
+
+        guard case .completed(let response) = try await client.analyze(GeminiAdAnalysisClientTests.request()) else {
+            Issue.record("Expected a completed response")
+            return
+        }
+        #expect(response.model == AdAnalysisV3Payload.model)
+        #expect(scripted.sessions.isEmpty)
+        #expect(transport.requests.count == 1)
+    }
+
+    @Test("An Apple call cut off by a crash without a Gemini key reports Apple unavailable")
+    func crashMidCallWithoutGemini() async throws {
+        let defaults = try Self.defaults()
+        AppleAdAnalysisCrashBreaker(defaults: defaults, processID: "crashed").begin()
+        let (client, scripted, _) = makeClient(turns: [], apiKey: "", defaults: defaults)
+
+        do {
+            _ = try await client.analyze(GeminiAdAnalysisClientTests.request())
+            Issue.record("Expected an unavailable error")
+        } catch let error as EpisodeAdAnalysisHTTPError {
+            #expect(error.code == "apple_intelligence_unavailable")
+            #expect(error.statusCode == 503)
+        }
+        #expect(scripted.sessions.isEmpty)
+    }
+
+    @Test("A finished Apple call leaves no crash marker")
+    func finishedCallClearsMarker() async throws {
+        let defaults = try Self.defaults()
+        let (client, _, _) = makeClient(turns: [.json(try Self.answer([Self.span(306)]))], defaults: defaults)
+
+        _ = try await client.analyze(GeminiAdAnalysisClientTests.request())
+
+        #expect(AppleAdAnalysisCrashBreaker(defaults: defaults, processID: "next-launch").suspension() == nil)
+    }
+
+    @Test("Apple is tried again once the crash cooldown passes")
+    func cooldownExpires() throws {
+        let defaults = try Self.defaults()
+        let start = Date(timeIntervalSince1970: 1_000_000)
+        AppleAdAnalysisCrashBreaker(defaults: defaults, processID: "crashed").begin()
+
+        let launch = AppleAdAnalysisCrashBreaker(defaults: defaults, processID: "next", now: { start })
+        #expect(launch.suspension() == start.addingTimeInterval(AppleAdAnalysisCrashBreaker.cooldown))
+        let later = AppleAdAnalysisCrashBreaker(
+            defaults: defaults,
+            processID: "later",
+            now: { start.addingTimeInterval(AppleAdAnalysisCrashBreaker.cooldown + 1) }
+        )
+        #expect(later.suspension() == nil)
+    }
+
     // MARK: Fixtures
+
+    private static func defaults() throws -> UserDefaults {
+        let suiteName = "AppleFirstAdAnalysisClientTests.\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suiteName))
+        defaults.removePersistentDomain(forName: suiteName)
+        return defaults
+    }
 
     private func makeClient(
         turns: [ScriptedTranscriptIntelligenceClient.Turn],
         apiKey: String = "test-key",
-        geminiReplies: [GeminiTestTransport.Reply] = []
+        geminiReplies: [GeminiTestTransport.Reply] = [],
+        defaults: UserDefaults? = nil
     ) -> (AppleFirstAdAnalysisClient, ScriptedTranscriptIntelligenceClient, GeminiTestTransport) {
         let scripted = ScriptedTranscriptIntelligenceClient()
         scripted.turns = turns
         nonisolated(unsafe) let shared = scripted
         let transport = GeminiTestTransport(geminiReplies)
         let client = AppleFirstAdAnalysisClient(
-            apple: PrivateCloudComputeAdAnalysisClient(makeModelClient: { shared }),
+            apple: PrivateCloudComputeAdAnalysisClient(
+                makeModelClient: { shared },
+                crashBreaker: AppleAdAnalysisCrashBreaker(
+                    defaults: defaults ?? UserDefaults(suiteName: "AppleFirstAdAnalysisClientTests.\(UUID().uuidString)")!
+                )
+            ),
             gemini: GeminiAdAnalysisClient(gemini: .testing(transport, apiKey: apiKey)),
             usesApple: true
         )
