@@ -396,6 +396,9 @@ final class OpenCastAppModel {
         self.adFreePass.isBackgroundProtected = { [weak self] in
             self?.adFreePassBackgroundSession.isProtectingBackgroundExecution ?? false
         }
+        self.adFreePass.prefersAppleSpeech = { [weak self] in
+            self?.transcriptionEngineSettings.prefersAppleSpeech ?? false
+        }
         self.transcriptionRequests.onPhaseChange = { [weak self] phase in
             guard let self else {
                 return

@@ -1811,6 +1811,44 @@ struct EpisodeTranscriptionStoreTests {
         #expect(document.segments.map(\.start) == [0, 12, 14])
     }
 
+    @Test("Foreground GPU run that fails in the background retries on CPU+ANE")
+    func foregroundGPURunFailingInBackgroundRetriesNeuralEngine() async throws {
+        let container = try OpenCastModelContainerFactory.make(inMemory: true)
+        let context = ModelContext(container)
+        let temporaryDirectory = try makeTemporaryDirectory()
+        let audioURL = try writeAudioPlaceholder(in: temporaryDirectory, contents: "gpu fallback audio")
+        let transcriber = CheckpointThenCoreMLFailingTranscriber()
+        // Foreground when the run starts, backgrounded by the time it fails.
+        var environmentReads = 0
+        let store = EpisodeTranscriptionStore(
+            transcriber: transcriber,
+            fileStore: EpisodeTranscriptFileStore(baseDirectory: temporaryDirectory),
+            failureEnvironment: {
+                environmentReads += 1
+                return environmentReads == 1
+                    ? .foreground
+                    : EpisodeTranscriptionFailureEnvironment(sceneState: .background, isProtectedDataAvailable: true)
+            }
+        )
+        let episode = makeEpisode(episodeID: "foreground-gpu-background-retry")
+        let record = completedDownloadRecord(episode: episode)
+
+        store.startTranscription(
+            episode,
+            downloadRecord: record,
+            localFileURL: audioURL,
+            modelSummary: modelSummary(),
+            modelContext: context
+        )
+
+        #expect(await waitUntil {
+            store.record(for: episode.episodeID)?.state == .completed
+        })
+        #expect(transcriber.requests.map(\.computeProfile) == [.whisperKitDefault, .cpuAndNeuralEngine])
+        #expect(transcriber.requests.last?.resumeStart == 12)
+        #expect(store.lastEnvironmentalComputeFallbackEpisodeID == nil)
+    }
+
     @Test("CPU-only environmental failure becomes resumable interruption")
     func cpuOnlyEnvironmentalFailureBecomesInterruption() async throws {
         let container = try OpenCastModelContainerFactory.make(inMemory: true)
@@ -1870,7 +1908,7 @@ struct EpisodeTranscriptionStoreTests {
         #expect(await waitUntil {
             store.record(for: episode.episodeID)?.state == .failed
         })
-        #expect(transcriber.requests.map(\.computeProfile) == [.backgroundSafe])
+        #expect(transcriber.requests.map(\.computeProfile) == [.whisperKitDefault])
         #expect(store.record(for: episode.episodeID)?.errorMessage == coreMLError().localizedDescription)
     }
 

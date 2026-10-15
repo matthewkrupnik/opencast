@@ -108,20 +108,21 @@ struct TranscriptionServiceRetentionTests {
         #expect(service.unloads == 0)
     }
 
-    @Test("Compute-profile change misses the retained runtime")
+    @Test("Compute-profile change misses and unloads the retained runtime")
     func profileChangeMisses() async throws {
         let retention = TranscriptionServiceRetention(memoryWarningName: nil)
         let service = SpyService()
 
         retention.beginDrain()
-        #expect(retention.retain(service, key: makeKey(profile: .backgroundSafe)))
-        // The cpuOnly recovery rung must never see the retained runtime.
-        #expect(retention.checkout(makeKey(profile: .cpuOnly)) == nil)
-        // The original key still hits.
-        #expect(retention.checkout(makeKey(profile: .backgroundSafe)) === service)
+        #expect(retention.retain(service, key: makeKey(profile: .whisperKitDefault)))
+        // A foreground GPU runtime is never reused for a background run, and
+        // never stays loaded beside the runtime that run loads.
+        #expect(retention.checkout(makeKey(profile: .cpuAndNeuralEngine)) == nil)
+        await waitForUnloads(service, count: 1)
+        #expect(retention.checkout(makeKey(profile: .whisperKitDefault)) == nil)
     }
 
-    @Test("Model change misses the retained runtime")
+    @Test("Model change misses and unloads the retained runtime")
     func modelChangeMisses() async throws {
         let retention = TranscriptionServiceRetention(memoryWarningName: nil)
         let service = SpyService()
@@ -129,6 +130,7 @@ struct TranscriptionServiceRetentionTests {
         retention.beginDrain()
         #expect(retention.retain(service, key: makeKey(model: "openai_whisper-tiny.en")))
         #expect(retention.checkout(makeKey(model: "openai_whisper-large-v3")) == nil)
+        await waitForUnloads(service, count: 1)
     }
 
     @Test("Drain end unloads the retained runtime")

@@ -611,7 +611,13 @@ final class EpisodeTranscriptionStore {
         var computeProfile = initialComputeProfile
         defer { diagnosticWhisperComputeClass = "background-safe" }
         while true {
-            diagnosticWhisperComputeClass = switch computeProfile {
+            // The GPU is only off-limits in the background, so a run that
+            // starts in the foreground gets it.
+            let attemptComputeProfile: OpenCastTranscriptionComputeProfile =
+                computeProfile == .backgroundSafe && !failureEnvironment().isConstrained
+                    ? .whisperKitDefault
+                    : computeProfile
+            diagnosticWhisperComputeClass = switch attemptComputeProfile {
             case .backgroundSafe: "background-safe"
             case .cpuOnly: "cpu"
             case .cpuAndNeuralEngine: "neural-engine"
@@ -628,7 +634,7 @@ final class EpisodeTranscriptionStore {
                     languageCode: languageCode,
                     runLanguageCode: runLanguageCode,
                     modelContext: modelContext,
-                    computeProfile: computeProfile,
+                    computeProfile: attemptComputeProfile,
                     workingRelativePath: &workingRelativePath
                 )
                 await transcriber.releaseRunResources()
@@ -676,7 +682,7 @@ final class EpisodeTranscriptionStore {
                     relativePath: workingRelativePath,
                     error: error,
                     engine: engine,
-                    attemptedComputeProfile: computeProfile,
+                    attemptedComputeProfile: attemptComputeProfile,
                     modelContext: modelContext
                 ) {
                 case .retry(let nextProfile):
@@ -969,6 +975,15 @@ final class EpisodeTranscriptionStore {
                     modelContext: modelContext
                 )
                 return .finish
+            }
+
+            // A foreground GPU run that lost the GPU on backgrounding drops
+            // to the CPU+ANE pin, not all the way to CPU.
+            if attemptedComputeProfile == .whisperKitDefault {
+                AdFreePassBackgroundRunLog.record(
+                    "transcription environmental compute failure action=retryNeuralEngine episodeID=\(episodeID) completed=\(record.completedDuration.backgroundLogSeconds) checkpoints=\(record.checkpointCount)"
+                )
+                return .retry(.cpuAndNeuralEngine)
             }
 
             AdFreePassBackgroundRunLog.record(

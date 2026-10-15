@@ -79,13 +79,23 @@ nonisolated final class TranscriptionServiceRetention: @unchecked Sendable {
     /// the identity matches; ownership transfers out (a successful run
     /// re-retains, a failed run unloads through the normal path).
     func checkout(_ key: Key) -> (any RetainableTranscriptionService)? {
-        lock.withLock {
-            guard drainActive, let current = retained, current.key == key else {
+        var mismatched: Retained?
+        let service: (any RetainableTranscriptionService)? = lock.withLock {
+            guard drainActive, let current = retained else {
                 return nil
             }
             retained = nil
+            guard current.key == key else {
+                mismatched = current
+                return nil
+            }
             return current.service
         }
+        if let mismatched {
+            // The caller is about to load its own runtime; never hold two.
+            Task { await mismatched.service.unload() }
+        }
+        return service
     }
 
     /// Retains after a successful run. Returns false when no drain is active

@@ -45,6 +45,7 @@ final class EpisodeAdFreePassCoordinator {
     @ObservationIgnored var onStageChange: (@MainActor (EpisodeAdFreePassStage, AdFreePassQueueContext) -> Void)?
     @ObservationIgnored var onQueueTerminal: (@MainActor (AdFreePassQueueTerminalOutcome) -> Void)?
     @ObservationIgnored var isBackgroundProtected: @MainActor () -> Bool = { false }
+    @ObservationIgnored var prefersAppleSpeech: @MainActor () -> Bool = { false }
     /// UI-testing stand-in for the live queue (App Store pipeline shot): the
     /// snapshot and per-episode status come from the override, nothing runs.
     @ObservationIgnored var uiTestQueueOverride: AdFreePassQueueUITestOverride?
@@ -931,9 +932,11 @@ final class EpisodeAdFreePassCoordinator {
             } else {
                 let transcriptionPlan = try await resolvePlanEnsuringResources(
                     for: deps.transcriptionEngine,
+                    episodeID: episode.episodeID,
                     podcastLanguageCode: deps.podcastLanguageCode,
                     transcriptionModels: deps.transcriptionModels,
                     appleSpeechAssets: deps.appleSpeechAssets,
+                    transcriptions: deps.transcriptions,
                     modelContext: deps.modelContext
                 )
                 activeTranscriptionModelIdentity = transcriptionPlan.modelIdentity
@@ -1251,15 +1254,20 @@ final class EpisodeAdFreePassCoordinator {
 
     private func resolvePlanEnsuringResources(
         for engine: AdFreePassTranscriptionEngine,
+        episodeID: String,
         podcastLanguageCode: String?,
         transcriptionModels: TranscriptionModelStore,
         appleSpeechAssets: AppleSpeechAssetStore,
+        transcriptions: EpisodeTranscriptionStore,
         modelContext: ModelContext
     ) async throws -> EpisodeTranscriptionPlan {
+        // Follows the global engine preference, like Generate; an interrupted
+        // Whisper checkpoint stays on Whisper so its progress is kept.
         let resolver = EpisodeTranscriptionPlanResolver(
             transcriptionModels: transcriptionModels,
             appleSpeechAssets: appleSpeechAssets,
-            prefersRevocationDurableEngine: !BGTaskSchedulerAdFreePassScheduler().supportsGPUResources
+            prefersRevocationDurableEngine: !prefersAppleSpeech()
+                || transcriptions.hasResumableWhisperCheckpoint(for: episodeID)
         )
 
         switch engine {
@@ -1590,7 +1598,7 @@ final class EpisodeAdFreePassCoordinator {
     ) -> Bool {
         switch engine {
         case .productDefault:
-            !appleSpeechAssets.isTranscriberAvailable
+            !prefersAppleSpeech() || !appleSpeechAssets.isTranscriberAvailable
         case .selectedWhisperModel:
             true
         case .appleSpeech:
