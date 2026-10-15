@@ -1,4 +1,5 @@
 import Foundation
+import OpenCastPlayback
 
 struct EpisodeDownloadFileStore: Sendable {
     nonisolated static let directoryName = "EpisodeDownloads"
@@ -141,7 +142,9 @@ struct EpisodeDownloadFileStore: Sendable {
             return
         }
 
-        try removeItemIfPresent(at: fileURL(relativePath: relativePath))
+        let audioURL = fileURL(relativePath: relativePath)
+        try removeItemIfPresent(at: audioURL)
+        try removeItemIfPresent(at: SmartSpeedPausePreparer.pauseFileURL(for: audioURL))
     }
 
     nonisolated func removeItemIfPresent(at url: URL) throws {

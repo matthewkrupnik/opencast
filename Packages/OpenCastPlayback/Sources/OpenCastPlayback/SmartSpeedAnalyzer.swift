@@ -1,7 +1,7 @@
 import AVFoundation
 
 /// Silence found by decoding a whole downloaded file ahead of playback.
-nonisolated struct SmartSpeedAnalysis: Sendable {
+nonisolated struct SmartSpeedAnalysis: Sendable, Codable {
     let sampleRate: Double
     let frameCount: AVAudioFramePosition
     let silences: [SilenceRegion]

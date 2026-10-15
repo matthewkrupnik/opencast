@@ -93,6 +93,10 @@ public final class AVFoundationPlaybackController {
     @ObservationIgnored private var currentItemSourceURL: URL?
     @ObservationIgnored private var isSmartSpeedEnabled = false
     @ObservationIgnored private var smartSpeedTask: Task<Void, Never>?
+    /// Set while the trimmed copy is built from saved pauses. That takes
+    /// milliseconds, so playback waits for it rather than starting on the
+    /// file and swapping moments later.
+    @ObservationIgnored private var isAwaitingSmartSpeedItem = false
     /// The last download trimmed for Smart Speed, kept so toggling or a
     /// rebuild of the same file need not analyze it again.
     @ObservationIgnored private var smartSpeedSource: SmartSpeedSource?
@@ -352,11 +356,13 @@ public final class AVFoundationPlaybackController {
     }
 
     /// Puts the trimmed copy of the current download in the player while
-    /// Smart Speed is on, and the file itself otherwise. Analysis decodes the
-    /// whole file, so the episode plays untrimmed until it finishes.
+    /// Smart Speed is on, and the file itself otherwise. With saved pauses
+    /// the copy is ready before playback starts; without them, analysis
+    /// decodes the whole file and the episode plays untrimmed until then.
     private func refreshSmartSpeed() {
         smartSpeedTask?.cancel()
         smartSpeedTask = nil
+        stopAwaitingSmartSpeedItem()
         guard snapshot.currentEpisode != nil, let sourceURL = currentItemSourceURL else {
             return
         }
@@ -375,13 +381,23 @@ public final class AVFoundationPlaybackController {
             return
         }
 
+        isAwaitingSmartSpeedItem = SmartSpeedPauseFile.exists(for: sourceURL)
         smartSpeedTask = Task { [weak self] in
             let composition: SmartSpeedCompositionBuilder.Result
             do {
-                composition = try await SmartSpeedCompositionBuilder.make(url: sourceURL)
+                let analysis: SmartSpeedAnalysis
+                if let saved = await SmartSpeedPauseFile.loadInBackground(for: sourceURL) {
+                    analysis = saved
+                } else {
+                    try Task.checkCancellation()
+                    self?.stopAwaitingSmartSpeedItem()
+                    analysis = try await SmartSpeedPauseFile.analyzeAndSaveInBackground(for: sourceURL)
+                }
+                composition = try await SmartSpeedCompositionBuilder.build(url: sourceURL, analysis: analysis)
             } catch {
-                if !(error is CancellationError) {
+                if !(error is CancellationError), !Task.isCancelled {
                     self?.recordDiagnosticsEvent("smart speed analysis failed: \(error.localizedDescription)")
+                    self?.stopAwaitingSmartSpeedItem()
                 }
                 return
             }
@@ -395,8 +411,22 @@ public final class AVFoundationPlaybackController {
             }
 
             smartSpeedTask = nil
+            isAwaitingSmartSpeedItem = false
             smartSpeedSource = SmartSpeedSource(url: sourceURL, fileIdentity: fileIdentity, composition: composition)
             swapCurrentItemForSmartSpeed()
+        }
+    }
+
+    /// Starts any playback that was held for the trimmed copy on the item
+    /// already in the player.
+    private func stopAwaitingSmartSpeedItem() {
+        guard isAwaitingSmartSpeedItem else {
+            return
+        }
+
+        isAwaitingSmartSpeedItem = false
+        if isPlaybackRequested, isAudioSessionActive {
+            requestPlaybackForCurrentItem()
         }
     }
 
@@ -556,6 +586,7 @@ public final class AVFoundationPlaybackController {
         currentItemSourceURL = nil
         smartSpeedTask?.cancel()
         smartSpeedTask = nil
+        isAwaitingSmartSpeedItem = false
         currentSmartSpeedItem = nil
         playbackPositionProtection.clear()
         playbackAdSkipPolicy.setZones([])
@@ -1473,6 +1504,10 @@ public final class AVFoundationPlaybackController {
     }
 
     private func requestPlaybackForCurrentItem() {
+        guard !isAwaitingSmartSpeedItem else {
+            transitionToBuffering(reason: "awaiting smart speed item")
+            return
+        }
         guard let playerItem = player.currentItem else {
             failPlayback(message: "This episode could not be played.")
             return
@@ -1493,6 +1528,10 @@ public final class AVFoundationPlaybackController {
 
     private func requestPlaybackForReadyItem(_ playerItem: AVPlayerItem) {
         guard player.currentItem === playerItem, snapshot.currentEpisode != nil else {
+            return
+        }
+        guard !isAwaitingSmartSpeedItem else {
+            transitionToBuffering(reason: "awaiting smart speed item")
             return
         }
 

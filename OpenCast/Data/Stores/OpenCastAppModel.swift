@@ -444,6 +444,7 @@ final class OpenCastAppModel {
                 return
             }
             autoDetectAdsOnDownloadIfQualified(record, modelContext: modelContext)
+            prepareSmartSpeedPausesIfEnabled(record)
         }
         playback.setRemotePlaybackRateChangeHandler { [weak self, weak modelContext] rate in
             guard let self, let modelContext else {
@@ -2471,6 +2472,20 @@ final class OpenCastAppModel {
                 episode,
                 modelContext: modelContext
             )
+        }
+    }
+
+    /// Finds the pauses while the download is fresh, so its first Smart
+    /// Speed play starts trimmed instead of swapping in mid-episode.
+    private func prepareSmartSpeedPausesIfEnabled(_ record: EpisodeDownloadRecord) {
+        guard playbackSettings.isSmartSpeedEnabled,
+              let fileURL = downloads.localFileURL(for: record)
+        else {
+            return
+        }
+
+        Task(priority: .utility) {
+            await SmartSpeedPausePreparer.shared.preparePauses(for: fileURL)
         }
     }
 

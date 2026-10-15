@@ -1,6 +1,7 @@
 import Foundation
 import Observation
 import OpenCastCore
+import OpenCastPlayback
 import OpenCastTranscription
 import SwiftData
 import Testing
@@ -28,12 +29,15 @@ struct DownloadStoreTests {
         #expect(record.bytesReceived == 6)
         #expect(record.bytesExpected == 6)
         #expect(fileStore.fileExists(relativePath: relativePath))
+        let pauseFileURL = SmartSpeedPausePreparer.pauseFileURL(for: fileStore.fileURL(relativePath: relativePath))
+        try Data("pauses".utf8).write(to: pauseFileURL)
 
         store.deleteDownload(record, modelContext: context)
 
         #expect(store.record(for: episode.episodeID) == nil)
         #expect(try context.fetch(FetchDescriptor<EpisodeDownloadRecord>()).isEmpty)
         #expect(fileStore.fileExists(relativePath: relativePath) == false)
+        #expect(!FileManager.default.fileExists(atPath: pauseFileURL.path))
     }
 
     @Test("record(for:) matches a linear scan through download, reload, and delete")

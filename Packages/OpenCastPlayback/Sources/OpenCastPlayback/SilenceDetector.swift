@@ -1,7 +1,7 @@
 import Accelerate
 import AVFoundation
 
-nonisolated struct SilenceRegion: Sendable {
+nonisolated struct SilenceRegion: Sendable, Codable {
     let startFrame: AVAudioFramePosition
     let endFrame: AVAudioFramePosition
 }

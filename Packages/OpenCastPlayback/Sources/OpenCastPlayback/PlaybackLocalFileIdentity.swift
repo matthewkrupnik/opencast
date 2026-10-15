@@ -2,7 +2,7 @@ import Foundation
 
 /// Captures the file generation loaded by an item, including replacements
 /// that reuse the same download URL.
-nonisolated struct PlaybackLocalFileIdentity: Equatable {
+nonisolated struct PlaybackLocalFileIdentity: Equatable, Codable {
     let fileNumber: UInt64
     let byteCount: Int64
     let modifiedAt: Date

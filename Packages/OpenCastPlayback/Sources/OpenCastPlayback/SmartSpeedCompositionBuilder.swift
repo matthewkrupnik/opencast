@@ -44,11 +44,8 @@ nonisolated enum SmartSpeedCompositionBuilder {
         case noAudioTrack
     }
 
-    /// Finds the pauses in a downloaded file and builds its shortened copy,
-    /// off the main actor: analysis decodes the whole file.
     @concurrent
-    static func make(url: URL) async throws -> Result {
-        let analysis = try SmartSpeedAnalyzer.analyze(url: url)
+    static func build(url: URL, analysis: SmartSpeedAnalysis) async throws -> Result {
         let timeline = SmartSpeedTimeline(silences: analysis.silenceRanges, originalDuration: analysis.duration)
         let asset = AVURLAsset(url: url, options: [AVURLAssetPreferPreciseDurationAndTimingKey: true])
         return try await build(asset: asset, timeline: timeline)

@@ -10,8 +10,8 @@ struct SmartSpeedPlaybackTests {
     func trimmedCopyKeepsEpisodeClock() async throws {
         try await AVFoundationPlaybackTestGate.acquire()
         defer { AVFoundationPlaybackTestGate.release() }
-        let url = try SmartSpeedAudioFixture.write(pattern: Self.pattern)
-        defer { try? FileManager.default.removeItem(at: url) }
+        let url = try Self.writeFixture()
+        defer { Self.remove(url) }
         let controller = AVFoundationPlaybackController()
         defer { controller.unload() }
         var events: [String] = []
@@ -50,8 +50,8 @@ struct SmartSpeedPlaybackTests {
     func trimmedCopyPlays() async throws {
         try await AVFoundationPlaybackTestGate.acquire()
         defer { AVFoundationPlaybackTestGate.release() }
-        let url = try SmartSpeedAudioFixture.write(pattern: Self.pattern)
-        defer { try? FileManager.default.removeItem(at: url) }
+        let url = try Self.writeFixture()
+        defer { Self.remove(url) }
         let controller = AVFoundationPlaybackController()
         defer { controller.unload() }
         var events: [String] = []
@@ -67,6 +67,74 @@ struct SmartSpeedPlaybackTests {
         controller.play()
         try await waitUntil { controller.state == .playing }
         try await waitUntil { controller.position > 1.3 }
+    }
+
+    @Test("Saved pauses are reused only for the file they were found in")
+    func pauseFileMatchesItsDownload() throws {
+        let url = try Self.writeFixture()
+        defer { Self.remove(url) }
+
+        #expect(SmartSpeedPauseFile.load(for: url) == nil)
+        let found = try SmartSpeedPauseFile.analyzeAndSave(for: url)
+        let saved = try #require(SmartSpeedPauseFile.load(for: url))
+        #expect(saved.silenceRanges == found.silenceRanges)
+        #expect(saved.duration == found.duration)
+
+        // A replacement download at the same path must be analyzed again.
+        let replacement = try Self.writeFixture()
+        defer { Self.remove(replacement) }
+        try FileManager.default.removeItem(at: url)
+        try FileManager.default.copyItem(at: replacement, to: url)
+        #expect(SmartSpeedPauseFile.load(for: url) == nil)
+    }
+
+    @Test("With saved pauses, playback starts on the trimmed copy instead of swapping to it")
+    func savedPausesStartTrimmed() async throws {
+        try await AVFoundationPlaybackTestGate.acquire()
+        defer { AVFoundationPlaybackTestGate.release() }
+        let url = try Self.writeFixture()
+        defer { Self.remove(url) }
+        await SmartSpeedPausePreparer.shared.preparePauses(for: url)
+        #expect(SmartSpeedPauseFile.load(for: url) != nil)
+
+        let controller = AVFoundationPlaybackController()
+        defer { controller.unload() }
+        var events: [String] = []
+        controller.setEventLogHandler { events.append($0) }
+        controller.setSmartSpeedEnabled(true)
+        var current = episode(duration: nil)
+        current.audioURL = url
+        try controller.load(current, startPosition: 3)
+        controller.play()
+        try await waitUntil { controller.state == .playing }
+
+        let trimmed = try #require(events.firstIndex { $0.contains("smart speed trimmed") })
+        let started = try #require(events.firstIndex { $0.contains("requested ready item playback") })
+        #expect(trimmed < started, "\(events)")
+        #expect(abs(try #require(controller.duration) - 5.5) < 0.05)
+        #expect(controller.position > 2.95)
+    }
+
+    @Test("Unusable saved pauses fall back to playing the file while analyzing")
+    func stalePauseFileDoesNotHoldPlayback() async throws {
+        try await AVFoundationPlaybackTestGate.acquire()
+        defer { AVFoundationPlaybackTestGate.release() }
+        let url = try Self.writeFixture()
+        defer { Self.remove(url) }
+        try Data("stale".utf8).write(to: SmartSpeedPauseFile.url(for: url))
+
+        let controller = AVFoundationPlaybackController()
+        defer { controller.unload() }
+        var events: [String] = []
+        controller.setEventLogHandler { events.append($0) }
+        controller.setSmartSpeedEnabled(true)
+        var current = episode(duration: nil)
+        current.audioURL = url
+        try controller.load(current)
+        controller.play()
+        try await waitUntil { events.contains { $0.contains("smart speed trimmed") } }
+        try await waitUntil { controller.state == .playing }
+        #expect(SmartSpeedPauseFile.load(for: url) != nil)
     }
 
     @Test("Streams play unchanged")
@@ -86,6 +154,15 @@ struct SmartSpeedPlaybackTests {
         .speech(0.8), .pause(0.5), .speech(1.0), .pause(0.15),
         .speech(1.0), .pause(1.2), .speech(0.85)
     ]
+
+    private static func writeFixture() throws -> URL {
+        try SmartSpeedAudioFixture.write(pattern: pattern)
+    }
+
+    private static func remove(_ url: URL) {
+        try? FileManager.default.removeItem(at: url)
+        try? FileManager.default.removeItem(at: SmartSpeedPauseFile.url(for: url))
+    }
 
     private func waitUntil(_ condition: () -> Bool) async throws {
         let deadline = Date.now.addingTimeInterval(10)
