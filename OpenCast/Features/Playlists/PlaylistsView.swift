@@ -76,7 +76,11 @@ struct PlaylistsView: View {
 
     @ViewBuilder
     private func content(playlists: [PlaylistSummary]) -> some View {
-        if playlists.isEmpty {
+        if playlists.isEmpty, !appModel.coreStoresHydrated {
+            // Playlists load last at startup; claiming there are none
+            // before then flashes the empty state.
+            Color.clear
+        } else if playlists.isEmpty {
             ContentUnavailableView {
                 Label("No Playlists", systemImage: "music.note.list")
             } description: {
