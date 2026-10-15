@@ -18,6 +18,8 @@ public typealias PlaybackNextTrackHandler = @MainActor () -> Void
 public final class AVFoundationPlaybackController {
     private static let autoSkipSettleTolerance: TimeInterval = 0.05
     private static let sleepTimerRearmWindow: TimeInterval = 5 * 60
+    /// Room for the swap's boundary observer to be armed before its cut.
+    private static let smartSpeedSwapLeadTime: TimeInterval = 0.15
     private static let logger = Logger(
         subsystem: "OpenCastPlayback",
         category: "AVFoundationPlaybackController"
@@ -97,6 +99,13 @@ public final class AVFoundationPlaybackController {
     /// milliseconds, so playback waits for it rather than starting on the
     /// file and swapping moments later.
     @ObservationIgnored private var isAwaitingSmartSpeedItem = false
+    /// Armed at the next cut while the file plays, so the swap to the
+    /// trimmed copy lands in a pause instead of mid-word.
+    @ObservationIgnored private var smartSpeedSwapObserver: PlayerTimeObserver?
+    /// Set from a mid-play swap until the trimmed copy plays. The listener
+    /// asked for nothing, so the state stays playing rather than buffering.
+    @ObservationIgnored private var isSwappingSmartSpeedItem = false
+    @ObservationIgnored private var smartSpeedSwapStartedAt: ContinuousClock.Instant?
     /// The last download trimmed for Smart Speed, kept so toggling or a
     /// rebuild of the same file need not analyze it again.
     @ObservationIgnored private var smartSpeedSource: SmartSpeedSource?
@@ -362,6 +371,7 @@ public final class AVFoundationPlaybackController {
     private func refreshSmartSpeed() {
         smartSpeedTask?.cancel()
         smartSpeedTask = nil
+        removeSmartSpeedSwapObserver()
         stopAwaitingSmartSpeedItem()
         guard snapshot.currentEpisode != nil, let sourceURL = currentItemSourceURL else {
             return
@@ -376,8 +386,8 @@ public final class AVFoundationPlaybackController {
             return
         }
         let fileIdentity = currentItemLocalFileIdentity
-        if smartSpeedSource?.matches(sourceURL, fileIdentity) == true {
-            swapCurrentItemForSmartSpeed()
+        if let smartSpeedSource, smartSpeedSource.matches(sourceURL, fileIdentity) {
+            scheduleSmartSpeedSwap(to: smartSpeedSource.composition)
             return
         }
 
@@ -413,7 +423,61 @@ public final class AVFoundationPlaybackController {
             smartSpeedTask = nil
             isAwaitingSmartSpeedItem = false
             smartSpeedSource = SmartSpeedSource(url: sourceURL, fileIdentity: fileIdentity, composition: composition)
+            scheduleSmartSpeedSwap(to: composition)
+        }
+    }
+
+    /// While the file plays, waits for the start of the next cut and
+    /// resumes the trimmed copy where that cut ends. The reload gap then
+    /// falls in a pause that was about to be shortened anyway. Otherwise
+    /// nothing is audible, so the swap happens now.
+    private func scheduleSmartSpeedSwap(to composition: SmartSpeedCompositionBuilder.Result) {
+        removeSmartSpeedSwapObserver()
+        let position = player.currentTime().seconds
+        guard snapshot.state == .playing,
+              let playerItem = player.currentItem,
+              position.isFinite,
+              let cut = composition.timeline.nextCut(after: position + Self.smartSpeedSwapLeadTime)
+        else {
             swapCurrentItemForSmartSpeed()
+            return
+        }
+
+        let generation = currentItemObservationGeneration
+        smartSpeedSwapObserver = PlayerTimeObserver(token: player.addBoundaryTimeObserver(
+            forTimes: [NSValue(time: CMTime(seconds: cut.start, preferredTimescale: 600))],
+            queue: .main
+        ) { [weak self] in
+            // Main queue: hop-free, so the swap starts on the cut.
+            MainActor.assumeIsolated {
+                guard let self,
+                      self.smartSpeedSwapObserver != nil,
+                      self.isCurrentItemCallback(playerItem, generation: generation)
+                else {
+                    return
+                }
+                self.removeSmartSpeedSwapObserver()
+                self.swapCurrentItemForSmartSpeed(resumingAt: cut.end)
+            }
+        })
+        recordDiagnosticsEvent("smart speed swap waits for cut at \(diagnosticsTime(cut.start))")
+    }
+
+    /// A seek or pause already breaks the audio, so a swap still waiting
+    /// for its cut happens then.
+    private func performPendingSmartSpeedSwap() {
+        guard smartSpeedSwapObserver != nil else {
+            return
+        }
+
+        removeSmartSpeedSwapObserver()
+        swapCurrentItemForSmartSpeed()
+    }
+
+    private func removeSmartSpeedSwapObserver() {
+        if let smartSpeedSwapObserver {
+            player.removeTimeObserver(smartSpeedSwapObserver.token)
+            self.smartSpeedSwapObserver = nil
         }
     }
 
@@ -432,21 +496,26 @@ public final class AVFoundationPlaybackController {
 
     /// Rebuilds the item, which picks the trimmed copy or the file to match
     /// the setting, at the listener's place on the episode clock.
-    private func swapCurrentItemForSmartSpeed() {
-        // The 1 Hz tick can trail the player by a second; resume where the
-        // listener actually is unless a seek has yet to land.
-        if player.currentItem?.status == .readyToPlay,
+    private func swapCurrentItemForSmartSpeed(resumingAt resumePosition: TimeInterval? = nil) {
+        if let resumePosition {
+            snapshot.position = clampedPosition(resumePosition)
+        } else if player.currentItem?.status == .readyToPlay,
            playbackPositionProtection.position == nil,
            pendingAutoSkipTarget == nil,
            !hasFinishedCurrentEpisode
         {
+            // The 1 Hz tick can trail the player by a second; resume where
+            // the listener actually is unless a seek has yet to land.
             let playerPosition = episodeTime(fromPlayer: player.currentTime().seconds)
             if playerPosition.isFinite {
                 snapshot.position = clampedPosition(playerPosition)
             }
         }
 
-        guard rebuildCurrentItem() else {
+        let keepsPlaying = isPlaybackRequested && snapshot.state == .playing
+        isSwappingSmartSpeedItem = keepsPlaying
+        smartSpeedSwapStartedAt = keepsPlaying ? .now : nil
+        guard rebuildCurrentItem(showsLoading: !keepsPlaying) else {
             return
         }
 
@@ -536,6 +605,7 @@ public final class AVFoundationPlaybackController {
         }
         recordDiagnosticsEvent("play requested source=\(source)")
         isPlaybackRequested = true
+        isSwappingSmartSpeedItem = false
         if needsCurrentItemRebuildForPlaybackRetry,
            !rebuildCurrentItem()
         {
@@ -564,6 +634,7 @@ public final class AVFoundationPlaybackController {
         markProgressBoundary()
         recordDiagnosticsEvent("paused reason=\(reason) at \(diagnosticsTime(snapshot.position))")
         publishPlaybackState()
+        performPendingSmartSpeedSwap()
     }
 
     public func unload() {
@@ -1402,6 +1473,7 @@ public final class AVFoundationPlaybackController {
         }
         removeOutroBoundaryObserver()
         removeSkipZoneBoundaryObservers()
+        removeSmartSpeedSwapObserver()
         if let currentItemEndObserver {
             NotificationCenter.default.removeObserver(currentItemEndObserver)
             self.currentItemEndObserver = nil
@@ -1427,6 +1499,10 @@ public final class AVFoundationPlaybackController {
 
         switch player.timeControlStatus {
         case .playing:
+            if isSwappingSmartSpeedItem, let smartSpeedSwapStartedAt {
+                isSwappingSmartSpeedItem = false
+                recordDiagnosticsEvent("smart speed swap resumed after \(smartSpeedSwapStartedAt.duration(to: .now))")
+            }
             snapshot.state = .playing
             publishPlaybackState()
         case .waitingToPlayAtSpecifiedRate:
@@ -1543,9 +1619,9 @@ public final class AVFoundationPlaybackController {
         case .playing:
             snapshot.state = .playing
         case .waitingToPlayAtSpecifiedRate, .paused:
-            snapshot.state = .buffering
+            snapshot.state = isSwappingSmartSpeedItem ? .playing : .buffering
         @unknown default:
-            snapshot.state = .buffering
+            snapshot.state = isSwappingSmartSpeedItem ? .playing : .buffering
         }
         recordDiagnosticsEvent(
             "requested ready item playback result=\(snapshot.state.accessibilityDescription) timeControlStatus=\(diagnosticsTimeControlStatus) waitingReason=\(player.reasonForWaitingToPlay?.rawValue ?? "nil")"
@@ -1573,7 +1649,7 @@ public final class AVFoundationPlaybackController {
         return currentItem.status == .failed
     }
 
-    private func rebuildCurrentItem() -> Bool {
+    private func rebuildCurrentItem(showsLoading: Bool = true) -> Bool {
         guard let episode = snapshot.currentEpisode,
               let audioURL = episode.audioURL
         else {
@@ -1599,7 +1675,9 @@ public final class AVFoundationPlaybackController {
             seekPlayer(to: snapshot.position, mode: .restoredPosition)
         }
 
-        snapshot.state = .loading
+        if showsLoading {
+            snapshot.state = .loading
+        }
         recordDiagnosticsEvent("rebuilt player item at \(diagnosticsTime(snapshot.position))")
         publishPlaybackState()
         return true
@@ -1614,6 +1692,10 @@ public final class AVFoundationPlaybackController {
 
     private func transitionToBuffering(reason: String) {
         guard snapshot.currentEpisode != nil, snapshot.state != .buffering else {
+            return
+        }
+        guard !(isSwappingSmartSpeedItem && isPlaybackRequested) else {
+            recordDiagnosticsEvent("smart speed swap loading reason=\(reason)")
             return
         }
 
@@ -1773,6 +1855,7 @@ public final class AVFoundationPlaybackController {
     }
 
     private func seekPlayer(to position: TimeInterval, mode: SeekMode = .userInitiated(.scrub)) {
+        performPendingSmartSpeedSwap()
         let clamped = clampedPosition(position)
         switch mode {
         case .autoSkip:

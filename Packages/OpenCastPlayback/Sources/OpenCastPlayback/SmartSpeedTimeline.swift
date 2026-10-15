@@ -61,6 +61,14 @@ nonisolated struct SmartSpeedTimeline: Sendable, Equatable {
         self.segments = segments
     }
 
+    /// The first removed span starting at or after `time`, on the original
+    /// clock.
+    func nextCut(after time: TimeInterval) -> (start: TimeInterval, end: TimeInterval)? {
+        zip(segments, segments.dropFirst())
+            .first { before, _ in before.originalEnd >= time }
+            .map { before, after in (before.originalEnd, after.originalStart) }
+    }
+
     /// A time inside a removed pause maps to the cut point that replaced it.
     func compositionTime(forOriginal time: TimeInterval) -> TimeInterval {
         guard let segment = lastSegment(where: { $0.originalStart <= time }) else { return 0 }

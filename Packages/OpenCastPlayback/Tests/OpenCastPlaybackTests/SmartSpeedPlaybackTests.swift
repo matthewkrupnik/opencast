@@ -137,6 +137,69 @@ struct SmartSpeedPlaybackTests {
         #expect(SmartSpeedPauseFile.load(for: url) != nil)
     }
 
+    @Test("Turned on mid-play, the swap waits for the next pause and the state stays playing")
+    func midPlaySwapLandsInAPause() async throws {
+        try await AVFoundationPlaybackTestGate.acquire()
+        defer { AVFoundationPlaybackTestGate.release() }
+        let url = try SmartSpeedAudioFixture.write(pattern: [
+            .speech(2.0), .pause(0.6), .speech(1.5), .pause(1.0), .speech(1.0)
+        ])
+        defer { Self.remove(url) }
+        let controller = AVFoundationPlaybackController()
+        defer { controller.unload() }
+        var events: [String] = []
+        controller.setEventLogHandler { events.append($0) }
+        var current = episode(duration: nil)
+        current.audioURL = url
+        try controller.load(current)
+        controller.play()
+        try await waitUntil { controller.state == .playing }
+
+        controller.setSmartSpeedEnabled(true)
+        var interruptions: [PlaybackState] = []
+        let deadline = Date.now.addingTimeInterval(10)
+        while !events.contains(where: { $0.contains("smart speed swap resumed") }) {
+            try #require(Date.now < deadline, "\(events)")
+            if controller.state != .playing {
+                interruptions.append(controller.state)
+            }
+            try await Task.sleep(for: .milliseconds(5))
+        }
+
+        #expect(interruptions.isEmpty, "\(interruptions) \(events)")
+        // The 2.0–2.6 pause is cut from 2.1 to 2.5.
+        let cutStart = try #require(Self.time(after: "swap waits for cut at ", in: events))
+        #expect(abs(cutStart - 2.1) < 0.06, "\(events)")
+        let resumedAt = try #require(Self.time(after: "rebuilt player item at ", in: events))
+        #expect(abs(resumedAt - 2.5) < 0.06, "\(events)")
+        print("SMARTSPEED_SWAP", events.first { $0.contains("swap resumed") } ?? "")
+        try await waitForMediaClock(in: controller, near: 2.6, tolerance: 0.4)
+    }
+
+    @Test("Pausing before the pause arrives swaps right away")
+    func pauseSwapsImmediately() async throws {
+        try await AVFoundationPlaybackTestGate.acquire()
+        defer { AVFoundationPlaybackTestGate.release() }
+        let url = try SmartSpeedAudioFixture.write(pattern: [.speech(3.0), .pause(0.6), .speech(1.0)])
+        defer { Self.remove(url) }
+        let controller = AVFoundationPlaybackController()
+        defer { controller.unload() }
+        var events: [String] = []
+        controller.setEventLogHandler { events.append($0) }
+        var current = episode(duration: nil)
+        current.audioURL = url
+        try controller.load(current)
+        controller.play()
+        try await waitUntil { controller.state == .playing }
+        controller.setSmartSpeedEnabled(true)
+        try await waitUntil { events.contains { $0.contains("smart speed swap waits for cut") } }
+
+        controller.pause()
+        #expect(events.last?.contains("smart speed trimmed") == true, "\(events)")
+        #expect(controller.state == .paused)
+        #expect(!events.contains { $0.contains("smart speed swap resumed") })
+    }
+
     @Test("Streams play unchanged")
     func streamsAreNotTrimmed() async throws {
         let controller = AVFoundationPlaybackController()
@@ -154,6 +217,15 @@ struct SmartSpeedPlaybackTests {
         .speech(0.8), .pause(0.5), .speech(1.0), .pause(0.15),
         .speech(1.0), .pause(1.2), .speech(0.85)
     ]
+
+    private static func time(after marker: String, in events: [String]) -> TimeInterval? {
+        guard let event = events.last(where: { $0.contains(marker) }),
+              let range = event.range(of: marker)
+        else {
+            return nil
+        }
+        return TimeInterval(event[range.upperBound...].prefix { $0.isNumber || $0 == "." })
+    }
 
     private static func writeFixture() throws -> URL {
         try SmartSpeedAudioFixture.write(pattern: pattern)
@@ -174,7 +246,8 @@ struct SmartSpeedPlaybackTests {
 
     private func waitForMediaClock(
         in controller: AVFoundationPlaybackController,
-        near position: TimeInterval
+        near position: TimeInterval,
+        tolerance: TimeInterval = 0.05
     ) async throws {
         var last: TimeInterval?
         let deadline = Date.now.addingTimeInterval(5)
@@ -183,7 +256,11 @@ struct SmartSpeedPlaybackTests {
                 last = sample.position
                 break
             }
-            if let last, abs(last - position) < 0.05 {
+            if let last, abs(last - position) < tolerance {
+                // Let position ticks already queued for the main actor
+                // land first; one captured before a seek the test makes
+                // next can otherwise read as that seek's landing.
+                try await Task.sleep(for: .milliseconds(50))
                 return
             }
             try await Task.sleep(for: .milliseconds(20))
