@@ -60,6 +60,9 @@ public final class AVFoundationPlaybackController {
     @ObservationIgnored private var audioSessionInterruptionObserver: NSObjectProtocol?
     @ObservationIgnored private var audioSessionRouteChangeObserver: NSObjectProtocol?
     @ObservationIgnored private var audioSessionMediaServicesResetObserver: NSObjectProtocol?
+    @ObservationIgnored private var audioSessionSecondaryAudioObserver: NSObjectProtocol?
+    @ObservationIgnored private var audioSessionOutputVolumeObservation: NSKeyValueObservation?
+    @ObservationIgnored private var currentLevelMeter: PlaybackLevelMeterTap?
     @ObservationIgnored private var currentVoiceBoostTap: VoiceBoostAudioTap?
     @ObservationIgnored private var pendingVoiceBoostContinuationState: VoiceBoostContinuationState?
     @ObservationIgnored private var voiceBoostTrackLoadTask: Task<Void, Never>?
@@ -175,6 +178,7 @@ public final class AVFoundationPlaybackController {
         player.pause()
         player.replaceCurrentItem(with: nil)
         currentVoiceBoostTap = nil
+        currentLevelMeter = nil
         mediaSession.clear()
         #if os(iOS) || os(tvOS) || os(visionOS)
         if isAudioSessionActive {
@@ -652,6 +656,7 @@ public final class AVFoundationPlaybackController {
         player.pause()
         player.replaceCurrentItem(with: nil)
         currentVoiceBoostTap = nil
+        currentLevelMeter = nil
         pendingVoiceBoostContinuationState = nil
         currentItemLocalFileIdentity = nil
         currentItemSourceURL = nil
@@ -849,6 +854,7 @@ public final class AVFoundationPlaybackController {
                     return
                 }
 
+                recordLevelWindows()
                 handleObservedPlaybackPosition(
                     episodeTime(fromPlayer: observedPosition),
                     duration: episodeTime(fromPlayer: observedDuration),
@@ -1100,6 +1106,29 @@ public final class AVFoundationPlaybackController {
             }
         }
 
+        audioSessionSecondaryAudioObserver = NotificationCenter.default.addObserver(
+            forName: AVAudioSession.silenceSecondaryAudioHintNotification,
+            object: AVAudioSession.sharedInstance(),
+            queue: .main
+        ) { [weak self] notification in
+            let rawType = notification.userInfo?[AVAudioSessionSilenceSecondaryAudioHintTypeKey] as? UInt
+            Task { @MainActor [weak self] in
+                let type = rawType.flatMap(AVAudioSession.SilenceSecondaryAudioHintType.init(rawValue:))
+                self?.recordDiagnosticsEvent("secondary audio hint \(type == .begin ? "begin" : type == .end ? "end" : "unknown")")
+            }
+        }
+
+        audioSessionOutputVolumeObservation = AVAudioSession.sharedInstance().observe(
+            \.outputVolume,
+            options: [.old, .new]
+        ) { [weak self] _, change in
+            let old = change.oldValue ?? -1
+            let new = change.newValue ?? -1
+            Task { @MainActor [weak self] in
+                self?.recordDiagnosticsEvent("system output volume \(String(format: "%.2f", old)) -> \(String(format: "%.2f", new))")
+            }
+        }
+
         audioSessionMediaServicesResetObserver = NotificationCenter.default.addObserver(
             forName: AVAudioSession.mediaServicesWereResetNotification,
             object: AVAudioSession.sharedInstance(),
@@ -1125,6 +1154,12 @@ public final class AVFoundationPlaybackController {
             NotificationCenter.default.removeObserver(audioSessionMediaServicesResetObserver)
             self.audioSessionMediaServicesResetObserver = nil
         }
+        if let audioSessionSecondaryAudioObserver {
+            NotificationCenter.default.removeObserver(audioSessionSecondaryAudioObserver)
+            self.audioSessionSecondaryAudioObserver = nil
+        }
+        audioSessionOutputVolumeObservation?.invalidate()
+        audioSessionOutputVolumeObservation = nil
     }
 
     private func handleAudioSessionInterruption(rawType: UInt?, rawOptions: UInt?) {
@@ -1316,12 +1351,13 @@ public final class AVFoundationPlaybackController {
         let carriedState = continuationState ?? (audioTrack != nil
             ? currentVoiceBoostTap?.captureContinuationState() : nil)
         currentVoiceBoostTap = nil
+        currentLevelMeter = nil
         pendingVoiceBoostContinuationState = nil
         guard voiceBoostConfiguration.isEnabled else {
             // Retain adaptation without installing a disabled tap: a local
             // handoff must not introduce audio callbacks while Voice Boost is off.
             pendingVoiceBoostContinuationState = carriedState
-            playerItem.audioMix = currentSmartSpeedItem?.audioMix
+            playerItem.audioMix = currentSmartSpeedItem.map(levelMeteredAudioMix)
             return
         }
 
@@ -1354,8 +1390,32 @@ public final class AVFoundationPlaybackController {
             } else {
                 voiceBoostTapDiagnostics?.recordTapCreationFailure(status: nil)
             }
-            playerItem.audioMix = currentSmartSpeedItem?.audioMix
+            playerItem.audioMix = nil
             currentVoiceBoostTap = nil
+        }
+    }
+
+    /// A read-only level meter on the Smart Speed item, so the event log
+    /// shows whether the app's own output drops.
+    private func levelMeteredAudioMix(for item: SmartSpeedCompositionBuilder.Result) -> AVMutableAudioMix {
+        let parameters = item.makeInputParameters()
+        if let meter = PlaybackLevelMeterTap() {
+            parameters.audioTapProcessor = meter.audioTapProcessor
+            currentLevelMeter = meter
+        }
+        let audioMix = AVMutableAudioMix()
+        audioMix.inputParameters = [parameters]
+        return audioMix
+    }
+
+    private func recordLevelWindows() {
+        guard let currentLevelMeter else {
+            return
+        }
+        for window in currentLevelMeter.drainWindows() {
+            recordDiagnosticsEvent(
+                "level from=\(diagnosticsTime(episodeTime(fromPlayer: window.start))) to=\(diagnosticsTime(episodeTime(fromPlayer: window.end))) rms=\(String(format: "%.1f", window.rmsDB))dB peak=\(String(format: "%.1f", window.peakDB))dB rate=\(player.rate)"
+            )
         }
     }
 

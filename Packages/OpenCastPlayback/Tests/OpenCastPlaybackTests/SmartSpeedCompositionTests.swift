@@ -60,7 +60,7 @@ struct SmartSpeedCompositionTests {
         #expect(abs(found[1].upperBound - 4.65) < 0.05)
     }
 
-    @Test("The composition plays back shortened through its audio mix")
+    @Test("The composition plays back shortened")
     func compositionPlaysShortened() async throws {
         let url = try SmartSpeedAudioFixture.write(pattern: Self.shortPattern)
         defer { try? FileManager.default.removeItem(at: url) }
@@ -74,10 +74,7 @@ struct SmartSpeedCompositionTests {
         let compositionDuration = try await result.composition.load(.duration).seconds
         #expect(abs(compositionDuration - timeline.compositionDuration) < 0.01)
 
-        let decodedSeconds = try await SmartSpeedAudioFixture.decodedDuration(
-            of: result.composition,
-            audioMix: result.audioMix
-        )
+        let decodedSeconds = try await SmartSpeedAudioFixture.decodedDuration(of: result.composition)
         #expect(abs(decodedSeconds - timeline.compositionDuration) < 0.05)
     }
 
@@ -115,7 +112,6 @@ struct SmartSpeedCompositionTests {
         let result = try #require(built)
 
         let shortenedItem = AVPlayerItem(asset: result.composition)
-        shortenedItem.audioMix = result.audioMix
         report.append("shortened: " + (try await Self.measurePlayback(of: shortenedItem, duration: cuts.compositionDuration)))
         report.append("original:  " + (try await Self.measurePlayback(of: AVPlayerItem(asset: asset), duration: cuts.originalDuration)))
 
@@ -222,7 +218,7 @@ enum SmartSpeedAudioFixture {
         return spans
     }
 
-    static func decodedDuration(of asset: AVAsset, audioMix: AVAudioMix) async throws -> TimeInterval {
+    static func decodedDuration(of asset: AVAsset) async throws -> TimeInterval {
         let reader = try AVAssetReader(asset: asset)
         let tracks = try await asset.loadTracks(withMediaType: .audio)
         let output = AVAssetReaderAudioMixOutput(audioTracks: tracks, audioSettings: [
@@ -234,7 +230,6 @@ enum SmartSpeedAudioFixture {
             AVLinearPCMIsNonInterleaved: false,
             AVLinearPCMIsBigEndianKey: false
         ])
-        output.audioMix = audioMix
         reader.add(output)
         try #require(reader.startReading())
 

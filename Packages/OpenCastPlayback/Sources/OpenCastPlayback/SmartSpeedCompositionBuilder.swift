@@ -6,37 +6,12 @@ nonisolated enum SmartSpeedCompositionBuilder {
     struct Result: @unchecked Sendable {
         let composition: AVMutableComposition
         let track: AVMutableCompositionTrack
-        let timescale: CMTimeScale
         let timeline: SmartSpeedTimeline
-        let fadeDuration: TimeInterval
 
-        /// Short fades either side of each cut. Voice Boost's tap must be set
-        /// on these same parameters, since an item has one audio mix.
+        /// Mix parameters bound to the composition's track, so Voice Boost's
+        /// tap attaches without waiting for a track load.
         func makeInputParameters() -> AVMutableAudioMixInputParameters {
-            let parameters = AVMutableAudioMixInputParameters(track: track)
-            func time(_ seconds: TimeInterval) -> CMTime {
-                CMTime(seconds: seconds, preferredTimescale: timescale)
-            }
-            for segment in timeline.segments.dropFirst() {
-                let cut = segment.compositionStart
-                parameters.setVolumeRamp(
-                    fromStartVolume: 1,
-                    toEndVolume: 0,
-                    timeRange: CMTimeRange(start: time(cut - fadeDuration), duration: time(fadeDuration))
-                )
-                parameters.setVolumeRamp(
-                    fromStartVolume: 0,
-                    toEndVolume: 1,
-                    timeRange: CMTimeRange(start: time(cut), duration: time(fadeDuration))
-                )
-            }
-            return parameters
-        }
-
-        var audioMix: AVMutableAudioMix {
-            let audioMix = AVMutableAudioMix()
-            audioMix.inputParameters = [makeInputParameters()]
-            return audioMix
+            AVMutableAudioMixInputParameters(track: track)
         }
     }
 
@@ -54,8 +29,7 @@ nonisolated enum SmartSpeedCompositionBuilder {
     @concurrent
     static func build(
         asset: AVURLAsset,
-        timeline: SmartSpeedTimeline,
-        fadeDuration: TimeInterval = 0.005
+        timeline: SmartSpeedTimeline
     ) async throws -> Result {
         guard let sourceTrack = try await asset.loadTracks(withMediaType: .audio).first else {
             throw BuildError.noAudioTrack
@@ -87,9 +61,7 @@ nonisolated enum SmartSpeedCompositionBuilder {
         return Result(
             composition: composition,
             track: track,
-            timescale: timescale,
-            timeline: timeline,
-            fadeDuration: fadeDuration
+            timeline: timeline
         )
     }
 }
