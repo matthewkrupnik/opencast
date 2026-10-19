@@ -89,6 +89,8 @@
 	<string>$(GEMINI_API_KEY)</string>
 	<key>OpenCastNotificationsWorker</key>
 	<string>$(NOTIFICATIONS_WORKER)</string>
+	<key>OpenCastPrivateCloudCompute</key>
+	<false/>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>

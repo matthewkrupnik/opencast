@@ -7,6 +7,12 @@ import FoundationModels
 nonisolated final class PrivateCloudComputeTranscriptIntelligenceClient: TranscriptIntelligenceModelClient {
     private lazy var model = PrivateCloudComputeLanguageModel()
 
+    /// Whether the app is signed with `com.apple.developer.private-cloud-compute`.
+    /// Without it PCC still reports available, and on iOS 27 a request traps
+    /// inside Foundation Models instead of throwing, so the build says so in
+    /// Info.plist and no request is made.
+    static let isEntitled = Bundle.main.object(forInfoDictionaryKey: "OpenCastPrivateCloudCompute") as? Bool == true
+
     init() {}
 
     /// PCC exposes no model version; the OS release is the closest proxy for
@@ -62,7 +68,8 @@ nonisolated final class PrivateCloudComputeTranscriptIntelligenceClient: Transcr
 
     func makeSession(instructions: String, tools: [any Tool]) -> any TranscriptIntelligenceSession {
         PrivateCloudComputeTranscriptIntelligenceSession(
-            session: LanguageModelSession(model: model, tools: tools, instructions: instructions)
+            session: LanguageModelSession(model: model, tools: tools, instructions: instructions),
+            isEntitled: Self.isEntitled
         )
     }
 }

@@ -4,9 +4,11 @@ import FoundationModels
 /// reasoning and maps its error before it reaches the store.
 nonisolated final class PrivateCloudComputeTranscriptIntelligenceSession: TranscriptIntelligenceSession {
     private let session: LanguageModelSession
+    private let isEntitled: Bool
 
-    init(session: LanguageModelSession) {
+    init(session: LanguageModelSession, isEntitled: Bool) {
         self.session = session
+        self.isEntitled = isEntitled
     }
 
     var inputTokenCount: Int {
@@ -17,6 +19,9 @@ nonisolated final class PrivateCloudComputeTranscriptIntelligenceSession: Transc
         to prompt: String,
         options: TranscriptIntelligenceGenerationOptions
     ) async throws -> TranscriptIntelligenceResponse<String> {
+        guard isEntitled else {
+            throw TranscriptIntelligenceFailure.notEntitled
+        }
         do {
             let response = try await session.respond(
                 to: prompt,
@@ -38,6 +43,9 @@ nonisolated final class PrivateCloudComputeTranscriptIntelligenceSession: Transc
         generating type: Content.Type,
         options: TranscriptIntelligenceGenerationOptions
     ) async throws -> TranscriptIntelligenceResponse<Content> {
+        guard isEntitled else {
+            throw TranscriptIntelligenceFailure.notEntitled
+        }
         do {
             let response = try await session.respond(
                 to: prompt,
@@ -61,6 +69,9 @@ nonisolated final class PrivateCloudComputeTranscriptIntelligenceSession: Transc
         options: TranscriptIntelligenceGenerationOptions,
         onPartialContent: @escaping @MainActor (GeneratedContent) -> Void
     ) async throws -> TranscriptIntelligenceResponse<Content> {
+        guard isEntitled else {
+            throw TranscriptIntelligenceFailure.notEntitled
+        }
         do {
             let stream = session.streamResponse(
                 to: prompt,

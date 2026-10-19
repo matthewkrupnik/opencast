@@ -2,11 +2,12 @@ import Foundation
 
 /// Gate for the Private Cloud Compute transcript features (Recap, Ask).
 /// Entry points stay hidden while `isEnabled` is false; it is the one
-/// switch that removes the feature from a build. Each later operation ships
+/// switch that removes the feature from a build, and it is off unless the
+/// build is entitled to Private Cloud Compute. Each later operation ships
 /// behind its own sub-flag until its stage closes, because the main flag is
 /// live in Release builds.
 enum TranscriptIntelligenceFeatureFlags {
-    nonisolated static let isEnabled = true
+    nonisolated static let isEnabled = PrivateCloudComputeTranscriptIntelligenceClient.isEntitled
     nonisolated static let isAskEnabled = true
 
     #if DEBUG
