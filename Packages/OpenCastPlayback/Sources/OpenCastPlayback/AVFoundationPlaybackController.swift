@@ -12,7 +12,6 @@ typealias VoiceBoostAudioTapFactory = (
 
 public typealias PlaybackRateChangeRequestHandler = @MainActor (Float) -> Void
 public typealias PlaybackEpisodeFinishedHandler = @MainActor (Episode, PlaybackCompletionPolicy) -> Void
-public typealias PlaybackNextTrackHandler = @MainActor () -> Void
 
 @Observable
 public final class AVFoundationPlaybackController {
@@ -82,8 +81,6 @@ public final class AVFoundationPlaybackController {
     @ObservationIgnored private var sleepTimerRearmDeadline: Date?
     @ObservationIgnored private var remotePlaybackRateChangeHandler: PlaybackRateChangeRequestHandler?
     @ObservationIgnored private var episodeFinishedHandler: PlaybackEpisodeFinishedHandler?
-    @ObservationIgnored private var nextTrackHandler: PlaybackNextTrackHandler?
-    @ObservationIgnored private var hasQueuedNextEpisode = false
     @ObservationIgnored private var playbackPositionProtection = PlaybackPositionProtection()
     @ObservationIgnored private var playbackAdSkipPolicy = PlaybackAdSkipPolicy()
     @ObservationIgnored private var playbackFailureRecoveryPolicy = PlaybackFailureRecoveryPolicy()
@@ -731,18 +728,6 @@ public final class AVFoundationPlaybackController {
         episodeFinishedHandler = handler
     }
 
-    public func setNextTrackHandler(_ handler: PlaybackNextTrackHandler?) {
-        nextTrackHandler = handler
-    }
-
-    public func setHasQueuedNextEpisode(_ hasQueuedNextEpisode: Bool) {
-        guard self.hasQueuedNextEpisode != hasQueuedNextEpisode else {
-            return
-        }
-
-        self.hasQueuedNextEpisode = hasQueuedNextEpisode
-    }
-
     public func sleepTimerRemaining(at date: Date = .now) -> TimeInterval? {
         switch sleepTimerMode {
         case .off:
@@ -1037,9 +1022,6 @@ public final class AVFoundationPlaybackController {
             skipBackward: { [weak self] in
                 self?.skipBackward()
             },
-            nextTrack: { [weak self] in
-                self?.handleNextTrackCommand()
-            },
             seek: { [weak self] position in
                 self?.seek(to: position, intent: .scrub)
             },
@@ -1055,14 +1037,6 @@ public final class AVFoundationPlaybackController {
 
     private func skipBackward() {
         skip(by: -skipBackwardInterval)
-    }
-
-    func handleNextTrackCommand() {
-        if hasQueuedNextEpisode, let nextTrackHandler {
-            nextTrackHandler()
-        } else {
-            skipForward()
-        }
     }
 
     func handleRemotePlaybackRateChange(_ rate: Float) {

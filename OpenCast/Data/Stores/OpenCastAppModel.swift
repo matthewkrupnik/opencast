@@ -424,10 +424,6 @@ final class OpenCastAppModel {
             }
             return self.transcriptions.progressByEpisodeID[episodeID]
         }
-        let playbackController = self.playback
-        upNextQueue.onQueueChanged = { [weak playbackController, weak upNextQueue] in
-            playbackController?.setHasQueuedNextEpisode(!(upNextQueue?.items.isEmpty ?? true))
-        }
         startSiriMediaUserContextObservation()
     }
 
@@ -464,12 +460,6 @@ final class OpenCastAppModel {
                 policy: policy,
                 modelContext: modelContext
             )
-        }
-        playback.setNextTrackHandler { [weak self, weak modelContext] in
-            guard let self, let modelContext else {
-                return
-            }
-            advanceToNextQueuedEpisode(modelContext: modelContext)
         }
         if let coreStoresLoadTask {
             await coreStoresLoadTask.value

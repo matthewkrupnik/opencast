@@ -75,9 +75,8 @@ final class PlaybackMediaSessionAdapter {
         case .play: handlers.play()
         case .pause: handlers.pause()
         case .togglePlayPause: handlers.togglePlayPause()
-        case .skipForward: handlers.skipForward()
+        case .skipForward, .next: handlers.skipForward()
         case .skipBackward, .previous: handlers.skipBackward()
-        case .next: handlers.nextTrack()
         case .seek(let position):
             guard position.isFinite else { throw CommandError.invalidValue }
             handlers.seek(clampPlaybackPosition(position, to: values.duration))

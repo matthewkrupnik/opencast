@@ -1469,31 +1469,6 @@ struct AVFoundationPlaybackControllerTests {
     }
 
     @Test
-    func nextTrackAdvancesQueueOnlyWhenQueueIsNonempty() throws {
-        let controller = AVFoundationPlaybackController()
-        defer {
-            controller.unload()
-        }
-        try controller.load(episode(duration: 120), startPosition: 30)
-        var advanceCount = 0
-        controller.setNextTrackHandler { advanceCount += 1 }
-
-        controller.handleNextTrackCommand()
-        #expect(controller.snapshot.position == 45)
-        #expect(advanceCount == 0)
-
-        controller.setHasQueuedNextEpisode(true)
-        controller.handleNextTrackCommand()
-        #expect(controller.snapshot.position == 45)
-        #expect(advanceCount == 1)
-
-        controller.setHasQueuedNextEpisode(false)
-        controller.handleNextTrackCommand()
-        #expect(controller.snapshot.position == 60)
-        #expect(advanceCount == 1)
-    }
-
-    @Test
     func remoteRateChangeUsesInstalledPersistenceHandler() {
         let controller = AVFoundationPlaybackController()
         var requestedRate: Float?

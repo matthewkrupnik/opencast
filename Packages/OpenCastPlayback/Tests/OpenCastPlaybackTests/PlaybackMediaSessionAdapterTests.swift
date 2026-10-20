@@ -52,7 +52,6 @@ struct PlaybackMediaSessionAdapterTests {
             play: { actions.append("play") }, pause: { actions.append("pause") },
             togglePlayPause: { actions.append("toggle") },
             skipForward: { actions.append("forward") }, skipBackward: { actions.append("backward") },
-            nextTrack: { actions.append("next") },
             seek: { actions.append("seek \($0)") }, changeRate: { actions.append("rate \($0)") }
         ))
         adapter.publish(PlaybackSnapshot(state: .paused, currentEpisode: episode(duration: 180)), resolvedDuration: nil)
@@ -67,7 +66,7 @@ struct PlaybackMediaSessionAdapterTests {
         try adapter.perform(.changeRate(1.5))
         adapter.publish(PlaybackSnapshot(state: .buffering, currentEpisode: episode(duration: 180)), resolvedDuration: nil)
         try adapter.perform(.pause)
-        #expect(actions == ["play", "toggle", "forward", "backward", "backward", "next", "seek 180.0", "seek 0.0", "rate 1.5", "pause"])
+        #expect(actions == ["play", "toggle", "forward", "backward", "backward", "forward", "seek 180.0", "seek 0.0", "rate 1.5", "pause"])
     }
 
     @Test
@@ -76,7 +75,7 @@ struct PlaybackMediaSessionAdapterTests {
         var calls = 0
         adapter.install(RemoteCommandHandlers(
             play: { calls += 1 }, pause: { calls += 1 }, togglePlayPause: { calls += 1 },
-            skipForward: { calls += 1 }, skipBackward: { calls += 1 }, nextTrack: { calls += 1 },
+            skipForward: { calls += 1 }, skipBackward: { calls += 1 },
             seek: { _ in calls += 1 }, changeRate: { _ in calls += 1 }
         ))
         #expect(throws: PlaybackMediaSessionAdapter.CommandError.unavailable) { try adapter.perform(.play) }
