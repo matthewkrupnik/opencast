@@ -10,8 +10,18 @@ struct PlaylistSummaryLine: View {
     let summary: PlaylistSummary
 
     var body: some View {
+        // Playlists publish before the library and downloads they evaluate
+        // over; a blank line holds the row's height instead of "No episodes".
+        if appModel.coreStoresHydrated {
+            line
+        } else {
+            Text(verbatim: " ")
+        }
+    }
+
+    private var line: some View {
         let evaluation = appModel.smartPlaylistEvaluation(for: summary)
-        Text(PlaylistSummaryText.line(itemCount: evaluation.count, totalDuration: evaluation.totalDuration))
+        return Text(PlaylistSummaryText.line(itemCount: evaluation.count, totalDuration: evaluation.totalDuration))
             .accessibilityLabel(
                 PlaylistSummaryText.spokenLine(itemCount: evaluation.count, totalDuration: evaluation.totalDuration)
             )

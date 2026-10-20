@@ -483,6 +483,14 @@ final class OpenCastAppModel {
             // applies to the first render.
             libraryDisplaySettings.load(modelContext: modelContext)
             playlistDisplaySettings.load(modelContext: modelContext)
+            // A handful of SwiftData rows, so the Playlists tab draws its
+            // rows at once instead of waiting out the library's cache load.
+            migrateLegacyLocalPlaylists(modelContext: modelContext)
+            playlists.sortOrder = playlistDisplaySettings.sortOrder
+            playlists.load(modelContext: modelContext)
+            if let message = playlists.consumeLastErrorMessage() {
+                lastPlaylistError = message
+            }
             let didLoadLibrary = await library.load(modelContext: modelContext)
             await downloads.load(modelContext: modelContext)
             autoDownloadSettings.load(modelContext: modelContext)
@@ -497,12 +505,6 @@ final class OpenCastAppModel {
             )
             if let message = upNextQueue.consumeLastErrorMessage() {
                 lastUpNextError = message
-            }
-            migrateLegacyLocalPlaylists(modelContext: modelContext)
-            playlists.sortOrder = playlistDisplaySettings.sortOrder
-            playlists.load(modelContext: modelContext)
-            if let message = playlists.consumeLastErrorMessage() {
-                lastPlaylistError = message
             }
             coreStoresHydrated = true
             autoDownloadLatestEpisodes(modelContext: modelContext)
