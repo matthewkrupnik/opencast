@@ -9,7 +9,7 @@ nonisolated struct CarPlayNowPlayingButtonState: Equatable, Sendable {
         isVoiceBoostOn: false,
         canToggleVoiceBoost: false,
         canShowCurrentShow: false,
-        upNextTitle: "Inbox"
+        isUpNextEnabled: false
     )
 
     let rate: Float
@@ -17,5 +17,6 @@ nonisolated struct CarPlayNowPlayingButtonState: Equatable, Sendable {
     let isVoiceBoostOn: Bool
     let canToggleVoiceBoost: Bool
     let canShowCurrentShow: Bool
-    let upNextTitle: String
+    /// Up Next opens the queue, so it is off while the queue is empty.
+    let isUpNextEnabled: Bool
 }

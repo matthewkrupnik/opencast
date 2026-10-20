@@ -21,7 +21,7 @@ final class CarPlayInterfaceCoordinator {
     private var templateNavigator: CarPlayTemplateNavigator?
     private var renderer = CarPlayTemplateRenderer(artworkSizing: .fallback)
     private var limits = CarPlayListLimits.fallback
-    private var inboxTemplate: CPListTemplate?
+    private var playlistsTemplate: CPListTemplate?
     private var libraryTemplate: CPListTemplate?
     private var downloadsTemplate: CPListTemplate?
     private var renderedSnapshots: CarPlayBrowseSnapshots?
@@ -78,18 +78,18 @@ final class CarPlayInterfaceCoordinator {
         // goes away, so bank the current position now.
         appModel.flushPlaybackProgress(modelContext: modelContext, refreshObservableProgress: false)
         interfaceController = nil
-        inboxTemplate = nil
+        playlistsTemplate = nil
         libraryTemplate = nil
         downloadsTemplate = nil
         renderedSnapshots = nil
     }
 
     private func makeTabBarTemplate(for snapshots: CarPlayBrowseSnapshots) -> CPTabBarTemplate {
-        let inbox = makeTabTemplate(
-            for: snapshots.inbox,
-            tabTitle: "Inbox",
-            tabSystemImageName: "tray",
-            scope: .inbox
+        let playlists = makeTabTemplate(
+            for: snapshots.playlists,
+            tabTitle: AppSection.playlists.title,
+            tabSystemImageName: AppSection.playlists.systemImage,
+            scope: .playlists
         )
         let library = makeTabTemplate(
             for: snapshots.library,
@@ -103,13 +103,13 @@ final class CarPlayInterfaceCoordinator {
             tabSystemImageName: "arrow.down.circle",
             scope: .downloads
         )
-        inboxTemplate = inbox
+        playlistsTemplate = playlists
         libraryTemplate = library
         downloadsTemplate = downloads
 
         // Staying inside the tab cap keeps the system Now Playing button visible,
         // which is the driver's other way back to what is playing.
-        let templates = [inbox, library, downloads].prefix(max(CPTabBarTemplate.maximumTabCount, 1))
+        let templates = [playlists, library, downloads].prefix(max(CPTabBarTemplate.maximumTabCount, 1))
         return CPTabBarTemplate(templates: Array(templates))
     }
 
@@ -266,10 +266,13 @@ final class CarPlayInterfaceCoordinator {
         let isLoading = isHydrating || library.state == .loading
 
         return CarPlayBrowseSnapshots(
-            inbox: CarPlayBrowseModelBuilder.inbox(
-                library: library,
-                downloadRecords: downloadRecords,
+            playlists: CarPlayBrowseModelBuilder.playlists(
+                appModel.playlists.playlists,
+                // Playlists publish before the library they count over.
+                episodeCount: { appModel.coreStoresHydrated ? appModel.playlistEpisodeCount(for: $0) : nil },
+                artworkURL: { playlistArtworkURL(for: $0, appModel: appModel) },
                 currentEpisode: currentEpisode,
+                downloadRecords: downloadRecords,
                 nowPlaying: nowPlaying,
                 isLoading: isLoading,
                 limits: limits
@@ -277,7 +280,6 @@ final class CarPlayInterfaceCoordinator {
             library: CarPlayBrowseModelBuilder.library(
                 subscriptions: library.subscriptions,
                 library: library,
-                showsPlaylistsRow: !appModel.playlists.playlists.isEmpty,
                 isLoading: isLoading,
                 limits: limits
             ),
@@ -296,8 +298,8 @@ final class CarPlayInterfaceCoordinator {
             return
         }
 
-        if let inboxTemplate, renderedSnapshots?.inbox != snapshots.inbox {
-            patch(update(inboxTemplate, with: snapshots.inbox), scope: .inbox)
+        if let playlistsTemplate, renderedSnapshots?.playlists != snapshots.playlists {
+            patch(update(playlistsTemplate, with: snapshots.playlists), scope: .playlists)
         }
         if let libraryTemplate, renderedSnapshots?.library != snapshots.library {
             patch(update(libraryTemplate, with: snapshots.library), scope: .library)
@@ -331,10 +333,8 @@ final class CarPlayInterfaceCoordinator {
             play(episodeRow, returnsToNowPlaying: returnsToNowPlaying)
         case .podcast(let podcastRow):
             pushEpisodes(for: podcastRow)
-        case .playlists:
-            pushPlaylists()
         case .playlist(let playlistRow):
-            pushPlaylistEpisodes(for: playlistRow, limits: limits)
+            pushPlaylistEpisodes(for: playlistRow)
         case .showMore:
             pushContinuation(snapshot.continuation)
         }
@@ -389,43 +389,6 @@ final class CarPlayInterfaceCoordinator {
         )
     }
 
-    /// The playlists list routes its own taps: an episodes list pushed from
-    /// the "More Playlists" page is the fourth template, so it spends no
-    /// slot on Show More (the five-template ceiling counts Now Playing).
-    private func pushPlaylists() {
-        let appModel = appModel
-        let snapshot = CarPlayBrowseModelBuilder.playlists(
-            appModel.playlists.playlists,
-            episodeCount: { appModel.playlistEpisodeCount(for: $0) },
-            artworkURL: { Self.playlistArtworkURL(for: $0, appModel: appModel) },
-            limits: limits
-        )
-        push(snapshot) { [weak self] row in
-            guard let self else {
-                return
-            }
-
-            switch row {
-            case .playlist(let playlistRow):
-                pushPlaylistEpisodes(for: playlistRow, limits: limits)
-            case .showMore:
-                guard let continuation = snapshot.continuation else {
-                    return
-                }
-
-                push(continuation.snapshot) { [weak self] row in
-                    guard let self, case .playlist(let playlistRow) = row else {
-                        return
-                    }
-
-                    pushPlaylistEpisodes(for: playlistRow, limits: limits.withoutContinuation)
-                }
-            case .episode, .podcast, .playlists:
-                return
-            }
-        }
-    }
-
     /// The one image a playlist row carries: its most dominant matched show.
     /// The evaluation is the memo the row's episode count already read.
     private static func playlistArtworkURL(for summary: PlaylistSummary, appModel: OpenCastAppModel) -> String? {
@@ -439,7 +402,7 @@ final class CarPlayInterfaceCoordinator {
         return url?.absoluteString
     }
 
-    private func pushPlaylistEpisodes(for row: CarPlayPlaylistRow, limits: CarPlayListLimits) {
+    private func pushPlaylistEpisodes(for row: CarPlayPlaylistRow) {
         // Nil when the phone deleted the playlist after this list was pushed:
         // an empty list reads better than an alert about an episode.
         let episodes = appModel.playlist(row.playlistID).map { appModel.smartPlaylistEvaluation(for: $0).episodes } ?? []
@@ -456,25 +419,10 @@ final class CarPlayInterfaceCoordinator {
         )
     }
 
-    /// The system Up Next affordance historically opened Inbox, which remains
-    /// the useful fallback until the listener has explicitly queued something.
-    private func pushInbox() {
-        push(
-            CarPlayBrowseModelBuilder.inbox(
-                library: appModel.library,
-                downloadRecords: appModel.downloads.records,
-                currentEpisode: nil,
-                nowPlaying: Self.nowPlayingState(appModel: appModel),
-                isLoading: isHydrating || appModel.library.state == .loading,
-                limits: limits.withoutContinuation
-            ),
-            returnsToNowPlaying: true
-        )
-    }
-
     private func pushUpNext() {
+        // The button is disabled with an empty queue; a tap that races the
+        // last item leaving has nothing to show.
         guard !appModel.upNextQueue.items.isEmpty else {
-            pushInbox()
             return
         }
 

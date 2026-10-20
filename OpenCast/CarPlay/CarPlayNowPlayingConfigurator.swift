@@ -21,7 +21,7 @@ final class CarPlayNowPlayingConfigurator: NSObject {
 
     func start(with state: CarPlayNowPlayingButtonState) {
         template.add(self)
-        template.isUpNextButtonEnabled = true
+        template.upNextTitle = "Up Next"
         apply(state)
     }
 
@@ -33,7 +33,7 @@ final class CarPlayNowPlayingConfigurator: NSObject {
         }
 
         appliedState = state
-        template.upNextTitle = state.upNextTitle
+        template.isUpNextButtonEnabled = state.isUpNextEnabled
         template.isAlbumArtistButtonEnabled = state.canShowCurrentShow
         template.updateNowPlayingButtons(makeButtons(for: state))
     }

@@ -8,7 +8,7 @@ final class CarPlayArtworkPatcher {
     /// One scope per list: a re-render of one tab must not cancel artwork still
     /// loading for a tab that did not change.
     enum Scope: Hashable {
-        case inbox
+        case playlists
         case library
         case downloads
         case pushed

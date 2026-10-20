@@ -21,7 +21,7 @@ enum CarPlayNowPlayingModelBuilder {
             // An orphaned download's show was unsubscribed, so there is no show
             // list left to push.
             canShowCurrentShow: hasLoadedEpisode && isCurrentShowSubscribed,
-            upNextTitle: hasQueuedEpisodes ? "Up Next" : "Inbox"
+            isUpNextEnabled: hasQueuedEpisodes
         )
     }
 }

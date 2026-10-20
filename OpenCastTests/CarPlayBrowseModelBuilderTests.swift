@@ -40,58 +40,35 @@ struct CarPlayBrowseModelBuilderTests {
         #expect(!snapshot.sections.contains { $0.rows.contains(.showMore) })
     }
 
-    @Test("Inbox keeps newest-first order and slices to the item cap")
-    func inboxOrderAndSlicing() async throws {
-        let fixture = try await makeFixture(episodeCount: 20)
-
-        let snapshot = CarPlayBrowseModelBuilder.inbox(
-            library: fixture.library,
-            downloadRecords: [],
-            currentEpisode: nil,
-            nowPlaying: .idle,
-            isLoading: false,
-            limits: Self.floorLimits
-        )
-
-        #expect(snapshot.title == "Inbox")
-        #expect(snapshot.sections.count == 1)
-        #expect(snapshot.sections[0].header == nil)
-        #expect(snapshot.rowCount == 12)
-        // 11 episodes plus the marker in the twelfth slot.
-        #expect(episodeIDs(in: snapshot) == (0..<11).map(episodeID))
-        #expect(snapshot.sections[0].rows.last == .showMore)
-    }
-
-    @Test("Continue section is added only when an episode is loaded and counts against the cap")
+    @Test("Continue leads the playlists only when an episode is loaded and counts against the cap")
     func continueSection() async throws {
         let fixture = try await makeFixture(episodeCount: 20)
         let loaded = try #require(fixture.library.episode(with: episodeID(5)))
+        let summaries = (0..<13).map { index in
+            makePlaylistSummary(playlistID: "playlist-\(index)", name: "Playlist \(index)")
+        }
 
-        let withoutContinue = CarPlayBrowseModelBuilder.inbox(
-            library: fixture.library,
-            downloadRecords: [],
-            currentEpisode: nil,
-            nowPlaying: .idle,
-            isLoading: false,
-            limits: Self.floorLimits
-        )
-        let withContinue = CarPlayBrowseModelBuilder.inbox(
-            library: fixture.library,
-            downloadRecords: [],
+        let withoutContinue = makePlaylistsSnapshot(summaries, limits: Self.floorLimits)
+        let withContinue = makePlaylistsSnapshot(
+            summaries,
             currentEpisode: fixture.library.domainEpisode(for: loaded),
             nowPlaying: CarPlayNowPlayingState(episodeID: loaded.episodeID, isPlaying: true),
-            isLoading: false,
             limits: Self.floorLimits
         )
 
         #expect(withoutContinue.sections.map(\.header) == [nil])
-        #expect(withContinue.sections.map(\.header) == ["Continue", "Latest"])
+        #expect(withContinue.sections.map(\.header) == ["Continue", "Playlists"])
         #expect(withContinue.rowCount == 12)
-        #expect(withContinue.sections[0].rows.count == 1)
-        // The Continue row spends one of the twelve slots, so ten latest rows
+        #expect(episodeIDs(in: withContinue) == [episodeID(5)])
+        #expect(episodeRow(withContinue.sections[0].rows[0])?.isPlaying == true)
+        // The Continue row spends one of the twelve slots, so ten playlists
         // plus the marker follow it.
-        #expect(episodeIDs(in: withContinue) == [episodeID(5)] + (0..<10).map(episodeID))
+        #expect(withContinue.sections[1].rows.compactMap(playlistRow).map(\.playlistID) == (0..<10).map { "playlist-\($0)" })
         #expect(withContinue.sections[1].rows.last == .showMore)
+        #expect(
+            withContinue.continuation?.sections.flatMap(\.rows).compactMap(playlistRow).map(\.playlistID)
+                == ["playlist-10", "playlist-11", "playlist-12"]
+        )
     }
 
     @Test("Show More appears only past the cap and reaches one further page")
@@ -99,22 +76,8 @@ struct CarPlayBrowseModelBuilderTests {
         let exactFit = try await makeFixture(episodeCount: 12)
         let overflowing = try await makeFixture(episodeCount: 30)
 
-        let fitting = CarPlayBrowseModelBuilder.inbox(
-            library: exactFit.library,
-            downloadRecords: [],
-            currentEpisode: nil,
-            nowPlaying: .idle,
-            isLoading: false,
-            limits: Self.floorLimits
-        )
-        let truncated = CarPlayBrowseModelBuilder.inbox(
-            library: overflowing.library,
-            downloadRecords: [],
-            currentEpisode: nil,
-            nowPlaying: .idle,
-            isLoading: false,
-            limits: Self.floorLimits
-        )
+        let fitting = makePlaylistEpisodesSnapshot(library: exactFit.library, limits: Self.floorLimits)
+        let truncated = makePlaylistEpisodesSnapshot(library: overflowing.library, limits: Self.floorLimits)
 
         #expect(fitting.rowCount == 12)
         #expect(fitting.continuation == nil)
@@ -131,18 +94,11 @@ struct CarPlayBrowseModelBuilderTests {
         #expect(!continuation.sections.contains { $0.rows.contains(.showMore) })
     }
 
-    @Test("An inbox far past the row-build cap keeps the same page and continuation")
-    func farOverCapInboxKeepsPageAndContinuation() async throws {
+    @Test("A list far past the row-build cap keeps the same page and continuation")
+    func farOverCapListKeepsPageAndContinuation() async throws {
         let fixture = try await makeFixture(episodeCount: 60)
 
-        let snapshot = CarPlayBrowseModelBuilder.inbox(
-            library: fixture.library,
-            downloadRecords: [],
-            currentEpisode: nil,
-            nowPlaying: .idle,
-            isLoading: false,
-            limits: Self.floorLimits
-        )
+        let snapshot = makePlaylistEpisodesSnapshot(library: fixture.library, limits: Self.floorLimits)
 
         #expect(snapshot.rowCount == 12)
         #expect(episodeIDs(in: snapshot) == (0..<11).map(episodeID))
@@ -155,12 +111,8 @@ struct CarPlayBrowseModelBuilderTests {
     func truncationWithoutMarker() async throws {
         let fixture = try await makeFixture(episodeCount: 30)
 
-        let pushedFromNowPlaying = CarPlayBrowseModelBuilder.inbox(
+        let pushedFromNowPlaying = makePlaylistEpisodesSnapshot(
             library: fixture.library,
-            downloadRecords: [],
-            currentEpisode: nil,
-            nowPlaying: .idle,
-            isLoading: false,
             limits: Self.floorLimits.withoutContinuation
         )
 
@@ -188,26 +140,24 @@ struct CarPlayBrowseModelBuilderTests {
             )
         )
 
-        let snapshot = CarPlayBrowseModelBuilder.inbox(
+        let snapshot = makePlaylistEpisodesSnapshot(
             library: fixture.library,
             downloadRecords: [makeDownloadRecord(episodeID: downloaded.episodeID, state: .completed)],
-            currentEpisode: fixture.library.domainEpisode(for: playing),
             nowPlaying: CarPlayNowPlayingState(episodeID: playing.episodeID, isPlaying: true),
-            isLoading: false,
             limits: Self.roomyLimits
         )
-        let latestRows = try #require(snapshot.sections.last?.rows)
+        let rows = try #require(snapshot.sections.last?.rows)
 
-        #expect(episodeRow(latestRows[0])?.isPlaying == true)
+        #expect(episodeRow(rows[0])?.isPlaying == true)
         // The loaded episode's progress record churns while it plays, so its row
         // deliberately carries no bar.
-        #expect(episodeRow(latestRows[0])?.playbackProgress == nil)
-        #expect(episodeRow(latestRows[1])?.playbackProgress == 0.25)
-        #expect(episodeRow(latestRows[1])?.isPlaying == false)
-        #expect(episodeRow(latestRows[1])?.detailText == Self.podcastTitle)
-        #expect(episodeRow(latestRows[2])?.isDownloaded == true)
-        #expect(episodeRow(latestRows[3])?.isDownloaded == false)
-        #expect(episodeRow(latestRows[3])?.playbackProgress == nil)
+        #expect(episodeRow(rows[0])?.playbackProgress == nil)
+        #expect(episodeRow(rows[1])?.playbackProgress == 0.25)
+        #expect(episodeRow(rows[1])?.isPlaying == false)
+        #expect(episodeRow(rows[1])?.detailText == Self.podcastTitle)
+        #expect(episodeRow(rows[2])?.isDownloaded == true)
+        #expect(episodeRow(rows[3])?.isDownloaded == false)
+        #expect(episodeRow(rows[3])?.playbackProgress == nil)
     }
 
     @Test("A loaded but paused episode shows progress instead of the playing indicator")
@@ -227,20 +177,24 @@ struct CarPlayBrowseModelBuilderTests {
 
         // The CarPlay cold restore leaves an episode loaded and paused, which is
         // exactly when a playing indicator would be a lie.
-        let snapshot = CarPlayBrowseModelBuilder.inbox(
-            library: fixture.library,
-            downloadRecords: [],
+        let nowPlaying = CarPlayNowPlayingState(episodeID: restored.episodeID, isPlaying: false)
+        let playlists = makePlaylistsSnapshot(
+            [makePlaylistSummary(playlistID: "all", name: "All")],
             currentEpisode: fixture.library.domainEpisode(for: restored),
-            nowPlaying: CarPlayNowPlayingState(episodeID: restored.episodeID, isPlaying: false),
-            isLoading: false,
+            nowPlaying: nowPlaying,
             limits: Self.roomyLimits
         )
-        let continueRow = try #require(episodeRow(snapshot.sections[0].rows[0]))
-        let latestRow = try #require(episodeRow(snapshot.sections[1].rows[0]))
+        let episodes = makePlaylistEpisodesSnapshot(
+            library: fixture.library,
+            nowPlaying: nowPlaying,
+            limits: Self.roomyLimits
+        )
+        let continueRow = try #require(episodeRow(playlists.sections[0].rows[0]))
+        let listedRow = try #require(episodeRow(episodes.sections[0].rows[0]))
 
         #expect(!continueRow.isPlaying)
-        #expect(!latestRow.isPlaying)
-        #expect(latestRow.playbackProgress == 0.4)
+        #expect(!listedRow.isPlaying)
+        #expect(listedRow.playbackProgress == 0.4)
     }
 
     @Test("Library lists subscriptions with their artwork")
@@ -250,7 +204,6 @@ struct CarPlayBrowseModelBuilderTests {
         let snapshot = CarPlayBrowseModelBuilder.library(
             subscriptions: fixture.library.subscriptions,
             library: fixture.library,
-            showsPlaylistsRow: false,
             isLoading: false,
             limits: Self.roomyLimits
         )
@@ -348,14 +301,7 @@ struct CarPlayBrowseModelBuilderTests {
     func emptyAndLoadingStates() async throws {
         let fixture = try await makeFixture(episodeCount: 0)
 
-        let empty = CarPlayBrowseModelBuilder.inbox(
-            library: fixture.library,
-            downloadRecords: [],
-            currentEpisode: nil,
-            nowPlaying: .idle,
-            isLoading: false,
-            limits: Self.roomyLimits
-        )
+        let empty = makePlaylistsSnapshot([], limits: Self.roomyLimits)
         let loading = CarPlayBrowseModelBuilder.downloads(
             records: [],
             library: fixture.library,
@@ -367,8 +313,8 @@ struct CarPlayBrowseModelBuilderTests {
         #expect(empty.sections.isEmpty)
         #expect(empty.rowCount == 0)
         #expect(empty.continuation == nil)
-        #expect(empty.emptyTitleVariants == ["No Episodes Yet", "No Episodes"])
-        #expect(empty.emptySubtitleVariants == ["New episodes from your shows appear here."])
+        #expect(empty.emptyTitleVariants == ["No Playlists", "None"])
+        #expect(empty.emptySubtitleVariants == ["Create playlists from OpenCast on your phone."])
         #expect(!empty.showsSpinnerWhileEmpty)
         #expect(loading.emptyTitleVariants == ["Loading…"])
         #expect(loading.emptySubtitleVariants.isEmpty)
@@ -380,75 +326,18 @@ struct CarPlayBrowseModelBuilderTests {
         let fixture = try await makeFixture(episodeCount: 3)
         let changed = try #require(fixture.library.episode(with: episodeID(2)))
 
-        let first = CarPlayBrowseModelBuilder.inbox(
-            library: fixture.library,
-            downloadRecords: [],
-            currentEpisode: nil,
-            nowPlaying: .idle,
-            isLoading: false,
-            limits: Self.roomyLimits
-        )
-        let repeated = CarPlayBrowseModelBuilder.inbox(
-            library: fixture.library,
-            downloadRecords: [],
-            currentEpisode: nil,
-            nowPlaying: .idle,
-            isLoading: false,
-            limits: Self.roomyLimits
-        )
+        let first = makePlaylistEpisodesSnapshot(library: fixture.library, limits: Self.roomyLimits)
+        let repeated = makePlaylistEpisodesSnapshot(library: fixture.library, limits: Self.roomyLimits)
 
         #expect(first == repeated)
 
-        let afterDownload = CarPlayBrowseModelBuilder.inbox(
+        let afterDownload = makePlaylistEpisodesSnapshot(
             library: fixture.library,
             downloadRecords: [makeDownloadRecord(episodeID: changed.episodeID, state: .completed)],
-            currentEpisode: nil,
-            nowPlaying: .idle,
-            isLoading: false,
             limits: Self.roomyLimits
         )
 
         #expect(first != afterDownload)
-    }
-
-    @Test("Library leads with the Playlists row only when asked, inside the same cap")
-    func libraryLeadsWithPlaylistsRowOnlyWhenRequested() async throws {
-        let fixture = try await makeFixture(episodeCount: 1)
-        let subscriptions = fixture.library.subscriptions + (1..<14).map { index in
-            SubscriptionRecord(
-                feedURL: "https://example.com/extra-\(index).xml",
-                title: "Extra Show \(index)",
-                artworkURL: "https://example.com/extra-\(index).jpg"
-            )
-        }
-
-        let withPlaylists = CarPlayBrowseModelBuilder.library(
-            subscriptions: subscriptions,
-            library: fixture.library,
-            showsPlaylistsRow: true,
-            isLoading: false,
-            limits: .fallback
-        )
-        let withoutPlaylists = CarPlayBrowseModelBuilder.library(
-            subscriptions: subscriptions,
-            library: fixture.library,
-            showsPlaylistsRow: false,
-            isLoading: false,
-            limits: .fallback
-        )
-
-        #expect(withPlaylists.sections.count == 1)
-        let rows = withPlaylists.sections[0].rows
-        #expect(rows.first == .playlists)
-        #expect(rows.last == .showMore)
-        #expect(withPlaylists.rowCount == 12)
-        #expect(podcastRow(rows[1])?.feedURL == Self.podcastID)
-        #expect(withPlaylists.continuation?.title == "More Shows")
-        #expect(withPlaylists.continuation?.sections.flatMap(\.rows).contains(.playlists) == false)
-
-        #expect(!withoutPlaylists.sections.flatMap(\.rows).contains(.playlists))
-        #expect(withoutPlaylists.continuation?.sections.flatMap(\.rows).contains(.playlists) == false)
-        #expect(podcastRow(withoutPlaylists.sections[0].rows[0])?.feedURL == Self.podcastID)
     }
 
     @Test("The playlists list keeps the store's order and pages at the floor limits")
@@ -457,12 +346,7 @@ struct CarPlayBrowseModelBuilderTests {
             makePlaylistSummary(playlistID: "playlist-\(index)", name: "Playlist \(index)")
         }
 
-        let snapshot = CarPlayBrowseModelBuilder.playlists(
-            summaries,
-            episodeCount: { _ in 2 },
-            artworkURL: { _ in nil },
-            limits: .fallback
-        )
+        let snapshot = makePlaylistsSnapshot(summaries, limits: .fallback)
 
         #expect(snapshot.title == "Playlists")
         #expect(snapshot.sections.count == 1)
@@ -477,7 +361,7 @@ struct CarPlayBrowseModelBuilderTests {
         #expect(continuation.snapshot.continuation == nil)
     }
 
-    @Test("Playlist rows carry the cover show's artwork, else their symbol, with an inflected count")
+    @Test("Playlist rows carry the cover show's artwork, else their symbol, with an inflected count or none")
     func playlistRowsCarryShowArtworkOrSymbol() throws {
         let summaries = [
             makePlaylistSummary(playlistID: "cover", name: "Commute"),
@@ -487,10 +371,13 @@ struct CarPlayBrowseModelBuilderTests {
         ]
         let counts = ["cover": 3, "bare": 0, "fresh": 1, "starred": 12]
 
+        let uncounted = makePlaylistsSnapshot(summaries, episodeCount: { _ in nil }, limits: Self.roomyLimits)
+        #expect(uncounted.sections.flatMap(\.rows).compactMap(playlistRow).allSatisfy { $0.detailText == nil })
+
         // The closure offers a cover to two of them, so the other two prove
         // they fall back to the symbol.
         let bare: Set = ["bare", "starred"]
-        let snapshot = CarPlayBrowseModelBuilder.playlists(
+        let snapshot = makePlaylistsSnapshot(
             summaries,
             episodeCount: { counts[$0.playlistID] ?? -1 },
             artworkURL: { bare.contains($0.playlistID) ? nil : "https://example.com/cover.jpg" },
@@ -557,6 +444,44 @@ struct CarPlayBrowseModelBuilderTests {
         #expect(empty.continuation == nil)
         #expect(empty.emptyTitleVariants.first == "Nothing to Play")
         #expect(empty.emptySubtitleVariants == ["This playlist has no episodes to play."])
+    }
+
+    private func makePlaylistsSnapshot(
+        _ summaries: [PlaylistSummary],
+        episodeCount: (PlaylistSummary) -> Int? = { _ in 2 },
+        artworkURL: (PlaylistSummary) -> String? = { _ in nil },
+        currentEpisode: Episode? = nil,
+        nowPlaying: CarPlayNowPlayingState = .idle,
+        limits: CarPlayListLimits
+    ) -> CarPlayBrowseSnapshot {
+        CarPlayBrowseModelBuilder.playlists(
+            summaries,
+            episodeCount: episodeCount,
+            artworkURL: artworkURL,
+            currentEpisode: currentEpisode,
+            downloadRecords: [],
+            nowPlaying: nowPlaying,
+            isLoading: false,
+            limits: limits
+        )
+    }
+
+    /// A playlist over the whole fixture library, in its newest-first order.
+    private func makePlaylistEpisodesSnapshot(
+        library: LibraryStore,
+        downloadRecords: [EpisodeDownloadRecord] = [],
+        nowPlaying: CarPlayNowPlayingState = .idle,
+        limits: CarPlayListLimits
+    ) -> CarPlayBrowseSnapshot {
+        CarPlayBrowseModelBuilder.playlistEpisodes(
+            playlistID: "playlist-all",
+            title: "All",
+            episodes: library.episodes,
+            library: library,
+            downloadRecords: downloadRecords,
+            nowPlaying: nowPlaying,
+            limits: limits
+        )
     }
 
     private func makeFixture(
@@ -632,7 +557,7 @@ struct CarPlayBrowseModelBuilderTests {
             switch row {
             case .episode(let episodeRow):
                 episodeRow.episodeID
-            case .podcast, .playlists, .playlist, .showMore:
+            case .podcast, .playlist, .showMore:
                 nil
             }
         }

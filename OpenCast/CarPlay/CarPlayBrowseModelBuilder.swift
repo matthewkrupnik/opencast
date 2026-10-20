@@ -45,70 +45,13 @@ enum CarPlayBrowseModelBuilder {
         )
     }
 
-    static func inbox(
-        library: LibraryStore,
-        downloadRecords: [EpisodeDownloadRecord],
-        currentEpisode: Episode?,
-        nowPlaying: CarPlayNowPlayingState,
-        isLoading: Bool,
-        limits: CarPlayListLimits
-    ) -> CarPlayBrowseSnapshot {
-        let downloadedEpisodeIDs = completedDownloadEpisodeIDs(in: downloadRecords)
-        var sections: [CarPlayListSection] = []
-
-        if let currentEpisode {
-            sections.append(
-                CarPlayListSection(
-                    header: "Continue",
-                    rows: [
-                        .episode(
-                            continueRow(
-                                for: currentEpisode,
-                                downloadedEpisodeIDs: downloadedEpisodeIDs,
-                                nowPlaying: nowPlaying
-                            )
-                        )
-                    ]
-                )
-            )
-        }
-
-        // Visible list + continuation never consume more than 2x the item
-        // cap; don't build rows for an unbounded inbox (perf 29).
-        let latestRows = library.inboxEpisodes.prefix(limits.maximumItemCount * 2).map { episode in
-            CarPlayListRow.episode(
-                episodeRow(
-                    for: episode,
-                    detailText: episode.podcastTitle,
-                    library: library,
-                    downloadedEpisodeIDs: downloadedEpisodeIDs,
-                    nowPlaying: nowPlaying
-                )
-            )
-        }
-        sections.append(
-            CarPlayListSection(header: sections.isEmpty ? nil : "Latest", rows: latestRows)
-        )
-
-        return makeSnapshot(
-            title: "Inbox",
-            sections: sections,
-            continuationTitle: "More Episodes",
-            emptyTitleVariants: ["No Episodes Yet", "No Episodes"],
-            emptySubtitleVariants: ["New episodes from your shows appear here."],
-            isLoading: isLoading,
-            limits: limits
-        )
-    }
-
     static func library(
         subscriptions: [SubscriptionRecord],
         library: LibraryStore,
-        showsPlaylistsRow: Bool,
         isLoading: Bool,
         limits: CarPlayListLimits
     ) -> CarPlayBrowseSnapshot {
-        let showRows = subscriptions.prefix(limits.maximumItemCount * 2 - (showsPlaylistsRow ? 1 : 0)).map { subscription in
+        let rows = subscriptions.prefix(limits.maximumItemCount * 2).map { subscription in
             CarPlayListRow.podcast(
                 CarPlayPodcastRow(
                     feedURL: subscription.feedURL,
@@ -118,7 +61,6 @@ enum CarPlayBrowseModelBuilder {
                 )
             )
         }
-        let rows = (showsPlaylistsRow ? [CarPlayListRow.playlists] : []) + showRows
 
         return makeSnapshot(
             title: "Library",
@@ -204,36 +146,67 @@ enum CarPlayBrowseModelBuilder {
         )
     }
 
-    /// Input order is kept: the store already sorts by the collection
-    /// preference the phone shows. A row carries one image, so a playlist
-    /// shows its most dominant show's artwork (its card stack's front card)
-    /// and keeps its symbol only without one.
+    /// The car's first tab, as on the phone: the playlists in the store's
+    /// order, which is the collection preference the phone shows, led by the
+    /// loaded episode when there is one. A row carries one image, so a
+    /// playlist shows its most dominant show's artwork (its card stack's
+    /// front card) and keeps its symbol only without one. A nil count leaves
+    /// the detail line empty rather than claiming "No episodes" before the
+    /// library it counts over has loaded.
     static func playlists(
         _ summaries: [PlaylistSummary],
-        episodeCount: (PlaylistSummary) -> Int,
+        episodeCount: (PlaylistSummary) -> Int?,
         artworkURL: (PlaylistSummary) -> String?,
+        currentEpisode: Episode?,
+        downloadRecords: [EpisodeDownloadRecord],
+        nowPlaying: CarPlayNowPlayingState,
+        isLoading: Bool,
         limits: CarPlayListLimits
     ) -> CarPlayBrowseSnapshot {
-        let rows = summaries.prefix(limits.maximumItemCount * 2).map { summary -> CarPlayListRow in
+        var sections: [CarPlayListSection] = []
+
+        if let currentEpisode {
+            sections.append(
+                CarPlayListSection(
+                    header: "Continue",
+                    rows: [
+                        .episode(
+                            continueRow(
+                                for: currentEpisode,
+                                downloadedEpisodeIDs: completedDownloadEpisodeIDs(in: downloadRecords),
+                                nowPlaying: nowPlaying
+                            )
+                        )
+                    ]
+                )
+            )
+        }
+
+        let playlistRows = summaries.prefix(limits.maximumItemCount * 2).map { summary -> CarPlayListRow in
             let url = artworkURL(summary)
             return .playlist(
                 CarPlayPlaylistRow(
                     playlistID: summary.playlistID,
                     title: summary.name,
-                    detailText: PlaylistSummaryText.line(itemCount: episodeCount(summary), totalDuration: 0),
+                    detailText: episodeCount(summary).map {
+                        PlaylistSummaryText.line(itemCount: $0, totalDuration: 0)
+                    },
                     artworkURL: url,
                     symbolName: url == nil ? PlaylistSymbolCover.defaultSymbolName : nil
                 )
             )
         }
+        sections.append(
+            CarPlayListSection(header: sections.isEmpty ? nil : "Playlists", rows: playlistRows)
+        )
 
         return makeSnapshot(
             title: "Playlists",
-            sections: [CarPlayListSection(header: nil, rows: rows)],
+            sections: sections,
             continuationTitle: "More Playlists",
             emptyTitleVariants: ["No Playlists", "None"],
             emptySubtitleVariants: ["Create playlists from OpenCast on your phone."],
-            isLoading: false,
+            isLoading: isLoading,
             limits: limits
         )
     }

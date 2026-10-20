@@ -4,7 +4,7 @@ import Testing
 
 @MainActor
 struct CarPlayTemplateNavigatorTests {
-    @Test(arguments: ["More Playlists", "More Episodes", "More Shows"], ["Up Next", "Current Show", "Inbox"])
+    @Test(arguments: ["More Playlists", "More Episodes", "More Shows"], ["Up Next", "Current Show"])
     func fullBrowseStackStillOpensNowPlayingControls(page: String, destination: String) {
         let harness = CarPlayTemplateNavigationHarness(browseTitles: ["Playlists", page, "Episodes"])
         let originalStack = harness.stack

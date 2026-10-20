@@ -64,16 +64,6 @@ struct CarPlayTemplateRenderer {
             makeEpisodeItem(episodeRow, row: row, onSelect: onSelect)
         case .podcast(let podcastRow):
             makePodcastItem(podcastRow, row: row, onSelect: onSelect)
-        case .playlists:
-            (
-                makeItem(
-                    text: CarPlayListRow.playlistsTitle,
-                    image: UIImage(systemName: "music.note.list"),
-                    row: row,
-                    onSelect: onSelect
-                ),
-                nil
-            )
         case .playlist(let playlistRow):
             makePlaylistItem(playlistRow, row: row, onSelect: onSelect)
         case .showMore:
@@ -147,14 +137,13 @@ struct CarPlayTemplateRenderer {
 
     private func makeItem(
         text: String,
-        image: UIImage? = nil,
         row: CarPlayListRow,
         onSelect: @escaping (CarPlayListRow) -> Void
     ) -> CPListItem {
         let item = CPListItem(
             text: text,
             detailText: nil,
-            image: image,
+            image: nil,
             accessoryImage: nil,
             accessoryType: .disclosureIndicator
         )

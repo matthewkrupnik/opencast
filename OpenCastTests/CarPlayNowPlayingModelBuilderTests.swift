@@ -42,10 +42,10 @@ struct CarPlayNowPlayingModelBuilderTests {
         #expect(!orphaned.canShowCurrentShow)
     }
 
-    @Test("Up Next title falls back to Inbox only while the queue is empty")
-    func upNextTitleMapping() {
-        #expect(makeState(hasQueuedEpisodes: true).upNextTitle == "Up Next")
-        #expect(makeState(hasQueuedEpisodes: false).upNextTitle == "Inbox")
+    @Test("Up Next is enabled only while the queue has episodes")
+    func upNextEnabledMapping() {
+        #expect(makeState(hasQueuedEpisodes: true).isUpNextEnabled)
+        #expect(!makeState(hasQueuedEpisodes: false).isUpNextEnabled)
     }
 
     @Test("Identical inputs build equal states so the row is not rebuilt")
