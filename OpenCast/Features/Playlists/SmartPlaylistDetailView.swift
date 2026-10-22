@@ -1,11 +1,11 @@
 import SwiftData
 import SwiftUI
 
-/// One playlist: the tinted hero with its rule chips, then the episodes the
+/// One playlist: the tinted hero, then the episodes the
 /// rule matches, in rule order (show by show when it lists its shows).
 /// Tapping a row plays from there. The rule decides membership and order, so
-/// rows cannot be reordered or removed; changing a chip re-evaluates the list
-/// in place.
+/// rows cannot be reordered or removed; changing a rule in Playlist Settings
+/// re-evaluates the list in place.
 ///
 /// The body reads the evaluation once, through the app model's memo, which
 /// recomputes only when a token the rule depends on changes. The body never
@@ -15,6 +15,7 @@ struct SmartPlaylistDetailView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.modelContext) private var modelContext
     @State private var visibleEpisodeCount = EpisodeCatalogContinuation.pageSize
+    @State private var isShowingSettings = false
 
     let summary: PlaylistSummary
     var onOpenEpisode: (String) -> Void = { _ in }
@@ -40,8 +41,7 @@ struct SmartPlaylistDetailView: View {
                     totalDuration: evaluation.totalDuration,
                     primaryAction: primaryAction ?? .play,
                     canPlay: primaryAction != nil,
-                    onPlay: play,
-                    onRuleChange: setRule
+                    onPlay: play
                 )
                 .frame(maxWidth: 600)
                 .frame(maxWidth: .infinity)
@@ -57,7 +57,7 @@ struct SmartPlaylistDetailView: View {
                         ContentUnavailableView(
                             "No Matching Episodes",
                             systemImage: "music.note.list",
-                            description: Text("No episodes match these rules. Change a rule above to include more.")
+                            description: Text("No episodes match these rules. Change a rule in Playlist Settings to include more.")
                         )
                     } else {
                         ForEach(visibleEpisodes) { episode in
@@ -86,14 +86,39 @@ struct SmartPlaylistDetailView: View {
                 PlaylistActionsMenu(
                     summary: summary,
                     canEnqueue: canEnqueue,
-                    canDownloadAll: appModel.hasPlaylistDownloadAllCandidates(summary.playlistID)
+                    canDownloadAll: appModel.hasPlaylistDownloadAllCandidates(summary.playlistID),
+                    onShowSettings: showSettings
                 )
             }
+        }
+        // On the screen, not the toolbar menu: toolbar items rebuild on every
+        // rule change, which tore down the Shows picker mid-pick.
+        .sheet(isPresented: $isShowingSettings) {
+            settingsSheet
         }
         // The age clause measures from the library's reference date; a
         // playlist opened from the Playlists tab or the playing-from pill
         // never passes through the Library screen that advances it.
         .onAppear(perform: appModel.library.advanceNewEpisodeReferenceDate)
+    }
+
+    private var settingsSheet: some View {
+        NavigationStack {
+            List {
+                if let rule = summary.rule {
+                    SmartPlaylistRuleChips(rule: rule, onChange: setRule)
+                        .listRowBackground(Color.clear)
+                }
+            }
+            .navigationTitle("Playlist Settings")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Done") { isShowingSettings = false }
+                }
+            }
+        }
+        .tint(summary.tint?.color)
     }
 
     private var listAnimation: Animation? {
@@ -109,6 +134,10 @@ struct SmartPlaylistDetailView: View {
 
     private func play(_ mode: PlaylistPlayMode) {
         appModel.playPlaylist(summary.playlistID, mode: mode, modelContext: modelContext)
+    }
+
+    private func showSettings() {
+        isShowingSettings = true
     }
 
     private func setRule(_ rule: PlaylistRule) {

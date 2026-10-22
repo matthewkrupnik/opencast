@@ -5381,13 +5381,14 @@ final class OpenCastUITests: XCTestCase {
         attachSmokeScreenshot(named: "playlists_smart_collection_grid")
 
         openSeededSmartPlaylist(in: app)
+        openPlaylistSettings(in: app)
         assertSmartRuleChips(Self.defaultSmartRuleChipLabels, in: app)
-        assertExists(playlistMetaLine(in: app), named: "Playlist meta line")
+        closePlaylistSettings(in: app)
         assertPlaylistCountLine(reads: "4 episodes", in: app)
         assertExists(smartPlaylistRow(Self.seededQueuedEpisodeIDs[2], in: app), named: "Queued UI Episode 3 row")
         attachSmokeScreenshot(named: "playlists_smart_detail_default")
         assertSmartPlaylistRows(unplayedEpisodeIDs.reversed(), in: app)
-        scrollToSmartRuleChips(in: app)
+        openPlaylistSettings(in: app)
 
         chooseSmartRuleOption(
             "Played",
@@ -5395,6 +5396,7 @@ final class OpenCastUITests: XCTestCase {
             screenshotName: "playlists_smart_episodes_menu",
             in: app
         )
+        closePlaylistSettings(in: app)
         assertPlaylistCountLine(reads: "1 episode", in: app)
         assertExists(smartPlaylistRow(Self.playedPlaylistEpisodeID, in: app), named: "Playlist UI Episode 2 row")
         for episodeID in unplayedEpisodeIDs {
@@ -5411,6 +5413,7 @@ final class OpenCastUITests: XCTestCase {
         tapBackButton(in: app)
         assertExists(app.navigationBars["Playlists"], named: "Playlists collection after the rule change")
         openSeededSmartPlaylist(in: app)
+        openPlaylistSettings(in: app)
         let episodesChip = smartRuleChip("Episodes", in: app)
         assertExists(episodesChip, named: "Smart Rule Episodes chip after reopening")
         XCTAssertTrue(
@@ -5419,6 +5422,7 @@ final class OpenCastUITests: XCTestCase {
         )
 
         chooseSmartRuleOption("Unplayed", forClause: "Episodes", in: app)
+        closePlaylistSettings(in: app)
         assertPlaylistCountLine(reads: "4 episodes", in: app)
         assertExists(smartPlaylistRow(Self.seededQueuedEpisodeIDs[2], in: app), named: "Queued UI Episode 3 row under Unplayed")
         assertDoesNotExist(
@@ -5427,8 +5431,9 @@ final class OpenCastUITests: XCTestCase {
             timeout: 5
         )
         XCTAssertTrue(waitUntil { play.isEnabled }, "Play should be enabled under the Unplayed rule")
-        scrollToSmartRuleChips(in: app)
+        openPlaylistSettings(in: app)
         chooseSmartRuleOption("Newest First", forClause: "Sort", screenshotName: "playlists_sort_menu", in: app)
+        closePlaylistSettings(in: app)
         assertSmartPlaylistRows(unplayedEpisodeIDs, in: app)
 
         tapPlaylistPlay(in: app)
@@ -5471,8 +5476,9 @@ final class OpenCastUITests: XCTestCase {
         // A new playlist opens at once, so its rules can be set.
         assertExists(app.navigationBars["UI Test Smart"], named: "UI Test Smart detail", timeout: 10)
         assertExists(app.descendants(matching: .any)["Playlist Hero Header"], named: "UI Test Smart hero header")
+        openPlaylistSettings(in: app)
         assertSmartRuleChips(Self.defaultSmartRuleChipLabels, in: app)
-        assertExists(playlistMetaLine(in: app), named: "Playlist meta line")
+        closePlaylistSettings(in: app)
         // Without the queue items the library holds one unplayed episode.
         assertPlaylistCountLine(reads: "1 episode", in: app)
         assertExists(smartPlaylistRow("ui-test-episode-1", in: app), named: "Deterministic UI Episode row")
@@ -5504,6 +5510,7 @@ final class OpenCastUITests: XCTestCase {
 
         openPlaylistsCollection(in: app)
         openSeededSmartPlaylist(in: app)
+        openPlaylistSettings(in: app)
         assertSmartRuleChips([(clause: "Shows", value: "All Shows")], in: app)
         openShowsPicker(in: app)
         let allShows = showsPickerRow("All Shows", in: app)
@@ -5550,11 +5557,13 @@ final class OpenCastUITests: XCTestCase {
 
         closeShowsPicker(in: app)
         assertSmartRuleChips([(clause: "Shows", value: "2 Shows")], in: app)
+        closePlaylistSettings(in: app)
         // Each extra show has one unplayed episode.
         assertPlaylistCountLine(reads: "2 episodes", in: app)
         assertSmartPlaylistRows(["ui-test-extra-episode-25", "ui-test-extra-episode-26"], in: app)
         attachSmokeScreenshot(named: "playlists_smart_shows_picked")
 
+        openPlaylistSettings(in: app)
         openShowsPicker(in: app)
         reorderPickedShows(
             moving: "https://example.com/ui-test-extra-26.xml",
@@ -5562,6 +5571,7 @@ final class OpenCastUITests: XCTestCase {
             in: app
         )
         closeShowsPicker(in: app)
+        closePlaylistSettings(in: app)
         assertSmartPlaylistRows(["ui-test-extra-episode-26", "ui-test-extra-episode-25"], in: app)
         attachSmokeScreenshot(named: "playlists_smart_shows_reordered")
 
@@ -5569,6 +5579,7 @@ final class OpenCastUITests: XCTestCase {
         tapBackButton(in: app)
         assertExists(app.navigationBars["Playlists"], named: "Playlists collection after picking shows")
         openSeededSmartPlaylist(in: app)
+        openPlaylistSettings(in: app)
         assertSmartRuleChips([(clause: "Shows", value: "2 Shows")], in: app)
         openShowsPicker(in: app)
         XCTAssertFalse(allShows.isSelected, "All Shows should be unchecked while the rule names shows")
@@ -7592,16 +7603,6 @@ final class OpenCastUITests: XCTestCase {
         app.descendants(matching: .any).matching(identifier: "playlist-episode-\(episodeID)").firstMatch
     }
 
-    /// The hero's "Playlist" line, scoped to the hero so the collection's
-    /// own title never matches.
-    @MainActor
-    private func playlistMetaLine(in app: XCUIApplication) -> XCUIElement {
-        app.descendants(matching: .any)["Playlist Hero Header"]
-            .descendants(matching: .any)
-            .matching(NSPredicate(format: "label == %@", "Playlist"))
-            .firstMatch
-    }
-
     /// Each chip exists, reads "<Clause>, <Value>" and keeps a 44-point tap
     /// target.
     @MainActor
@@ -7679,24 +7680,40 @@ final class OpenCastUITests: XCTestCase {
         }
     }
 
+    /// Opens Playlist Settings from the detail's Playlist Actions menu and
+    /// waits for the rule chips.
     @MainActor
-    private func scrollToSmartRuleChips(
+    private func openPlaylistSettings(
         in app: XCUIApplication,
         file: StaticString = #filePath,
         line: UInt = #line
     ) {
+        // The sheet's title reuses the item's label, so it must not be
+        // mistaken for a menu that stayed open.
+        choosePlaylistAction("Playlist Settings", closesMenuIfStillOpen: false, in: app, file: file, line: line)
+        assertExists(app.navigationBars["Playlist Settings"], named: "Playlist Settings sheet", file: file, line: line)
         let chip = smartRuleChip("Episodes", in: app)
-        for _ in 0..<4 where !(chip.exists && chip.isHittable) {
-            app.swipeDown()
-        }
-        assertHittable(chip, named: "Smart Rule Episodes chip after scrolling back", file: file, line: line)
-        // A tap while the list still decelerates only stops the scroll.
-        XCTAssertTrue(waitForStableFrame(of: chip), "The chips should settle after scrolling back", file: file, line: line)
+        assertHittable(chip, named: "Smart Rule Episodes chip", file: file, line: line)
+        // A tap while the sheet still slides in only lands short.
+        XCTAssertTrue(waitForStableFrame(of: chip), "The chips should settle as the sheet opens", file: file, line: line)
+    }
+
+    @MainActor
+    private func closePlaylistSettings(
+        in app: XCUIApplication,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) {
+        let sheet = app.navigationBars["Playlist Settings"]
+        let done = sheet.buttons["Done"]
+        assertHittable(done, named: "Playlist Settings Done button", file: file, line: line)
+        done.tap()
+        XCTAssertTrue(sheet.absentOrWait(timeout: 5), "Playlist Settings should close on Done", file: file, line: line)
     }
 
     /// Opens a rule chip's glass menu and picks an inline option. There is no
-    /// fallback tap to close the menu: in a smart detail a tap that lands
-    /// after the menu closed hits a row and plays from there.
+    /// fallback tap to close the menu: a tap that lands after the menu closed
+    /// could hit something under it.
     @MainActor
     private func chooseSmartRuleOption(
         _ option: String,

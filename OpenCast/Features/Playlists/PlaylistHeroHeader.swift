@@ -1,13 +1,11 @@
 import SwiftUI
 
-/// The top of a playlist's detail screen: the cover, the name, a meta line,
-/// how much there is to hear, the rule chips (or a footnote when the rule
-/// came from a newer version of the app), and Play, all in the playlist's
-/// tint. With episodes already in Up Next, Play first asks whether to
-/// replace the queue or add the playlist after it.
+/// The top of a playlist's detail screen: the name, how much there is to
+/// hear (with a footnote when the rule came from a newer version of the
+/// app), and Play, all in the playlist's tint. The rules are edited from the
+/// toolbar menu's Playlist Settings. With episodes already in Up Next, Play
+/// first asks whether to replace the queue or add the playlist after it.
 struct PlaylistHeroHeader: View {
-    private static let coverSide = 160.0
-
     @Environment(OpenCastAppModel.self) private var appModel
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @State private var isConfirmingPlay = false
@@ -19,25 +17,14 @@ struct PlaylistHeroHeader: View {
     let primaryAction: PlaylistPrimaryAction
     let canPlay: Bool
     let onPlay: (PlaylistPlayMode) -> Void
-    var onRuleChange: (PlaylistRule) -> Void = { _ in }
 
     var body: some View {
         VStack(spacing: 16) {
-            PlaylistCoverView(summary: summary, cornerRadius: 14)
-                .frame(width: Self.coverSide, height: Self.coverSide)
-                .shadow(color: .black.opacity(0.16), radius: 18, y: 8)
-
-            VStack(spacing: 5) {
-                Text(summary.name)
-                    .font(.title2)
-                    .bold()
-                    .multilineTextAlignment(.center)
-                    .fixedSize(horizontal: false, vertical: true)
-                metaLine
-                    .font(.subheadline)
-                    .multilineTextAlignment(.center)
-            }
-            .accessibilityElement(children: .combine)
+            Text(summary.name)
+                .font(.title2)
+                .bold()
+                .multilineTextAlignment(.center)
+                .fixedSize(horizontal: false, vertical: true)
 
             VStack(spacing: 8) {
                 countLine
@@ -45,7 +32,12 @@ struct PlaylistHeroHeader: View {
                     .multilineTextAlignment(.center)
                     .accessibilityIdentifier("Playlist Count Line")
 
-                ruleControls
+                if summary.rule == nil {
+                    Text("These rules need a newer version of the app.")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                        .multilineTextAlignment(.center)
+                }
             }
 
             playbackButtons
@@ -57,33 +49,9 @@ struct PlaylistHeroHeader: View {
         .accessibilityIdentifier("Playlist Hero Header")
     }
 
-    private var metaLine: some View {
-        // Only the glyph takes the tint: the playlist's own colour is too
-        // light to read as text on its glow (yellow, orange, green, teal).
-        Label {
-            Text("Playlist")
-                .foregroundStyle(.secondary)
-        } icon: {
-            Image(systemName: "music.note.list")
-                .foregroundStyle(.tint)
-        }
-    }
-
     private var countLine: some View {
         Text(PlaylistSummaryText.line(itemCount: itemCount, totalDuration: totalDuration))
             .accessibilityLabel(PlaylistSummaryText.spokenLine(itemCount: itemCount, totalDuration: totalDuration))
-    }
-
-    @ViewBuilder
-    private var ruleControls: some View {
-        if let rule = summary.rule {
-            SmartPlaylistRuleChips(rule: rule, onChange: onRuleChange)
-        } else {
-            Text("These rules need a newer version of the app.")
-                .font(.footnote)
-                .foregroundStyle(.secondary)
-                .multilineTextAlignment(.center)
-        }
     }
 
     private var playbackButtons: some View {

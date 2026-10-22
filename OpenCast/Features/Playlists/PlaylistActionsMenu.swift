@@ -2,8 +2,8 @@ import SwiftData
 import SwiftUI
 
 /// The playlist detail toolbar menu: Play Next, Play Last and Download All,
-/// then rename and delete. The rule decides the order and membership, so
-/// there is no reordering here. Deleting pops back to the collection.
+/// then Playlist Settings, rename and delete. The rule decides the order and
+/// membership, so there is no reordering here. Deleting pops back to the collection.
 struct PlaylistActionsMenu: View {
     @Environment(OpenCastAppModel.self) private var appModel
     @Environment(\.dismiss) private var dismiss
@@ -12,6 +12,7 @@ struct PlaylistActionsMenu: View {
     let summary: PlaylistSummary
     let canEnqueue: Bool
     let canDownloadAll: Bool
+    let onShowSettings: () -> Void
     @State private var namePromptRequest: PlaylistNamePromptRequest?
     @State private var isConfirmingDelete = false
     @State private var isConfirmingDownloadAll = false
@@ -38,6 +39,9 @@ struct PlaylistActionsMenu: View {
                 .disabled(!canDownloadAll)
 
             Divider()
+
+            Button("Playlist Settings", systemImage: "slider.horizontal.3", action: onShowSettings)
+                .disabled(summary.rule == nil)
 
             Button("Rename", systemImage: "pencil", action: promptRename)
 
