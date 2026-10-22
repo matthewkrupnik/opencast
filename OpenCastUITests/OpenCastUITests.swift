@@ -82,6 +82,29 @@ final class OpenCastUITests: XCTestCase {
     }
 
     @MainActor
+    func testHeaderShortcutsSwitchTabsOnCompactWidth() throws {
+        let app = makeCompletedOnboardingApp()
+        app.launch()
+
+        for (shortcut, tab) in [("Settings", "Settings"), ("Downloads", "Downloads"), ("Search", "Search")] {
+            let playlistsTab = app.tabBars.buttons["Playlists"]
+            XCTAssertTrue(playlistsTab.existsOrWait(timeout: 5), "Playlists tab before \(shortcut)")
+            playlistsTab.tap()
+
+            let button = app.navigationBars.buttons["Shortcut \(shortcut)"]
+            XCTAssertTrue(button.existsOrWait(timeout: 5), "\(shortcut) header shortcut on Playlists")
+            button.tap()
+            XCTAssertTrue(app.tabBars.buttons[tab].isSelected, "\(shortcut) shortcut selects the \(tab) tab")
+        }
+
+        app.tabBars.buttons["Library"].tap()
+        XCTAssertTrue(
+            app.navigationBars.buttons["Shortcut Settings"].existsOrWait(timeout: 5),
+            "Library shows the header shortcuts too"
+        )
+    }
+
+    @MainActor
     func testSeededEpisodeActionsShareEpisodeOpensActivitySheet() throws {
         let app = makeSeededApp(
             forcesDarkMode: false,

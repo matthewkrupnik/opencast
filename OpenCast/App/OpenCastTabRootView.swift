@@ -20,6 +20,7 @@ struct OpenCastTabRootView: View {
                         onOpenUpNext: onOpenUpNext,
                         onOpenPlaylist: openPlaylist(on: .library)
                     )
+                    .sectionShortcutsToolbar(selectedTab: $selectedTab)
                     .withOpenCastDestinations(
                         onOpenEpisode: openEpisode(on: .library),
                         onOpenPlaylist: openPlaylist(on: .library)
@@ -39,6 +40,7 @@ struct OpenCastTabRootView: View {
                             navigationPaths[.playlists].append(.adDetectionQueue)
                         }
                     )
+                        .sectionShortcutsToolbar(selectedTab: $selectedTab)
                         .withOpenCastDestinations(
                             onOpenEpisode: openEpisode(on: .playlists),
                             onOpenPlaylist: openPlaylist(on: .playlists)
