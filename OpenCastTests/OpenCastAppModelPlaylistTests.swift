@@ -526,11 +526,11 @@ struct OpenCastAppModelPlaylistTests {
 
         #expect(playedFromHere)
         #expect(appModel.playback.currentEpisode?.id.rawValue == "first")
-        #expect(appModel.upNextQueue.items.map(\.episodeID) == ["third", "silent", "unrelated"])
+        #expect(appModel.upNextQueue.items.map(\.episodeID) == ["third", "silent"])
         #expect(appModel.lastPlaylistError == nil)
     }
 
-    @Test("Tapping a smart row plays from there and puts the unplayed rest of the evaluation next, tagged")
+    @Test("Tapping a smart row plays from there and replaces Up Next with the unplayed rest of the evaluation, tagged")
     func playPlaylistEpisodePlaysFromHereForSmart() async throws {
         let fixture = try await makePlayableFixture()
         let appModel = fixture.appModel
@@ -551,11 +551,12 @@ struct OpenCastAppModelPlaylistTests {
 
         #expect(started)
         #expect(appModel.playback.currentEpisode?.id.rawValue == "first")
-        // The played second stays out of the queue.
-        #expect(appModel.upNextQueue.items.map(\.episodeID) == ["third", "fourth", "silent", "unrelated"])
+        // The played second stays out of the queue, and the unrelated
+        // episode queued before the tap is cleared.
+        #expect(appModel.upNextQueue.items.map(\.episodeID) == ["third", "fourth", "silent"])
         #expect(
             appModel.upNextQueue.items.map(\.sourcePlaylistID)
-                == [smart.playlistID, smart.playlistID, smart.playlistID, nil]
+                == [smart.playlistID, smart.playlistID, smart.playlistID]
         )
         #expect(appModel.currentPlaylistSourceID == smart.playlistID)
         #expect(appModel.remainingQueuedCount(forPlaylist: smart.playlistID) == 3)
@@ -591,7 +592,7 @@ struct OpenCastAppModelPlaylistTests {
 
         #expect(started)
         #expect(appModel.playback.currentEpisode?.id.rawValue == "second")
-        #expect(appModel.upNextQueue.items.map(\.episodeID) == ["third", "fourth", "silent", "unrelated"])
+        #expect(appModel.upNextQueue.items.map(\.episodeID) == ["third", "fourth", "silent"])
         #expect(appModel.currentPlaylistSourceID == everything.playlistID)
         #expect(appModel.lastPlaylistError == nil)
     }

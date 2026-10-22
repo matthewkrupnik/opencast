@@ -937,9 +937,11 @@ final class OpenCastAppModel {
         }
     }
 
-    /// "Play from here" by episode: the playlist's evaluation in rule order,
-    /// where the tapped episode and those queued after it stay within
-    /// `smartPlaylistQueueLimit`. The tapped episode must still be listed.
+    /// "Play from here" by episode: tapping a row means playing that
+    /// playlist, so Up Next is replaced by the playlist's evaluation in rule
+    /// order after the tapped episode, which with those queued after it stays
+    /// within `smartPlaylistQueueLimit`. The tapped episode must still be
+    /// listed.
     @discardableResult
     func playPlaylistEpisode(
         _ episodeID: String,
@@ -971,10 +973,10 @@ final class OpenCastAppModel {
         }
     }
 
-    /// Starts `tapped`, then queues the episodes `following` returns next,
-    /// both tagged with the playlist. `following` runs after the start, so
-    /// played state reflects the previous episode's final flush. A failed
-    /// start leaves the queue untouched.
+    /// Starts `tapped`, then replaces Up Next with the episodes `following`
+    /// returns, both tagged with the playlist. `following` runs after the
+    /// start, so played state reflects the previous episode's final flush. A
+    /// failed start leaves the queue untouched.
     private func playPlaylistEpisodes(
         _ tapped: EpisodeListItemSnapshot,
         in playlistID: String,
@@ -994,7 +996,9 @@ final class OpenCastAppModel {
             return false
         }
 
-        guard upNextQueue.enqueueNext(following(), source: playlistID, modelContext: modelContext) else {
+        guard upNextQueue.clear(modelContext: modelContext),
+              upNextQueue.enqueueLast(following(), source: playlistID, modelContext: modelContext)
+        else {
             lastUpNextError = upNextQueue.consumeLastErrorMessage()
             return false
         }
