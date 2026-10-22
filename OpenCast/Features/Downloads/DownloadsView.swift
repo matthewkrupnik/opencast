@@ -86,6 +86,9 @@ struct DownloadsView: View {
                 }
             }
 
+            DownloadsAdDetectionSection()
+                .disabled(editMode == .active)
+
             if !model.downloaded.isEmpty || hasSearchQuery {
                 Section("Downloaded") {
                     if hasSearchQuery {
