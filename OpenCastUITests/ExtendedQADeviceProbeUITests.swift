@@ -222,8 +222,8 @@ final class ExtendedQADeviceProbeUITests: XCTestCase {
                 library.swipeDown(velocity: .fast)
                 tapProbeMark(app)
             }
-            // All stays pushed on the Playlists tab.
-            openSection("Playlists", in: app)
+            // All stays pushed on the Library tab.
+            openSection("Library", in: app)
         }
 
         sleep(3)

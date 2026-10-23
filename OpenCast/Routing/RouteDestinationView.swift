@@ -21,8 +21,6 @@ struct RouteDestinationView: View {
             EpisodeTranscriptView(episodeID: id)
         case .adDetectionQueue:
             AdDetectionQueueView()
-        case .playlists:
-            PlaylistsView(onOpenPlaylist: onOpenPlaylist)
         case .playlistDetail(let id):
             PlaylistDetailView(
                 playlistID: id,

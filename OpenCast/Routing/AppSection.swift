@@ -1,6 +1,5 @@
 enum AppSection: String, CaseIterable, Identifiable {
     case library
-    case playlists
     case downloads
     case settings
     case search
@@ -13,8 +12,6 @@ enum AppSection: String, CaseIterable, Identifiable {
         switch self {
         case .library:
             "Library"
-        case .playlists:
-            "Playlists"
         case .downloads:
             "Downloads"
         case .settings:
@@ -28,8 +25,6 @@ enum AppSection: String, CaseIterable, Identifiable {
         switch self {
         case .library:
             "books.vertical"
-        case .playlists:
-            "music.note.list"
         case .downloads:
             "arrow.down.circle"
         case .settings:

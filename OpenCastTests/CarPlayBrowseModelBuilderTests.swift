@@ -391,13 +391,13 @@ struct CarPlayBrowseModelBuilderTests {
         #expect(rows[0].symbolName == nil)
         #expect(rows[0].detailText == "3 episodes")
         #expect(rows[1].artworkURL == nil)
-        #expect(rows[1].symbolName == PlaylistSymbolCover.defaultSymbolName)
+        #expect(rows[1].symbolName == PlaylistRowView.symbolName)
         #expect(rows[1].detailText == "No episodes")
         #expect(rows[2].artworkURL == "https://example.com/cover.jpg")
         #expect(rows[2].symbolName == nil)
         #expect(rows[2].detailText == "1 episode")
         #expect(rows[3].artworkURL == nil)
-        #expect(rows[3].symbolName == PlaylistSymbolCover.defaultSymbolName)
+        #expect(rows[3].symbolName == PlaylistRowView.symbolName)
         #expect(rows[3].detailText == "12 episodes")
     }
 

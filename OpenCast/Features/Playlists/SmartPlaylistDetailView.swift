@@ -1,8 +1,8 @@
 import SwiftData
 import SwiftUI
 
-/// One playlist: the tinted hero, then the episodes the
-/// rule matches, in rule order (show by show when it lists its shows).
+/// One playlist: the episodes its rule matches, in rule order (show by show
+/// when it lists its shows).
 /// Tapping a row plays from there. The rule decides membership and order, so
 /// rows cannot be reordered or removed; changing a rule in Playlist Settings
 /// re-evaluates the list in place.
@@ -22,10 +22,6 @@ struct SmartPlaylistDetailView: View {
 
     var body: some View {
         let evaluation = appModel.smartPlaylistEvaluation(for: summary)
-        let primaryAction = PlaylistPrimaryAction.resolve(
-            smartEpisodes: evaluation.episodes,
-            library: appModel.library
-        )
         // Play Next and Play Last skip the episode now playing.
         let currentEpisodeID = appModel.playback.currentEpisode?.id.rawValue
         let canEnqueue = evaluation.episodes.contains {
@@ -34,48 +30,29 @@ struct SmartPlaylistDetailView: View {
         let visibleEpisodes = evaluation.episodes.prefix(visibleEpisodeCount)
 
         List {
-            Section {
-                PlaylistHeroHeader(
-                    summary: summary,
-                    itemCount: evaluation.count,
-                    totalDuration: evaluation.totalDuration,
-                    primaryAction: primaryAction ?? .play,
-                    canPlay: primaryAction != nil,
-                    onPlay: play
+            if summary.hasUnreadableRule {
+                ContentUnavailableView(
+                    "Rules Unavailable",
+                    systemImage: "music.note.list",
+                    description: Text("These rules need a newer version of the app.")
                 )
-                .frame(maxWidth: 600)
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 8)
-                .listRowBackground(Color.clear)
-                .listRowSeparator(.hidden)
-            }
-
-            // An unreadable rule lists nothing; the hero's footnote explains.
-            if !summary.hasUnreadableRule {
-                Section {
-                    if evaluation.episodes.isEmpty {
-                        ContentUnavailableView(
-                            "No Matching Episodes",
-                            systemImage: "music.note.list",
-                            description: Text("No episodes match these rules. Change a rule in Playlist Settings to include more.")
-                        )
-                    } else {
-                        ForEach(visibleEpisodes) { episode in
-                            PlaylistEpisodeRowView(
-                                playlistID: summary.playlistID,
-                                episode: episode,
-                                onOpenEpisode: onOpenEpisode
-                            )
-                            .modifier(PodcastEpisodeSwipeActionsModifier(episode: episode))
-                        }
-                        EpisodeCatalogContinuation(totalCount: evaluation.count, visibleCount: $visibleEpisodeCount)
-                    }
+            } else if evaluation.episodes.isEmpty {
+                ContentUnavailableView(
+                    "No Matching Episodes",
+                    systemImage: "music.note.list",
+                    description: Text("No episodes match these rules. Change a rule in Playlist Settings to include more.")
+                )
+            } else {
+                ForEach(visibleEpisodes) { episode in
+                    PlaylistEpisodeRowView(
+                        playlistID: summary.playlistID,
+                        episode: episode,
+                        onOpenEpisode: onOpenEpisode
+                    )
+                    .modifier(PodcastEpisodeSwipeActionsModifier(episode: episode))
                 }
+                EpisodeCatalogContinuation(totalCount: evaluation.count, visibleCount: $visibleEpisodeCount)
             }
-        }
-        .scrollContentBackground(.hidden)
-        .background(alignment: .top) {
-            PlaylistTintGlowBackground(tint: (summary.tint ?? .blue).color)
         }
         .contentMargins(.bottom, 72, for: .scrollContent)
         .animation(listAnimation, value: visibleEpisodes.map(\.episodeID))
@@ -97,17 +74,16 @@ struct SmartPlaylistDetailView: View {
             settingsSheet
         }
         // The age clause measures from the library's reference date; a
-        // playlist opened from the Playlists tab or the playing-from pill
-        // never passes through the Library screen that advances it.
+        // playlist opened from the playing-from pill never passes through
+        // the Library screen that advances it.
         .onAppear(perform: appModel.library.advanceNewEpisodeReferenceDate)
     }
 
     private var settingsSheet: some View {
         NavigationStack {
-            List {
+            Group {
                 if let rule = summary.rule {
-                    SmartPlaylistRuleChips(rule: rule, onChange: setRule)
-                        .listRowBackground(Color.clear)
+                    PlaylistSettingsForm(rule: rule, onChange: setRule)
                 }
             }
             .navigationTitle("Playlist Settings")
@@ -118,7 +94,6 @@ struct SmartPlaylistDetailView: View {
                 }
             }
         }
-        .tint(summary.tint?.color)
     }
 
     private var listAnimation: Animation? {
@@ -130,10 +105,6 @@ struct SmartPlaylistDetailView: View {
     /// something.
     private func isCandidate(_ episode: EpisodeListItemSnapshot) -> Bool {
         !appModel.library.progressSummary(for: episode).isCompleted
-    }
-
-    private func play(_ mode: PlaylistPlayMode) {
-        appModel.playPlaylist(summary.playlistID, mode: mode, modelContext: modelContext)
     }
 
     private func showSettings() {

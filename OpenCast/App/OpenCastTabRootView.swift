@@ -18,7 +18,10 @@ struct OpenCastTabRootView: View {
                     LibraryView(
                         onAdd: onAdd,
                         onOpenUpNext: onOpenUpNext,
-                        onOpenPlaylist: openPlaylist(on: .library)
+                        onOpenPlaylist: openPlaylist(on: .library),
+                        onOpenAdDetectionQueue: {
+                            navigationPaths[.library].append(.adDetectionQueue)
+                        }
                     )
                     .sectionShortcutsToolbar(selectedTab: $selectedTab)
                     .withOpenCastDestinations(
@@ -27,27 +30,6 @@ struct OpenCastTabRootView: View {
                     )
                 }
             }
-
-            Tab(
-                AppSection.playlists.title,
-                systemImage: AppSection.playlists.systemImage,
-                value: AppSection.playlists
-            ) {
-                NavigationStack(path: $navigationPaths[.playlists]) {
-                    PlaylistsView(
-                        onOpenPlaylist: openPlaylist(on: .playlists),
-                        onOpenAdDetectionQueue: {
-                            navigationPaths[.playlists].append(.adDetectionQueue)
-                        }
-                    )
-                        .sectionShortcutsToolbar(selectedTab: $selectedTab)
-                        .withOpenCastDestinations(
-                            onOpenEpisode: openEpisode(on: .playlists),
-                            onOpenPlaylist: openPlaylist(on: .playlists)
-                        )
-                }
-            }
-
 
             Tab(
                 AppSection.downloads.title,

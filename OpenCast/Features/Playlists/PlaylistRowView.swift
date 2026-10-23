@@ -1,9 +1,8 @@
 import SwiftUI
 
-/// A playlist in the collection's list layout: a small cover, the name and
-/// its size line.
+/// A playlist in the collection: the playlist symbol and its name.
 struct PlaylistRowView: View {
-    private static let artworkSide = 56.0
+    static let symbolName = "music.note.list"
 
     let summary: PlaylistSummary
 
@@ -13,22 +12,7 @@ struct PlaylistRowView: View {
 
     var body: some View {
         NavigationLink(value: AppRoute.playlistDetail(id: summary.playlistID)) {
-            HStack(spacing: 14) {
-                PlaylistCoverView(summary: summary, cornerRadius: 8)
-                    .frame(width: Self.artworkSide, height: Self.artworkSide)
-
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(summary.name)
-                        .font(.headline)
-                        .lineLimit(2)
-                    PlaylistSummaryLine(summary: summary)
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(2)
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-            }
-            .padding(.vertical, 4)
+            Label(summary.name, systemImage: Self.symbolName)
         }
         .accessibilityIdentifier(Self.accessibilityIdentifier(for: summary.playlistID))
     }

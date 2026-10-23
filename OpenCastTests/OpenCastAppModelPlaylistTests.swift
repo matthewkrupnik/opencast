@@ -509,8 +509,6 @@ struct OpenCastAppModelPlaylistTests {
         let everyEpisode = appModel.smartPlaylistEvaluation(for: everything).episodes
 
         #expect(playedEpisodes.map(\.episodeID) == ["second", "fourth"])
-        #expect(PlaylistPrimaryAction.resolve(smartEpisodes: playedEpisodes, library: appModel.library) == nil)
-        #expect(PlaylistPrimaryAction.resolve(smartEpisodes: everyEpisode, library: appModel.library) == .play)
         #expect(appModel.playlistDownloadAllCandidates(played.playlistID).isEmpty)
         #expect(!appModel.hasPlaylistDownloadAllCandidates(played.playlistID))
 

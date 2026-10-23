@@ -473,7 +473,7 @@ final class OpenCastAppModel {
             // applies to the first render.
             libraryDisplaySettings.load(modelContext: modelContext)
             playlistDisplaySettings.load(modelContext: modelContext)
-            // A handful of SwiftData rows, so the Playlists tab draws its
+            // A handful of SwiftData rows, so the Library draws its
             // rows at once instead of waiting out the library's cache load.
             migrateLegacyLocalPlaylists(modelContext: modelContext)
             playlists.sortOrder = playlistDisplaySettings.sortOrder

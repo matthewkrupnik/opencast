@@ -9,10 +9,8 @@ import SwiftData
 /// synced edits. Published values change only after a save succeeds.
 @Observable
 final class PlaylistDisplaySettingsStore {
-    static let layoutPreferenceKey = "playlists.layout"
     static let sortOrderPreferenceKey = "playlists.sortOrder"
 
-    private(set) var layout = LibraryLayoutPreference.list
     private(set) var sortOrder = PlaylistSortOrder.recentlyUpdated
     private(set) var lastErrorMessage: String?
 
@@ -26,34 +24,13 @@ final class PlaylistDisplaySettingsStore {
     func load(modelContext: ModelContext) {
         let context = ModelContext(modelContext.container)
         do {
-            layout = try storedValue(forKey: Self.layoutPreferenceKey, context: context)
-                .flatMap(LibraryLayoutPreference.init(rawValue:)) ?? .list
             sortOrder = try storedValue(forKey: Self.sortOrderPreferenceKey, context: context)
                 .flatMap(PlaylistSortOrder.init(rawValue:)) ?? .recentlyUpdated
             lastErrorMessage = nil
         } catch {
-            layout = .list
             sortOrder = .recentlyUpdated
             lastErrorMessage = "Unable to load playlist settings: \(error.localizedDescription)"
         }
-    }
-
-    @discardableResult
-    func setLayout(_ layout: LibraryLayoutPreference, modelContext: ModelContext) -> Bool {
-        guard self.layout != layout else {
-            return true
-        }
-        guard persist(
-            layout == .automatic ? nil : layout.rawValue,
-            forKey: Self.layoutPreferenceKey,
-            modelContext: modelContext,
-            failureDescription: "Unable to update playlist layout"
-        ) else {
-            return false
-        }
-
-        self.layout = layout
-        return true
     }
 
     @discardableResult

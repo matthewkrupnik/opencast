@@ -192,7 +192,7 @@ enum CarPlayBrowseModelBuilder {
                         PlaylistSummaryText.line(itemCount: $0, totalDuration: 0)
                     },
                     artworkURL: url,
-                    symbolName: url == nil ? PlaylistSymbolCover.defaultSymbolName : nil
+                    symbolName: url == nil ? PlaylistRowView.symbolName : nil
                 )
             )
         }

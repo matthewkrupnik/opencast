@@ -23,6 +23,6 @@ struct AppRouteTests {
     func otherRoutesCompareByEquality() {
         #expect(AppRoute.episodeDetail(id: "a").opensSameScreen(as: .episodeDetail(id: "a")))
         #expect(!AppRoute.episodeDetail(id: "a").opensSameScreen(as: .episodeDetail(id: "b")))
-        #expect(!AppRoute.playlists.opensSameScreen(as: .adDetectionQueue))
+        #expect(!AppRoute.settings(.playback).opensSameScreen(as: .adDetectionQueue))
     }
 }

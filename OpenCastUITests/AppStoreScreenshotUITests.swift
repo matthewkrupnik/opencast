@@ -197,9 +197,9 @@ final class AppStoreScreenshotUITests: XCTestCase {
             "transcribing:\(Self.pipelineEpisodeID)|app-store-kitchen-table-episode-2|app-store-half-time-episode-2"
         app.launchEnvironment[Self.queueOverrideProgressEnvironmentKey] = "1822/2940"
         app.launch()
-        openSectionRoot("Playlists", in: app)
+        openSectionRoot("Library", in: app)
         let indicator = app.buttons["Ad Detection Queue"].firstMatch
-        assertHittable(indicator, named: "Playlists ad detection indicator")
+        assertHittable(indicator, named: "Library ad detection indicator")
         indicator.tap()
         assertExists(app.navigationBars["Ad Detection"], named: "Ad Detection queue screen")
         assertExists(app.staticTexts["The Quiet Season on the Sun"], named: "running queue row")
@@ -692,7 +692,7 @@ final class AppStoreScreenshotUITests: XCTestCase {
     }
 
     // Tabs keep their pushed stacks (episode detail opened from Now Playing
-    // lands on the Playlists tab, podcast detail on Library), so every section
+    // lands on the current tab, podcast detail on Library), so every section
     // switch pops back to the root list before the next step.
     @MainActor
     private func openLibrary(in app: XCUIApplication) {
@@ -701,7 +701,7 @@ final class AppStoreScreenshotUITests: XCTestCase {
 
     @MainActor
     private func openAllEpisodes(in app: XCUIApplication) {
-        openSectionRoot("Playlists", in: app)
+        openSectionRoot("Library", in: app)
         openAllPlaylist(in: app)
     }
 

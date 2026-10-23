@@ -1,6 +1,9 @@
 import SwiftData
 import SwiftUI
 
+/// The Library: Up Next, every playlist, then the shows, as a list or with
+/// the shows as a grid. New playlists open through `onOpenPlaylist` once
+/// their name prompt has dismissed, so their rules can be set.
 struct LibraryView: View {
     @Environment(OpenCastAppModel.self) private var appModel
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -11,10 +14,14 @@ struct LibraryView: View {
     @State private var isSubscribingSample = false
     @State private var namePromptRequest: PlaylistNamePromptRequest?
     @State private var pendingOpenPlaylistID: String?
+    /// Bumped each time the Library reappears, so a drain that finished
+    /// while something was pushed still shows its brief finished state.
+    @State private var adDetectionIndicatorAppearance = 0
 
     let onAdd: () -> Void
     let onOpenUpNext: () -> Void
     let onOpenPlaylist: (String) -> Void
+    let onOpenAdDetectionQueue: () -> Void
 
     private var displaySettings: LibraryDisplaySettingsStore {
         appModel.libraryDisplaySettings
@@ -35,6 +42,7 @@ struct LibraryView: View {
         content(subscriptions: subscriptions)
             .animation(reduceMotion ? nil : .default, value: appModel.library.state)
             .animation(reduceMotion ? nil : .default, value: subscriptions.map(\.feedURL))
+            .animation(reduceMotion ? nil : .default, value: appModel.playlists.playlists.map(\.id))
             .animation(reduceMotion ? nil : .default, value: layout)
             .animation(reduceMotion ? nil : .default, value: appModel.library.lastRefreshWasOffline)
             .safeAreaInset(edge: .top, spacing: 0) {
@@ -46,6 +54,11 @@ struct LibraryView: View {
                 await appModel.library.refreshAll(modelContext: modelContext)
             }
             .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    AdDetectionQueueToolbarStatus(onOpen: onOpenAdDetectionQueue)
+                        .id(adDetectionIndicatorAppearance)
+                }
+
                 if !subscriptions.isEmpty {
                     ToolbarItem(placement: .topBarTrailing) {
                         LibraryViewOptionsMenu(resolvedLayout: layout)
@@ -63,14 +76,17 @@ struct LibraryView: View {
                     }
                 }
             }
-            .playlistNamePrompt($namePromptRequest, onCommit: createPlaylist)
+            .playlistNamePrompt($namePromptRequest, onCommit: commitPlaylistName)
             .onChange(of: namePromptRequest) {
                 openPendingPlaylistAfterPrompt()
             }
             .onChange(of: pendingOpenPlaylistID) {
                 openPendingPlaylistAfterPrompt()
             }
-            .onAppear(perform: appModel.library.advanceNewEpisodeReferenceDate)
+            .onAppear {
+                appModel.library.advanceNewEpisodeReferenceDate()
+                adDetectionIndicatorAppearance += 1
+            }
             .onChange(of: scenePhase) { _, scenePhase in
                 if scenePhase == .active {
                     appModel.library.advanceNewEpisodeReferenceDate()
@@ -96,12 +112,10 @@ struct LibraryView: View {
         default:
             if subscriptions.isEmpty {
                 List {
-                    // Playlists outlive their shows and the Playlists tab is
-                    // hidden on iPhone, so the rows stay while they lead
-                    // somewhere; they are absent only when both are empty.
-                    if hasCollections {
-                        collectionsSection
-                    }
+                    // Playlists outlive their shows, so Up Next and the
+                    // playlists stay while there are no shows.
+                    collectionsSection
+                    playlistsSection
 
                     LibraryEmptyStateView(
                         syncActivity: appModel.syncStatus.libraryActivity,
@@ -121,6 +135,10 @@ struct LibraryView: View {
                     }
                     collectionsHeader
                         .padding(.vertical, 4)
+                    playlistsGridHeader
+                    if !appModel.playlists.playlists.isEmpty {
+                        sectionTitle("Shows")
+                    }
                 }
                 .transition(.opacity)
             } else {
@@ -128,6 +146,7 @@ struct LibraryView: View {
                     offlineNoticeSection
 
                     collectionsSection
+                    playlistsSection
 
                     Section {
                         ForEach(subscriptions) { subscription in
@@ -136,6 +155,8 @@ struct LibraryView: View {
                                 showsNewEpisodeCount: displaySettings.showsNewEpisodeBadges
                             )
                         }
+                    } header: {
+                        Text("Shows")
                     }
                 }
                 .listSectionSpacing(12)
@@ -157,10 +178,6 @@ struct LibraryView: View {
         }
     }
 
-    private var hasCollections: Bool {
-        !appModel.playlists.playlists.isEmpty || !appModel.upNextQueue.items.isEmpty
-    }
-
     private var collectionsSection: some View {
         Section {
             collectionsHeader
@@ -172,21 +189,73 @@ struct LibraryView: View {
 
     private var collectionsHeader: some View {
         LibraryCollectionsHeader(
-            playlistCount: appModel.playlists.playlists.count,
             upNextCount: appModel.upNextQueue.items.count,
             onOpenUpNext: onOpenUpNext
         )
+    }
+
+    @ViewBuilder
+    private var playlistsSection: some View {
+        let playlists = appModel.playlists.playlists
+        if !playlists.isEmpty {
+            Section {
+                ForEach(playlists) { summary in
+                    PlaylistRowView(summary: summary)
+                        .modifier(PlaylistCollectionActionsModifier(summary: summary, onRename: requestRename))
+                }
+            } header: {
+                Text("Playlists")
+            }
+        }
+    }
+
+    /// The grid has no list sections, so the playlists sit above the shows
+    /// as plain rows under the same titles.
+    @ViewBuilder
+    private var playlistsGridHeader: some View {
+        let playlists = appModel.playlists.playlists
+        if !playlists.isEmpty {
+            VStack(alignment: .leading, spacing: 0) {
+                sectionTitle("Playlists")
+                ForEach(playlists) { summary in
+                    PlaylistRowView(summary: summary)
+                        .buttonStyle(.plain)
+                        .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                        .contentShape(.rect)
+                        .modifier(PlaylistCollectionActionsModifier(summary: summary, onRename: requestRename))
+                    Divider()
+                }
+            }
+            .padding(.bottom, 8)
+        }
+    }
+
+    private func sectionTitle(_ title: LocalizedStringKey) -> some View {
+        Text(title)
+            .font(.headline)
+            .padding(.top, 12)
+            .padding(.bottom, 4)
+            .accessibilityAddTraits(.isHeader)
     }
 
     private func promptNewPlaylist() {
         namePromptRequest = .create()
     }
 
-    private func createPlaylist(_ request: PlaylistNamePromptRequest, name: String) {
-        let summary = appModel.performPlaylistMutation {
-            appModel.playlists.create(name: name, modelContext: modelContext)
+    private func requestRename(_ summary: PlaylistSummary) {
+        namePromptRequest = .rename(summary)
+    }
+
+    private func commitPlaylistName(_ request: PlaylistNamePromptRequest, name: String) {
+        switch request.kind {
+        case .create:
+            let summary = appModel.performPlaylistMutation {
+                appModel.playlists.create(name: name, modelContext: modelContext)
+            }
+            pendingOpenPlaylistID = summary?.playlistID
+        case .rename(let playlistID):
+            appModel.renamePlaylist(playlistID, to: name, modelContext: modelContext)
         }
-        pendingOpenPlaylistID = summary?.playlistID
     }
 
     /// Pushing from the alert's own action would race its dismissal, so the

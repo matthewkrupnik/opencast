@@ -1,10 +1,9 @@
 import SwiftData
 import SwiftUI
 
-/// Play, Play Next, Play Last, Rename and Delete for a playlist in the
-/// collection, shared by list rows and grid tiles. Play asks whether to
-/// replace Up Next when it already holds episodes. Tiles get the context menu
-/// only; swipes do not fit a narrow grid column.
+/// Play, Play Next, Play Last, Rename and Delete for a playlist row in the
+/// collection, as swipes and a context menu. Play asks whether to replace
+/// Up Next when it already holds episodes.
 struct PlaylistCollectionActionsModifier: ViewModifier {
     @Environment(OpenCastAppModel.self) private var appModel
     @Environment(\.modelContext) private var modelContext
@@ -13,11 +12,21 @@ struct PlaylistCollectionActionsModifier: ViewModifier {
     @State private var replaceQueuedCount = 0
 
     let summary: PlaylistSummary
-    let supportsSwipeActions: Bool
     let onRename: (PlaylistSummary) -> Void
 
     func body(content: Content) -> some View {
-        swipeDecoratedContent(content)
+        content
+            .swipeActions(edge: .leading) {
+                Button("Play", systemImage: "play.fill", action: requestPlay)
+                    .tint(.accentColor)
+            }
+            // A destructive role would animate the row away before the
+            // confirmation answers, so Delete is only tinted red.
+            .swipeActions(edge: .trailing) {
+                Button("Delete", systemImage: "trash", action: confirmDelete)
+                    .tint(.red)
+                Button("Rename", systemImage: "pencil", action: rename)
+            }
             .contextMenu {
                 Button("Play", systemImage: "play.fill", action: requestPlay)
                 Button(
@@ -52,27 +61,7 @@ struct PlaylistCollectionActionsModifier: ViewModifier {
             }
     }
 
-    @ViewBuilder
-    private func swipeDecoratedContent(_ content: Content) -> some View {
-        if supportsSwipeActions {
-            content
-                .swipeActions(edge: .leading) {
-                    Button("Play", systemImage: "play.fill", action: requestPlay)
-                        .tint(.accentColor)
-                }
-                // A destructive role would animate the row away before the
-                // confirmation answers, so Delete is only tinted red.
-                .swipeActions(edge: .trailing) {
-                    Button("Delete", systemImage: "trash", action: confirmDelete)
-                        .tint(.red)
-                    Button("Rename", systemImage: "pencil", action: rename)
-                }
-        } else {
-            content
-        }
-    }
-
-    // The queue is read here rather than in `body` so rows and tiles do not
+    // The queue is read here rather than in `body` so rows do not
     // re-render on every Up Next change.
     private func requestPlay() {
         let queuedCount = appModel.upNextQueue.items.count

@@ -2,7 +2,8 @@ import SwiftData
 import SwiftUI
 
 /// The Library's layout and sort menu: the shared `LayoutPickerMenu` plus
-/// Sort By, bound to `LibraryDisplaySettingsStore`.
+/// Sort By for the shows, bound to `LibraryDisplaySettingsStore`, and Sort
+/// Playlists By, bound to `PlaylistDisplaySettingsStore`.
 struct LibraryViewOptionsMenu: View {
     @Environment(OpenCastAppModel.self) private var appModel
     @Environment(\.modelContext) private var modelContext
@@ -19,6 +20,16 @@ struct LibraryViewOptionsMenu: View {
                 }
             } label: {
                 Label("Sort By", systemImage: "arrow.up.arrow.down")
+            }
+            .pickerStyle(.menu)
+
+            Picker(selection: playlistSortOrderBinding) {
+                ForEach(PlaylistSortOrder.allCases) { sortOrder in
+                    Text(sortOrder.title)
+                        .tag(sortOrder)
+                }
+            } label: {
+                Label("Sort Playlists By", systemImage: "music.note.list")
             }
             .pickerStyle(.menu)
         }
@@ -47,6 +58,19 @@ struct LibraryViewOptionsMenu: View {
         } set: { sortOrder in
             guard sortOrder != appModel.libraryDisplaySettings.sortOrder,
                   appModel.libraryDisplaySettings.setSortOrder(sortOrder, modelContext: modelContext)
+            else {
+                return
+            }
+            selectionFeedbackTrigger += 1
+        }
+    }
+
+    private var playlistSortOrderBinding: Binding<PlaylistSortOrder> {
+        Binding {
+            appModel.playlistDisplaySettings.sortOrder
+        } set: { sortOrder in
+            guard sortOrder != appModel.playlistDisplaySettings.sortOrder,
+                  appModel.setPlaylistSortOrder(sortOrder, modelContext: modelContext)
             else {
                 return
             }

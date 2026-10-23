@@ -78,12 +78,12 @@ extension XCTestCase {
         file: StaticString = #filePath,
         line: UInt = #line
     ) {
-        // Already there: re-tapping the tab would pop to the collection and
+        // Already there: re-tapping the tab would pop to the Library and
         // push All again, moving rows mid-assertion.
-        if app.navigationBars["All"].exists, app.tabBars.buttons["Playlists"].isSelected {
+        if app.navigationBars["All"].exists, app.tabBars.buttons["Library"].isSelected {
             return
         }
-        openSection("Playlists", in: app, file: file, line: line)
+        openSection("Library", in: app, file: file, line: line)
         // Switching back to the tab keeps its stack, which may already show
         // All; anything else pushed is popped by tapping the tab again.
         // Polls both outcomes briefly instead of waiting out either one.
@@ -99,7 +99,7 @@ extension XCTestCase {
             return
         }
         if !allPlaylist.exists {
-            openSection("Playlists", in: app, file: file, line: line)
+            openSection("Library", in: app, file: file, line: line)
         }
         XCTAssertTrue(allPlaylist.existsOrWait(timeout: 10), "All playlist should exist", file: file, line: line)
         allPlaylist.tap()

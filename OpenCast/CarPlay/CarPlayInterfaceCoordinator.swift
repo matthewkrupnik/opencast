@@ -87,8 +87,8 @@ final class CarPlayInterfaceCoordinator {
     private func makeTabBarTemplate(for snapshots: CarPlayBrowseSnapshots) -> CPTabBarTemplate {
         let playlists = makeTabTemplate(
             for: snapshots.playlists,
-            tabTitle: AppSection.playlists.title,
-            tabSystemImageName: AppSection.playlists.systemImage,
+            tabTitle: "Playlists",
+            tabSystemImageName: PlaylistRowView.symbolName,
             scope: .playlists
         )
         let library = makeTabTemplate(

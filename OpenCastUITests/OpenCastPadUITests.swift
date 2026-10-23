@@ -42,7 +42,6 @@ final class OpenCastPadUITests: XCTestCase {
         let app = makeSeededApp()
         app.launch()
 
-        assertExists(tabButton("Playlists", in: app), named: "Playlists tab button")
         assertExists(tabButton("Library", in: app), named: "Library tab button")
         assertExists(tabButton("Downloads", in: app), named: "Downloads tab button")
         assertExists(tabButton("Settings", in: app), named: "Settings tab button")
@@ -56,44 +55,23 @@ final class OpenCastPadUITests: XCTestCase {
         tabButton("Downloads", in: app).tap()
         assertExists(app.navigationBars["Downloads"], named: "Downloads navigation title")
 
-        openSection("Playlists", in: app)
-        assertExists(app.navigationBars["Playlists"], named: "Playlists navigation title")
+        // Playlists live in the Library, not a tab of their own.
+        XCTAssertFalse(tabButton("Playlists", in: app).exists, "There should be no Playlists tab")
     }
 
     @MainActor
-    func testSeededPadPlaylistsSidebarRowOpensCollection() throws {
+    func testSeededPadLibraryListsPlaylists() throws {
         try skipUnlessPad()
 
         let app = makeSeededApp(seedsPlaylists: true)
         app.launch()
 
-        // Launch lands on Playlists; start from Downloads, where no Library
-        // row can share the label.
-        tabButton("Downloads", in: app).tap()
-        assertExists(app.navigationBars["Downloads"], named: "Downloads navigation title")
-        // A narrow window left by an earlier resize test has no sidebar and,
-        // by design, no Playlists tab; a double tap on the top edge restores it.
-        let window = app.windows.firstMatch
-        if window.frame.width < 700 {
-            window.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.005)).doubleTap()
-            let regularWidth = NSPredicate { _, _ in window.frame.width >= 700 }
-            XCTAssertEqual(
-                XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: regularWidth, object: app)], timeout: 5),
-                .completed,
-                "The window should return to regular width before the sidebar is used"
-            )
-        }
-        let playlistsEntry = revealPlaylistsSidebarEntry(in: app)
-        assertHittable(playlistsEntry, named: "Playlists sidebar entry")
-        attachSmokeScreenshot(named: "pad_playlists_sidebar")
-        playlistsEntry.tap()
-
-        assertExists(app.navigationBars["Playlists"], named: "Playlists navigation title")
-        assertExists(libraryContainer("Playlists Grid", in: app), named: "Playlists grid at regular width")
-        attachSmokeScreenshot(named: "pad_playlists_collection")
-
         openLibrary(in: app)
-        assertExists(app.navigationBars["Library"], named: "Library navigation title after Playlists")
+        assertExists(app.navigationBars["Library"], named: "Library navigation title")
+        let commute = app.descendants(matching: .any)
+            .matching(identifier: "playlist-row-ui-test-playlist-commute").firstMatch
+        assertExists(commute, named: "Seeded Commute row in the Library")
+        attachSmokeScreenshot(named: "pad_library_playlists")
     }
 
     @MainActor
@@ -205,7 +183,7 @@ final class OpenCastPadUITests: XCTestCase {
         let app = makeSeededApp()
         app.launchArguments.append("--opencast-seed-completed-download")
         app.launch()
-        assertExists(app.navigationBars["Playlists"], named: "Playlists before window resize")
+        assertExists(app.navigationBars["Library"], named: "Library before window resize")
 
         let window = app.windows.firstMatch
         let originalWidth = window.frame.width
@@ -309,10 +287,10 @@ final class OpenCastPadUITests: XCTestCase {
         assertExists(app.buttons["Open Now Playing"], named: "mini-player after Library switch")
         openSettings(in: app)
         assertExists(app.buttons["Open Now Playing"], named: "mini-player after Settings switch")
-        openSection("Playlists", in: app)
+        openLibrary(in: app)
 
         let miniPlayer = app.buttons["Open Now Playing"]
-        assertExists(miniPlayer, named: "mini-player after returning to Playlists")
+        assertExists(miniPlayer, named: "mini-player after returning to Library")
         miniPlayer.tap()
         assertNowPlayingOverlay(in: app)
         attachSmokeScreenshot(named: "ipad_player_reopened_after_hidden_rotation")
@@ -810,35 +788,6 @@ final class OpenCastPadUITests: XCTestCase {
     @MainActor
     private func tapBackButton(in app: XCUIApplication) {
         app.navigationBars.buttons.firstMatch.tap()
-    }
-
-    /// Playlists is hidden from the tab bar, so it lives only in the
-    /// sidebar, which portrait keeps closed until its toggle is tapped.
-    @MainActor
-    private func revealPlaylistsSidebarEntry(in app: XCUIApplication) -> XCUIElement {
-        if let entry = visibleTabButton("Playlists", in: app) {
-            return entry
-        }
-        let candidates = [app.buttons, app.cells].map {
-            $0.matching(NSPredicate(format: "label == %@", "Playlists")).firstMatch
-        }
-        let sidebarToggle = app.buttons.matching(
-            NSPredicate(format: "label CONTAINS[c] %@ OR identifier CONTAINS[c] %@", "sidebar", "sidebar")
-        ).firstMatch
-        if sidebarToggle.existsOrWait(timeout: 5) {
-            sidebarToggle.tap()
-        }
-        let entryIsHittable = NSPredicate { _, _ in
-            candidates.contains { $0.exists && $0.isHittable }
-        }
-        let expectation = XCTNSPredicateExpectation(predicate: entryIsHittable, object: app)
-        guard XCTWaiter.wait(for: [expectation], timeout: 5) == .completed,
-              let entry = candidates.first(where: { $0.exists && $0.isHittable })
-        else {
-            attachHierarchyDump(named: "pad_playlists_sidebar_miss", in: app)
-            return candidates[0]
-        }
-        return entry
     }
 
     @MainActor
