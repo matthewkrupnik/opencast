@@ -184,7 +184,9 @@ nonisolated struct EpisodeListItemSnapshot: Identifiable, Equatable, Sendable {
         return lhs.episodeID < rhs.episodeID
     }
 
-    private static func sortsByNewestFirstThenEpisodeID(
+    /// The total order the cache loads the library in: `newestFirst`, with
+    /// ties by ascending episode ID.
+    static func sortsByNewestFirstThenEpisodeID(
         _ lhs: EpisodeListItemSnapshot,
         _ rhs: EpisodeListItemSnapshot
     ) -> Bool {

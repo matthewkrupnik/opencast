@@ -14,6 +14,7 @@ protocol FeedRefreshHost: AnyObject {
     func activeSubscription(feedURL: String, modelContext: ModelContext) throws -> SubscriptionRecord?
     func activeSubscriptionFeedURLStrings(modelContext: ModelContext) throws -> [String]
     func reloadFromStore(modelContext: ModelContext) async throws
+    func reloadFeedsFromStore(_ podcastIDs: Set<String>, modelContext: ModelContext) async throws
     func reloadRefreshLogsFromStore() async throws
     func recordFailure(_ error: any Error)
 }

@@ -71,12 +71,12 @@ final class FeedRefreshCoordinator {
                 return .skip
             }
 
-            let didChangeContent = try await refresh(
+            let changedPodcastID = try await refresh(
                 subscription: subscription,
                 generation: generation,
                 modelContext: modelContext
             )
-            return didChangeContent ? .full : .logsOnly
+            return changedPodcastID.map { .feeds([$0]) } ?? .logsOnly
         }
         endRefreshing([feedURL])
         resumeDeferredConnectivityRecoveryIfIdle()
@@ -242,10 +242,12 @@ final class FeedRefreshCoordinator {
     /// What a refresh flow's `work` closure asks the trailing publication to
     /// do. A single-feed refresh that fetched no new content (not-modified,
     /// or a failure that only wrote a log) republishes just the refresh-log
-    /// projection instead of rematerializing the whole library.
+    /// projection instead of rematerializing the whole library; one that did
+    /// splices just that feed's episodes.
     private enum RefreshFlowReload {
         case skip
         case full
+        case feeds(Set<String>)
         case logsOnly
     }
 
@@ -283,6 +285,8 @@ final class FeedRefreshCoordinator {
                 return false
             case .full:
                 try await host.reloadFromStore(modelContext: modelContext)
+            case .feeds(let podcastIDs):
+                try await host.reloadFeedsFromStore(podcastIDs, modelContext: modelContext)
             case .logsOnly:
                 try await host.reloadRefreshLogsFromStore()
             }
@@ -308,13 +312,13 @@ final class FeedRefreshCoordinator {
         }
     }
 
-    /// Returns true when new feed content was upserted; log-only outcomes
-    /// (not-modified, recorded failures) return false.
+    /// Returns the podcast ID whose feed content was upserted; log-only
+    /// outcomes (not-modified, recorded failures) return nil.
     private func refresh(
         subscription: SubscriptionRecord,
         generation: Int,
         modelContext: ModelContext
-    ) async throws -> Bool {
+    ) async throws -> String? {
         let startedAt = now()
         let result = await FeedRefreshFetcher.fetchResult(
             feedURLString: subscription.feedURL,
@@ -346,6 +350,7 @@ final class FeedRefreshCoordinator {
 
         let startedAt = now()
         var lastPublication: ContinuousClock.Instant?
+        var unpublishedPodcastIDs: Set<String> = []
         var pendingFeedURLStrings = Set(feedURLStrings)
         beginRefreshing(feedURLStrings)
         defer {
@@ -364,27 +369,31 @@ final class FeedRefreshCoordinator {
             defer {
                 self.endRefreshing([result.feedURLString])
             }
-            let didChangeContent = try await self.applyRefreshResult(
+            guard let changedPodcastID = try await self.applyRefreshResult(
                 result,
                 startedAt: startedAt,
                 generation: generation,
                 modelContext: modelContext
-            )
-            if publishesIncrementally, didChangeContent,
+            ) else {
+                return
+            }
+            unpublishedPodcastIDs.insert(changedPodcastID)
+            if publishesIncrementally,
                lastPublication.map({ $0.duration(to: .now) >= .seconds(1) }) ?? true {
-                try await self.host.reloadFromStore(modelContext: modelContext)
+                try await self.host.reloadFeedsFromStore(unpublishedPodcastIDs, modelContext: modelContext)
+                unpublishedPodcastIDs.removeAll()
                 lastPublication = .now
             }
         }
     }
 
-    /// Returns true when the feed's snapshot was upserted (content changed).
+    /// Returns the podcast ID whose snapshot was upserted (content changed).
     private func applyRefreshResult(
         _ result: FeedRefreshFetcher.Result,
         startedAt: Date,
         generation: Int,
         modelContext: ModelContext
-    ) async throws -> Bool {
+    ) async throws -> String? {
         switch result.outcome {
         case .success(let outcome):
             // Every success branch below, including a failed cache write,
@@ -405,7 +414,7 @@ final class FeedRefreshCoordinator {
                         errorMessage: nil,
                         generation: generation
                     )
-                    return false
+                    return nil
                 }
                 guard try await feedWrites.upsert(
                     prepared: snapshot,
@@ -413,7 +422,7 @@ final class FeedRefreshCoordinator {
                     subscribe: false,
                     generation: generation
                 ) else {
-                    return false
+                    return nil
                 }
                 // A salvaged body cannot validate a future recovery fetch.
                 // `upsertCache` clears any older validators atomically; do
@@ -433,7 +442,7 @@ final class FeedRefreshCoordinator {
                     generation: generation,
                     modelContext: modelContext
                 )
-                return true
+                return snapshot.podcast.id.rawValue
             } catch is CancellationError {
                 throw CancellationError()
             } catch {
@@ -444,7 +453,7 @@ final class FeedRefreshCoordinator {
                     errorMessage: error.localizedDescription,
                     generation: generation
                 )
-                return false
+                return nil
             }
         case .failure(let message):
             try await recordRetryFailure(feedURL: result.feedURLString, generation: generation)
@@ -454,10 +463,10 @@ final class FeedRefreshCoordinator {
                 errorMessage: message,
                 generation: generation
             )
-            return false
+            return nil
         case .unreachable:
             setLastRefreshWasOffline(true)
-            return false
+            return nil
         case .cancelled:
             throw CancellationError()
         }

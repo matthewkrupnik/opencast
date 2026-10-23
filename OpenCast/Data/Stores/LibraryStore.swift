@@ -47,7 +47,12 @@ final class LibraryStore {
     /// Active subscriptions' episodes in `EpisodeListItemSnapshot.newestFirst`
     /// order with ties by ascending episode ID, as the cache loads them.
     /// The smart playlist evaluator relies on this to stop at a limit.
-    private(set) var episodes: [EpisodeListItemSnapshot] = []
+    private(set) var episodes: [EpisodeListItemSnapshot] = [] {
+        didSet { episodesRevision &+= 1 }
+    }
+    /// Lets a feed-scoped reload detect that the list it spliced into was
+    /// replaced while the splice ran off the main actor.
+    @ObservationIgnored private var episodesRevision = 0
     var progressRecords: [EpisodeProgressRecord] {
         progressWriter.records
     }
@@ -128,6 +133,11 @@ final class LibraryStore {
         now: now
     )
     @ObservationIgnored private var reloadGeneration = 0
+    /// Feeds whose cache changed since the last publication, so a
+    /// feed-scoped reload also covers the reloads it supersedes. Nil when
+    /// only a full load can bring the published list up to date: nothing
+    /// published yet, a full reload pending or failed, or a data reset.
+    @ObservationIgnored private var unpublishedFeedChanges: Set<String>?
     @ObservationIgnored private let reloadCompletion = LibraryReloadCompletion()
     @ObservationIgnored private var refreshLogReloadGeneration = 0
     @ObservationIgnored private var episodeIndexByID: [String: Int] = [:]
@@ -701,6 +711,7 @@ final class LibraryStore {
         writeGeneration.invalidate()
         reloadGeneration += 1
         reloadCompletion.invalidate(reloadGeneration)
+        unpublishedFeedChanges = nil
         cancelEpisodeSearchIndexPreparation()
         feedRefreshes.clearAllRefreshMarkers()
     }
@@ -716,6 +727,7 @@ final class LibraryStore {
         writeGeneration.invalidate()
         reloadGeneration += 1
         reloadCompletion.invalidate(reloadGeneration)
+        unpublishedFeedChanges = nil
         cancelEpisodeSearchIndexPreparation()
         state = .idle
         subscriptions.removeAll()
@@ -1208,11 +1220,31 @@ final class LibraryStore {
     }
 
     func reloadFromStore(modelContext: ModelContext) async throws {
+        unpublishedFeedChanges = nil
+        try await reload(modelContext: modelContext)
+    }
+
+    /// Republishes after a cache write that touched only `podcastIDs`
+    /// (a feed refresh): their episodes are spliced into the published
+    /// list instead of rematerializing every feed from SQLite. Falls back
+    /// to the full load whenever the published list can't serve as the base.
+    func reloadFeedsFromStore(_ podcastIDs: Set<String>, modelContext: ModelContext) async throws {
+        unpublishedFeedChanges?.formUnion(podcastIDs)
+        try await reload(modelContext: modelContext)
+    }
+
+    private func reload(modelContext: ModelContext) async throws {
         reloadGeneration += 1
         let generation = reloadGeneration
+        let changedPodcastIDs = unpublishedFeedChanges
         reloadCompletion.begin(generation)
         do {
-            try await loadAndPublishLibrary(modelContext: modelContext, generation: generation)
+            if let changedPodcastIDs,
+               try await spliceAndPublishFeeds(changedPodcastIDs, modelContext: modelContext, generation: generation) {
+                // Published, or deferred to a newer reload.
+            } else {
+                try await loadAndPublishLibrary(modelContext: modelContext, generation: generation)
+            }
             reloadCompletion.finishPublished(generation)
         } catch {
             if error is CancellationError {
@@ -1245,7 +1277,56 @@ final class LibraryStore {
         activePodcastIDs = Set(activeSubscriptions.map(\.feedURL))
         newEpisodeCutoffByFeedURL = Self.newEpisodeCutoffs(activeSubscriptions)
         try progressWriter.reload(modelContext: modelContext)
-        episodes = cacheSnapshot.episodes
+        publish(cacheSnapshot, episodes: cacheSnapshot.episodes, indexes: indexes)
+    }
+
+    /// Returns false, having published nothing, when the published list
+    /// changed under the off-main splice or the active subscriptions moved;
+    /// the caller then runs the full load in the same generation.
+    private func spliceAndPublishFeeds(
+        _ podcastIDs: Set<String>,
+        modelContext: ModelContext,
+        generation: Int
+    ) async throws -> Bool {
+        let baseActivePodcastIDs = activePodcastIDs
+        // Podcast rows and the refresh-log projection without any episodes.
+        let cacheSnapshot = try await localCache.loadLibrary(activePodcastIDs: [])
+        var feedEpisodes: [EpisodeListItemSnapshot] = []
+        for podcastID in podcastIDs where baseActivePodcastIDs.contains(podcastID) {
+            feedEpisodes += try await localCache.cachedEpisodes(forPodcastID: podcastID)
+        }
+        let baseRevision = episodesRevision
+        let (episodes, indexes) = try await Self.splicing(
+            feedEpisodes,
+            replacingPodcastIDs: podcastIDs,
+            into: self.episodes
+        )
+
+        guard generation == reloadGeneration else {
+            try await awaitPublishedReload(modelContext: modelContext)
+            return true
+        }
+
+        // Same post-suspension SwiftData reads as the full load.
+        let activeSubscriptions = try modelContext.fetch(activeSubscriptionsDescriptor())
+        guard episodesRevision == baseRevision,
+              Set(activeSubscriptions.map(\.feedURL)) == baseActivePodcastIDs
+        else {
+            return false
+        }
+        subscriptions = activeSubscriptions
+        newEpisodeCutoffByFeedURL = Self.newEpisodeCutoffs(activeSubscriptions)
+        try progressWriter.reload(modelContext: modelContext)
+        publish(cacheSnapshot, episodes: episodes, indexes: indexes)
+        return true
+    }
+
+    private func publish(
+        _ cacheSnapshot: LocalLibraryCacheSnapshot,
+        episodes: [EpisodeListItemSnapshot],
+        indexes: LibraryEpisodeIndexes
+    ) {
+        self.episodes = episodes
         visibleEpisodeIDs = indexes.visibleIDs
         podcastCacheByFeedURL = cacheSnapshot.podcastsByFeedURL
         refreshLogs = cacheSnapshot.refreshLogs
@@ -1258,9 +1339,40 @@ final class LibraryStore {
         episodeReleaseOrderByPodcastID = indexes.releaseOrderByPodcastID
         newEpisodeReferenceDate = now()
         episodeSearchCorpusRevision &+= 1
+        unpublishedFeedChanges = []
         rebuildLatestRefreshLogByFeedURL()
         prepareEpisodeSearchIndexIfNeeded()
         onLibraryPublished?()
+    }
+
+    /// Replaces `podcastIDs`' episodes in an already-ordered list with
+    /// `feedEpisodes`, keeping the cache's total order with a linear merge.
+    @concurrent
+    private nonisolated static func splicing(
+        _ feedEpisodes: [EpisodeListItemSnapshot],
+        replacingPodcastIDs podcastIDs: Set<String>,
+        into published: [EpisodeListItemSnapshot]
+    ) async throws -> ([EpisodeListItemSnapshot], LibraryEpisodeIndexes) {
+        let order = EpisodeListItemSnapshot.sortsByNewestFirstThenEpisodeID
+        let kept = published.filter { !podcastIDs.contains($0.podcastID) }
+        let inserted = feedEpisodes.sorted(by: order)
+        try Task.checkCancellation()
+        var merged: [EpisodeListItemSnapshot] = []
+        merged.reserveCapacity(kept.count + inserted.count)
+        var keptIndex = 0
+        var insertedIndex = 0
+        while keptIndex < kept.count, insertedIndex < inserted.count {
+            if order(inserted[insertedIndex], kept[keptIndex]) {
+                merged.append(inserted[insertedIndex])
+                insertedIndex += 1
+            } else {
+                merged.append(kept[keptIndex])
+                keptIndex += 1
+            }
+        }
+        merged += kept[keptIndex...]
+        merged += inserted[insertedIndex...]
+        return (merged, try await LibraryEpisodeIndexes.prepare(merged))
     }
 
     private func awaitPublishedReload(modelContext: ModelContext) async throws {
