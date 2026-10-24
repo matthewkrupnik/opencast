@@ -8,16 +8,26 @@ struct AdAutoDetectPlayPolicy {
     let queueStatus: AdFreePassQueueEpisodeStatus
 
     var isReplaySuppressed = false
+    /// The completed transcript describes other audio than the current
+    /// download (an enclosure re-downloaded with other ads stitched in), so
+    /// its analysis is no use and a pass finished earlier this session
+    /// doesn't count.
+    var isTranscriptStaleForDownload = false
 
     var shouldEnqueue: Bool {
-        guard isAutoDetectEnabled, !hasCurrentCompletedAnalysis, !isReplaySuppressed else {
+        guard isAutoDetectEnabled,
+              isTranscriptStaleForDownload || !hasCurrentCompletedAnalysis,
+              !isReplaySuppressed
+        else {
             return false
         }
 
         switch queueStatus {
         case .notQueued, .failed:
             return true
-        case .queued, .running, .completed, .capDeferred:
+        case .completed:
+            return isTranscriptStaleForDownload
+        case .queued, .running, .capDeferred:
             return false
         }
     }

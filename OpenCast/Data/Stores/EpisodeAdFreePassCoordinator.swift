@@ -705,6 +705,11 @@ final class EpisodeAdFreePassCoordinator {
         }
 
         if item.origin == .auto,
+           !transcriptIsStaleForDownload(
+               episodeID: item.episodeID,
+               transcriptions: dependencies.transcriptions,
+               downloads: dependencies.downloads
+           ),
            await currentCompletedAnalysisVerdict(
                for: item.episodeID,
                transcriptions: dependencies.transcriptions,
@@ -918,9 +923,15 @@ final class EpisodeAdFreePassCoordinator {
 
             // A completed transcript counts as done for the
             // default path regardless of engine — skip engine resolution and
-            // resource setup entirely.
+            // resource setup entirely — unless it describes other audio than
+            // this download, whose zones it could never line up with.
             let transcriptDocument: EpisodeTranscriptDocument
             if !deps.transcriptionEngine.isExplicitOverride,
+               !transcriptIsStaleForDownload(
+                   episodeID: episode.episodeID,
+                   transcriptions: deps.transcriptions,
+                   downloads: deps.downloads
+               ),
                let reusableDocument = await reusableCompletedTranscriptDocument(
                    for: episode.episodeID,
                    transcriptions: deps.transcriptions
@@ -1103,6 +1114,23 @@ final class EpisodeAdFreePassCoordinator {
             )
         }
         return isCurrent
+    }
+
+    /// Whether the completed transcript describes other audio than the
+    /// completed download, as when a dynamic enclosure was downloaded again
+    /// with other ads stitched in; its analysis then no longer applies.
+    func transcriptIsStaleForDownload(
+        episodeID: String,
+        transcriptions: EpisodeTranscriptionStore,
+        downloads: DownloadStore
+    ) -> Bool {
+        guard let record = transcriptions.record(for: episodeID), record.state == .completed else {
+            return false
+        }
+        return TranscriptSourceAlignment.transcriptIsStale(
+            trustedDownloadSHA256: downloads.completedSourceIdentity(for: episodeID)?.sha256,
+            documentSHA256: record.sourceFileSHA256
+        )
     }
 
     private struct CompletedAnalysisVerdict {
@@ -1343,6 +1371,23 @@ final class EpisodeAdFreePassCoordinator {
                 requiresInstalledWhisperModel: transcriptionPlan.requiresInstalledWhisperModel
             )
             switch state {
+            case .completed where !didStartTranscription && transcriptIsStaleForDownload(
+                episodeID: episode.episodeID,
+                transcriptions: transcriptions,
+                downloads: downloads
+            ):
+                try await startTranscriptionOrThrowOnSecondAttempt(
+                    secondPassError: PassFailure(FailureMessage.transcriptUnavailable),
+                    didStartTranscription: &didStartTranscription,
+                    episode: episode,
+                    downloadRecord: downloadRecord,
+                    downloads: downloads,
+                    transcriptionModels: transcriptionModels,
+                    transcriptions: transcriptions,
+                    transcriptionPlan: transcriptionPlan,
+                    localReservation: localReservation,
+                    modelContext: modelContext
+                )
             case .completed:
                 SoundLabResponsivenessDiagnostics.mark(
                     "transcript-document-load-begin",

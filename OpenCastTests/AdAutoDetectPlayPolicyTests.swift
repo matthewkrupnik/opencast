@@ -37,4 +37,37 @@ struct AdAutoDetectPlayPolicyTests {
             )
         }
     }
+
+    @Test("A transcript stale for the current download re-qualifies, even after a pass completed this session")
+    func staleTranscriptQualificationTable() {
+        let cases: [(Bool, AdFreePassQueueEpisodeStatus, Bool)] = [
+            // The old analysis looks current against its own transcript.
+            (true, .notQueued, true),
+            (true, .completed(zoneCount: 2), true),
+            (false, .completed(zoneCount: 0), true),
+            (true, .failed(message: "probe"), true),
+            // Still never doubles up on queued or running work.
+            (true, .queued(ahead: 0), false),
+            (true, .running, false),
+            (true, .capDeferred, false)
+        ]
+
+        for (hasAnalysis, status, expected) in cases {
+            let policy = AdAutoDetectPlayPolicy(
+                isAutoDetectEnabled: true,
+                hasCurrentCompletedAnalysis: hasAnalysis,
+                queueStatus: status,
+                isTranscriptStaleForDownload: true
+            )
+            #expect(policy.shouldEnqueue == expected, "hasAnalysis \(hasAnalysis) status \(status)")
+        }
+
+        let disabled = AdAutoDetectPlayPolicy(
+            isAutoDetectEnabled: false,
+            hasCurrentCompletedAnalysis: true,
+            queueStatus: .notQueued,
+            isTranscriptStaleForDownload: true
+        )
+        #expect(!disabled.shouldEnqueue)
+    }
 }

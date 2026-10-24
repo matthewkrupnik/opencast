@@ -55,4 +55,21 @@ nonisolated enum TranscriptSourceAlignment: Equatable {
         }
         return trustedDownloadSHA256 == documentSHA256
     }
+
+    /// Whether a completed transcript provably describes different audio than
+    /// the completed download, as when a dynamic enclosure is downloaded again
+    /// with other ads stitched in. Unknown hashes (older transcripts and
+    /// downloads) are not proof, so they never count as stale.
+    static func transcriptIsStale(
+        trustedDownloadSHA256: String?,
+        documentSHA256: String
+    ) -> Bool {
+        guard !documentSHA256.isEmpty,
+              let trustedDownloadSHA256,
+              !trustedDownloadSHA256.isEmpty
+        else {
+            return false
+        }
+        return trustedDownloadSHA256 != documentSHA256
+    }
 }

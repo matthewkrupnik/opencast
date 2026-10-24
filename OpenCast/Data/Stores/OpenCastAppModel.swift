@@ -2430,8 +2430,14 @@ final class OpenCastAppModel {
         _ record: EpisodeDownloadRecord,
         modelContext: ModelContext
     ) {
+        // A pass that completed earlier this session still gets a look: the
+        // download may be different audio than that pass transcribed.
+        let isOutOfQueue = switch adFreePass.queueStatus(for: record.episodeID) {
+        case .notQueued, .completed: true
+        case .queued, .running, .failed, .capDeferred: false
+        }
         guard library.isAdAutoDetectEnabled(forPodcastID: record.podcastID),
-              adFreePass.queueStatus(for: record.episodeID) == .notQueued,
+              isOutOfQueue,
               let episode = episodeSnapshot(for: record.episodeID)
         else {
             return
@@ -2457,8 +2463,15 @@ final class OpenCastAppModel {
             transcriptions: transcriptions,
             adAnalyses: adAnalyses
         )
+        let isTranscriptStale = adFreePass.transcriptIsStaleForDownload(
+            episodeID: episode.episodeID,
+            transcriptions: transcriptions,
+            downloads: downloads
+        )
         var isReplaySuppressed = false
-        if let transcript = try? await transcriptions.loadDocument(for: episode.episodeID) {
+        // Suppression is keyed to this transcript; a stale one is about to be
+        // replaced.
+        if !isTranscriptStale, let transcript = try? await transcriptions.loadDocument(for: episode.episodeID) {
             do { isReplaySuppressed = try await adAnalyses.automaticReplayError(for: transcript) != nil }
             catch { isReplaySuppressed = true }
         }
@@ -2466,7 +2479,8 @@ final class OpenCastAppModel {
             isAutoDetectEnabled: library.isAdAutoDetectEnabled(forPodcastID: episode.podcastID),
             hasCurrentCompletedAnalysis: hasCurrentCompletedAnalysis,
             queueStatus: adFreePass.queueStatus(for: episode.episodeID),
-            isReplaySuppressed: isReplaySuppressed
+            isReplaySuppressed: isReplaySuppressed,
+            isTranscriptStaleForDownload: isTranscriptStale
         )
         guard policy.shouldEnqueue else {
             return

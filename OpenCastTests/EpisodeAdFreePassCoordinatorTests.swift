@@ -1,5 +1,6 @@
 import Foundation
 import OpenCastTranscription
+import os
 import SwiftData
 import Testing
 @testable import OpenCast
@@ -974,6 +975,69 @@ struct EpisodeAdFreePassCoordinatorTests {
         #expect(fixture.transcriptions.record(for: episode.episodeID)?.modelIdentifier == OpenCastWhisperModel.largeV3.rawValue)
     }
 
+    @Test("An auto pass after a re-download re-runs only when the new bytes differ from the transcribed ones")
+    func redownloadWithDifferentBytesRedetectsAds() async throws {
+        let transcriber = CompletingEpisodeTranscriber()
+        let downloader = SwappableEpisodeAudioDownloader(contents: Data("first stitch".utf8))
+        let fixture = try await makeFixture(downloader: downloader, transcriber: transcriber)
+        let episode = makeEpisode(episodeID: "ad-free-redownload")
+        var refreshCount = 0
+        let refresh: @MainActor () -> Int = {
+            refreshCount += 1
+            return 1
+        }
+
+        fixture.enqueue(episode, refreshSkipZones: refresh)
+        #expect(await waitUntil { refreshCount == 1 && fixture.coordinator.queueState == .idle })
+        #expect(transcriber.requestCount == 1)
+        #expect(fixture.analysisClient.requestCount == 1)
+
+        // The app's order: the swept download comes back, and its completion
+        // queues an auto pass.
+        func redownload() async throws {
+            let record = try #require(fixture.downloads.record(for: episode.episodeID))
+            fixture.downloads.deleteDownload(record, modelContext: fixture.context)
+            fixture.downloads.startDownload(for: episode, modelContext: fixture.context)
+            #expect(await waitUntil {
+                fixture.downloads.completedSourceIdentity(for: episode.episodeID) != nil
+            })
+        }
+
+        // Same bytes (a static enclosure): the transcript still describes
+        // the download, so the auto pass is skipped.
+        try await redownload()
+        #expect(!fixture.coordinator.transcriptIsStaleForDownload(
+            episodeID: episode.episodeID,
+            transcriptions: fixture.transcriptions,
+            downloads: fixture.downloads
+        ))
+        fixture.enqueue(episode, origin: .auto, refreshSkipZones: refresh)
+        #expect(await waitUntil {
+            fixture.coordinator.queueItems.isEmpty && fixture.coordinator.activeEpisodeID == nil
+        })
+        #expect(transcriber.requestCount == 1)
+        #expect(fixture.analysisClient.requestCount == 1)
+
+        // A dynamically stitched enclosure returns different bytes: the old
+        // transcript and its zones no longer line up with the audio.
+        downloader.setContents(Data("second stitch with other ads".utf8))
+        try await redownload()
+        #expect(fixture.coordinator.transcriptIsStaleForDownload(
+            episodeID: episode.episodeID,
+            transcriptions: fixture.transcriptions,
+            downloads: fixture.downloads
+        ))
+        fixture.enqueue(episode, origin: .auto, refreshSkipZones: refresh)
+        #expect(await waitUntil { refreshCount == 2 && fixture.coordinator.queueState == .idle })
+        #expect(transcriber.requestCount == 2)
+        #expect(fixture.analysisClient.requestCount == 2)
+        #expect(!fixture.coordinator.transcriptIsStaleForDownload(
+            episodeID: episode.episodeID,
+            transcriptions: fixture.transcriptions,
+            downloads: fixture.downloads
+        ))
+    }
+
     @Test("A queue of one publishes the stage sequence with single-item queue context")
     func singleItemQueuePublishesStepFiveStageSequence() async throws {
         let fixture = try await makeFixture(
@@ -1417,6 +1481,31 @@ private struct ImmediateEpisodeAudioDownloader: EpisodeAudioDownloading {
         await onResponseMetadata(EpisodeDownloadResponseMetadata(entityTag: nil, lastModified: nil))
         try contents.write(to: temporaryURL, options: .atomic)
         await progress(Int64(contents.count), Int64(contents.count))
+    }
+}
+
+private final class SwappableEpisodeAudioDownloader: EpisodeAudioDownloading, Sendable {
+    private let contents: OSAllocatedUnfairLock<Data>
+
+    init(contents: Data) {
+        self.contents = OSAllocatedUnfairLock(initialState: contents)
+    }
+
+    func setContents(_ data: Data) {
+        contents.withLock { $0 = data }
+    }
+
+    nonisolated func download(
+        from sourceURL: URL,
+        to temporaryURL: URL,
+        resume: EpisodeDownloadResumeContext?,
+        onResponseMetadata: @escaping @MainActor @Sendable (EpisodeDownloadResponseMetadata) -> Void,
+        progress: @escaping @MainActor @Sendable (_ bytesReceived: Int64, _ bytesExpected: Int64?) -> Void
+    ) async throws {
+        let data = contents.withLock { $0 }
+        await onResponseMetadata(EpisodeDownloadResponseMetadata(entityTag: nil, lastModified: nil))
+        try data.write(to: temporaryURL, options: .atomic)
+        await progress(Int64(data.count), Int64(data.count))
     }
 }
 
