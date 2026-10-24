@@ -113,7 +113,7 @@ struct OpenCastModelTests {
         #expect(localNames.isDisjoint(with: playlistNames))
         #expect(localNames.isDisjoint(with: syncedNames))
         #expect(fullNames == syncedNames.union(localNames))
-        #expect(fullNames.count == 16)
+        #expect(fullNames.count == 17)
     }
 
     @Test("The device-local store location names the local store file")

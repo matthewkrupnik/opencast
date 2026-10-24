@@ -21,6 +21,8 @@ struct SettingsRouteDestinationView: View {
             SettingsStorageView()
         case .importExport:
             SettingsImportExportView()
+        case .listeningHistory:
+            ListeningHistoryView()
         case .help:
             HelpHubView()
         case .helpTopic(let id):

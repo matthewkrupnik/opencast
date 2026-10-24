@@ -13,6 +13,7 @@ struct NowPlayingMoreMenu: View {
     let onShowDescription: () -> Void
     let onShowShow: () -> Void
     let onShowPlaylist: () -> Void
+    let onShowHistory: () -> Void
     let onStopPlayback: () -> Void
 
     var body: some View {
@@ -38,6 +39,7 @@ struct NowPlayingMoreMenu: View {
                     action: onShowPlaylist
                 )
             }
+            Button("Listening History", systemImage: "clock.arrow.circlepath", action: onShowHistory)
             Divider()
             Button("Stop Playback", systemImage: "stop.circle", action: onStopPlayback)
         } label: {

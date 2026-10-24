@@ -188,6 +188,7 @@ struct NowPlayingView: View {
                         onShowDescription: openEpisode,
                         onShowShow: openPodcast,
                         onShowPlaylist: openPlaylist,
+                        onShowHistory: { utilitySheet = .history },
                         onStopPlayback: stopPlayback
                     )
                     .padding(.top, moreMenuTopPadding)
@@ -283,6 +284,14 @@ struct NowPlayingView: View {
                     .environment(appModel)
                     .modelContext(modelContext)
                     .presentationDetents([.large])
+                    .presentationDragIndicator(.visible)
+                case .history:
+                    NavigationStack {
+                        ListeningHistoryView()
+                    }
+                    .environment(appModel)
+                    .modelContext(modelContext)
+                    .presentationDetents([.medium, .large])
                     .presentationDragIndicator(.visible)
                 }
             }

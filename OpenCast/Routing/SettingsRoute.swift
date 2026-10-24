@@ -9,6 +9,7 @@ enum SettingsRoute: Hashable {
     case sync
     case storage
     case importExport
+    case listeningHistory
     case help
     case helpTopic(id: String)
     case about

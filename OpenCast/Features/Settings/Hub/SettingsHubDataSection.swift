@@ -8,6 +8,11 @@ struct SettingsHubDataSection: View {
             SettingsNavigationRow(title: "iCloud Sync", systemImage: "icloud", route: .sync, value: syncValue)
             SettingsNavigationRow(title: "Storage", systemImage: "internaldrive", route: .storage, value: storageValue)
             SettingsNavigationRow(
+                title: "Listening History",
+                systemImage: "clock.arrow.circlepath",
+                route: .listeningHistory
+            )
+            SettingsNavigationRow(
                 title: "Import & Export",
                 systemImage: "square.and.arrow.up.on.square",
                 route: .importExport

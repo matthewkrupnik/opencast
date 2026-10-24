@@ -46,6 +46,7 @@ final class OpenCastAppModel {
     let podcastEpisodeListSettings: PodcastEpisodeListSettingsStore
     let libraryDisplaySettings: LibraryDisplaySettingsStore
     let recentSearches: RecentSearchesStore
+    let listeningHistory = ListeningHistoryStore()
     let playbackSettings: PlaybackSettingsStore
     let notificationSettings: NotificationSettingsStore
     let onboardingState: OnboardingStateStore
@@ -141,6 +142,7 @@ final class OpenCastAppModel {
     @ObservationIgnored var playbackProgressFlushObserver: (() -> Void)?
     @ObservationIgnored private var progressPersistenceTask: Task<Void, Never>?
     @ObservationIgnored private var progressBoundaryPersistenceTask: Task<Void, Never>?
+    @ObservationIgnored private var listeningHistoryTask: Task<Void, Never>?
     @ObservationIgnored private let playbackRestorePreference = PlaybackRestorePreferenceStore()
     /// Pending restore-key clear from the last playback teardown; tests
     /// await it before inspecting the store.
@@ -463,6 +465,7 @@ final class OpenCastAppModel {
             }
             let didLoadLibrary = await library.load(modelContext: modelContext)
             await downloads.load(modelContext: modelContext)
+            listeningHistory.load(modelContext: modelContext)
             autoDownloadSettings.load(modelContext: modelContext)
             playbackSettings.load(modelContext: modelContext, playback: playback)
             podcastEpisodeListSettings.load(modelContext: modelContext)
@@ -632,6 +635,89 @@ final class OpenCastAppModel {
                 )
             }
         }
+
+        listeningHistoryTask = Task { [weak self] in
+            var previous: ListeningHistoryPlaybackActivity?
+            for await activity in Observations({
+                ListeningHistoryPlaybackActivity(
+                    episodeID: self?.playback.currentEpisode?.id.rawValue,
+                    isPlaying: self?.playback.state == .playing
+                )
+            }) {
+                guard let self, !Task.isCancelled else {
+                    return
+                }
+
+                recordListeningHistoryTransition(from: previous, to: activity, modelContext: modelContext)
+                previous = activity
+            }
+        }
+    }
+
+    /// A session opens where playback starts and closes where it stops; an
+    /// episode change closes the old one at its last flushed position, since
+    /// the player's position already belongs to the new episode.
+    private func recordListeningHistoryTransition(
+        from previous: ListeningHistoryPlaybackActivity?,
+        to activity: ListeningHistoryPlaybackActivity,
+        modelContext: ModelContext
+    ) {
+        let previousPlayingID = previous?.isPlaying == true ? previous?.episodeID : nil
+        let playingID = activity.isPlaying ? activity.episodeID : nil
+        guard previousPlayingID != playingID else {
+            return
+        }
+
+        if let previousPlayingID {
+            if previousPlayingID == activity.episodeID {
+                listeningHistory.updateSession(
+                    episodeID: previousPlayingID,
+                    position: playback.position,
+                    duration: sanitizedDuration(playback.duration),
+                    closes: true,
+                    modelContext: modelContext
+                )
+            } else {
+                listeningHistory.closeOpenSessions(modelContext: modelContext)
+            }
+        }
+
+        if let playingID, let episode = playback.currentEpisode, episode.id.rawValue == playingID {
+            listeningHistory.beginSession(
+                episodeID: playingID,
+                podcastID: episode.podcastID.rawValue,
+                position: playback.position,
+                duration: sanitizedDuration(playback.duration ?? episode.duration),
+                hadDownload: downloads.record(for: playingID)?.state == .completed,
+                modelContext: modelContext
+            )
+        }
+    }
+
+    /// Puts an episode back where a history entry found it: the position
+    /// before that listening or Mark Played, unplayed, and its download back
+    /// if one was swept since. The download's completion queues ad detection
+    /// for an auto-detect show like any other download.
+    @discardableResult
+    func restoreListeningHistoryEntry(_ entry: ListeningHistoryEntry, modelContext: ModelContext) -> Bool {
+        guard let episode = episodeSnapshot(for: entry.episodeID) else {
+            return false
+        }
+
+        library.updateProgress(
+            episodeID: entry.episodeID,
+            podcastID: entry.podcastID,
+            position: entry.startPosition,
+            duration: entry.duration ?? sanitizedDuration(episode.duration),
+            modelContext: modelContext
+        )
+        if isCurrentEpisode(episode) {
+            playback.seek(to: entry.startPosition)
+        }
+        if entry.hadDownload, downloads.record(for: entry.episodeID)?.state != .completed {
+            downloads.startDownload(for: episode, modelContext: modelContext)
+        }
+        return true
     }
 
     /// An explicit start position bypasses smart resume and the skip-intro
@@ -715,6 +801,11 @@ final class OpenCastAppModel {
         guard playback.currentEpisode?.id == episode.id else {
             return
         }
+        listeningHistory.recordFinish(
+            episodeID: episode.id.rawValue,
+            duration: sanitizedDuration(playback.duration ?? episode.duration),
+            modelContext: modelContext
+        )
         switch policy {
         case .advanceIfQueued:
             let finishedPlaylistID = currentPlaylistSource?.playlistID
@@ -1286,6 +1377,9 @@ final class OpenCastAppModel {
 
         // Sidecar cleanup is best-effort once the subscription is gone.
         var sidecarErrorMessage: String?
+        if clearListeningHistory {
+            listeningHistory.clear(forPodcastID: feedURL, modelContext: modelContext)
+        }
         if !upNextQueue.removeAll(forPodcastID: feedURL, modelContext: modelContext) {
             sidecarErrorMessage = upNextQueue.lastErrorMessage
         }
@@ -1882,6 +1976,12 @@ final class OpenCastAppModel {
 
         let duration = sanitizedDuration(playback.duration ?? episode.duration)
         let position = sanitizedPosition(playback.position, duration: duration)
+        listeningHistory.updateSession(
+            episodeID: episode.id.rawValue,
+            position: position,
+            duration: duration,
+            modelContext: modelContext
+        )
         let didSave = library.updateProgress(
             episodeID: episode.id.rawValue,
             podcastID: episode.podcastID.rawValue,
@@ -2031,6 +2131,17 @@ final class OpenCastAppModel {
         _ episode: EpisodeListItemSnapshot,
         modelContext: ModelContext
     ) -> Bool {
+        let progress = library.progressRecord(for: episode.episodeID)
+        if progress?.isPlayed != true {
+            listeningHistory.recordMarkedPlayed(
+                episodeID: episode.episodeID,
+                podcastID: episode.podcastID,
+                priorPosition: isCurrentEpisode(episode) ? playback.position : progress?.position ?? 0,
+                duration: sanitizedDuration(episode.duration),
+                hadDownload: downloads.record(for: episode.episodeID)?.state == .completed,
+                modelContext: modelContext
+            )
+        }
         let didSave = library.markEpisodePlayed(episode, modelContext: modelContext)
         _ = upNextQueue.remove(episodeID: episode.episodeID, modelContext: modelContext)
         if isCurrentEpisode(episode) {
@@ -2277,6 +2388,7 @@ final class OpenCastAppModel {
         currentPlaylistSourceID = nil
         library.resetAfterDataNuke()
         await downloads.load(modelContext: modelContext)
+        listeningHistory.load(modelContext: modelContext)
         autoDownloadSettings.load(modelContext: modelContext)
         transcriptions.load(modelContext: modelContext)
         adAnalyses.load(modelContext: modelContext)
