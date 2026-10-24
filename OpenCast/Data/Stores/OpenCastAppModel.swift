@@ -23,9 +23,9 @@ final class OpenCastAppModel {
     let helpContent: HelpContentStore
     let library: LibraryStore
     let downloads: DownloadStore
+    let downloadSettings: DownloadSettingsStore
     let transcriptionModels: TranscriptionModelStore
     let transcriptionEngineSettings: TranscriptionEngineSettingsStore
-    let autoDownloadSettings = AutoDownloadSettingsStore()
     let appleSpeechAssets: AppleSpeechAssetStore
     let transcriptions: EpisodeTranscriptionStore
     let transcriptionRequests: EpisodeTranscriptionRequestCoordinator
@@ -126,6 +126,10 @@ final class OpenCastAppModel {
     var displayOnlySkipZones: [PlaybackSkipZone] {
         skipZones.displayOnlySkipZones
     }
+    /// Chapters for the loaded episode, resolved embedded → feed → generated.
+    var currentEpisodeChapters: PlaybackChapterList {
+        chapters.current
+    }
     #if DEBUG
     var lastVoiceBoostDeviceProbeResult: String?
     var lastVoiceBoostDeviceProbeReportStatus: String?
@@ -152,7 +156,10 @@ final class OpenCastAppModel {
     /// smart-resume rewind.
     @ObservationIgnored private var restoredUnplayedPlayback: (episodeID: String, position: TimeInterval)?
     @ObservationIgnored private let skipZones: PlaybackSkipZoneCoordinator
-    @ObservationIgnored private let downloadCleanup: DownloadCleanupCoordinator
+    @ObservationIgnored private let chapters: PlaybackChaptersCoordinator
+    // Internal for the `+DownloadSettings` extension.
+    @ObservationIgnored let downloadCleanup: DownloadCleanupCoordinator
+    @ObservationIgnored let autoDownloads: PodcastAutoDownloadCoordinator
     @ObservationIgnored private let dataNuke: DataNukeRunner
     @ObservationIgnored private let siriMediaDiscovery: SiriMediaDiscovery
     @ObservationIgnored private var siriMediaUserContextObservationTask: Task<Void, Never>?
@@ -172,6 +179,8 @@ final class OpenCastAppModel {
         library: LibraryStore? = nil,
         localLibraryCacheStore: (any LocalLibraryCacheStore)? = nil,
         downloads: DownloadStore = DownloadStore(),
+        downloadSettings: DownloadSettingsStore = DownloadSettingsStore(),
+        currentNetworkPath: @escaping () async -> NetworkPathSnapshot = NetworkPathObserver.currentPath,
         transcriptionModels: TranscriptionModelStore = TranscriptionModelStore(),
         transcriptionEngineSettings: TranscriptionEngineSettingsStore = TranscriptionEngineSettingsStore(),
         appleSpeechAssets: AppleSpeechAssetStore = AppleSpeechAssetStore(),
@@ -201,6 +210,7 @@ final class OpenCastAppModel {
         allowsAutomaticFeedRefresh: Bool = true,
         adFreePassPresentationOverride: EpisodeAdFreePassPresentation? = nil,
         adFreePassQueueOverride: AdFreePassQueueUITestOverride? = nil,
+        uiTestSeededChapters: PlaybackChapterList? = nil,
         adFreePassNotificationCenter: (any AdFreePassNotificationCenter)? = nil,
         siriMediaDiscovery: SiriMediaDiscovery = SiriMediaDiscovery(),
         unsubscribeSidecarCleanupOverride: ((String, [String], ModelContext) throws -> Void)? = nil,
@@ -233,6 +243,7 @@ final class OpenCastAppModel {
         )
         self.library = resolvedLibrary
         self.downloads = downloads
+        self.downloadSettings = downloadSettings
         self.transcriptionModels = transcriptionModels
         self.transcriptionEngineSettings = transcriptionEngineSettings
         self.appleSpeechAssets = appleSpeechAssets
@@ -295,13 +306,27 @@ final class OpenCastAppModel {
             transcriptions: transcriptions,
             adAnalyses: adAnalyses
         )
+        chapters = PlaybackChaptersCoordinator(
+            playback: self.playback,
+            library: resolvedLibrary,
+            transcriptions: transcriptions,
+            transcriptAnalyses: transcriptAnalyses
+        )
         downloadCleanup = DownloadCleanupCoordinator(
             downloads: downloads,
             transcriptions: transcriptions,
             library: resolvedLibrary,
             playback: self.playback,
             adFreePass: adFreePass,
-            autoDownloadSettings: autoDownloadSettings
+            settings: downloadSettings,
+            // The fork has no remote transcription jobs to protect.
+            remoteJobEpisodeIDs: { [] }
+        )
+        autoDownloads = PodcastAutoDownloadCoordinator(
+            library: resolvedLibrary,
+            downloads: downloads,
+            settings: downloadSettings,
+            currentNetworkPath: currentNetworkPath
         )
         self.appearanceSettings = appearanceSettings
         self.appIcon = appIcon
@@ -339,14 +364,25 @@ final class OpenCastAppModel {
         self.unsubscribeSidecarCleanupOverride = unsubscribeSidecarCleanupOverride
         self.transcriptions.onEpisodeStateChanged = { [weak self] episodeID in
             self?.skipZones.refreshIfCurrentEpisode(episodeID: episodeID)
+            self?.chapters.refreshIfCurrentEpisode(episodeID: episodeID)
         }
         self.downloads.onEpisodeStateChanged = { [weak self] episodeID in
             self?.skipZones.refreshIfCurrentEpisode(episodeID: episodeID)
+            self?.chapters.refreshIfCurrentEpisode(episodeID: episodeID)
+        }
+        self.downloads.onDownloadCompleted = { [weak self] record, modelContext in
+            self?.downloadCleanup.deferTrim(forPodcastID: record.podcastID, modelContext: modelContext)
+            self?.autoDetectAdsOnDownloadIfQualified(record, modelContext: modelContext)
+            self?.prepareSmartSpeedPausesIfEnabled(record)
+        }
+        self.transcriptAnalyses.onEpisodeStateChanged = { [weak self] episodeID in
+            self?.chapters.refreshIfCurrentEpisode(episodeID: episodeID)
         }
         transcriptAnalysisQueue.resolveEpisode = { [weak self] episodeID in
             self?.episodeSnapshot(for: episodeID)
         }
         adFreePass.uiTestQueueOverride = adFreePassQueueOverride
+        chapters.uiTestOverride = uiTestSeededChapters
         adFreePass.uiTestEpisodeSnapshotResolver = { [weak self] episodeID in
             self?.episodeSnapshot(for: episodeID)
         }
@@ -414,19 +450,6 @@ final class OpenCastAppModel {
     }
 
     func ensureCoreStoresLoaded(modelContext: ModelContext) async {
-        library.onLibraryPublished = { [weak self, weak modelContext] in
-            guard let self, let modelContext else {
-                return
-            }
-            autoDownloadLatestEpisodes(modelContext: modelContext)
-        }
-        downloads.onDownloadCompleted = { [weak self, weak modelContext] record in
-            guard let self, let modelContext else {
-                return
-            }
-            autoDetectAdsOnDownloadIfQualified(record, modelContext: modelContext)
-            prepareSmartSpeedPausesIfEnabled(record)
-        }
         playback.setRemotePlaybackRateChangeHandler { [weak self, weak modelContext] rate in
             guard let self, let modelContext else {
                 return
@@ -466,7 +489,8 @@ final class OpenCastAppModel {
             let didLoadLibrary = await library.load(modelContext: modelContext)
             await downloads.load(modelContext: modelContext)
             listeningHistory.load(modelContext: modelContext)
-            autoDownloadSettings.load(modelContext: modelContext)
+            downloadSettings.load(modelContext: modelContext)
+            migrateLegacyAutoDownloadPreferences(modelContext: modelContext)
             playbackSettings.load(modelContext: modelContext, playback: playback)
             podcastEpisodeListSettings.load(modelContext: modelContext)
             upNextQueue.load(
@@ -480,7 +504,6 @@ final class OpenCastAppModel {
                 lastPlaylistError = message
             }
             coreStoresHydrated = true
-            autoDownloadLatestEpisodes(modelContext: modelContext)
         }
         coreStoresLoadTask = task
         await task.value
@@ -1122,61 +1145,6 @@ final class OpenCastAppModel {
         return false
     }
 
-    @discardableResult
-    func setAutoDownloadEnabled(
-        _ isEnabled: Bool,
-        forPodcastID podcastID: String,
-        modelContext: ModelContext
-    ) -> Bool {
-        guard autoDownloadSettings.setEnabled(isEnabled, forPodcastID: podcastID, modelContext: modelContext) else {
-            return false
-        }
-        if isEnabled {
-            autoDownloadLatestEpisodes(modelContext: modelContext)
-        }
-        return true
-    }
-
-    /// Downloads each Auto-Download show's newest released episode once.
-    /// Runs on every library publication, so feed refreshes from any
-    /// entry point (and episodes synced in) are covered; it is a no-op
-    /// until downloads and settings have loaded.
-    func autoDownloadLatestEpisodes(modelContext: ModelContext) {
-        guard coreStoresHydrated else {
-            return
-        }
-
-        for podcastID in autoDownloadSettings.enabledPodcastIDs {
-            guard library.isActivelySubscribed(to: podcastID),
-                  let episode = library.latestReleasedEpisode(forPodcastID: podcastID)
-            else {
-                continue
-            }
-            let policy = AutoDownloadPolicy(
-                latestEpisodeID: episode.episodeID,
-                handledEpisodeID: autoDownloadSettings.handledEpisodeID(forPodcastID: podcastID),
-                isPlayed: library.progressRecord(for: episode.episodeID)?.isPlayed == true,
-                hasDownloadRecord: downloads.record(for: episode.episodeID) != nil
-            )
-            switch policy.decision {
-            case .none:
-                continue
-            case .download:
-                // A failed start stays unhandled, so the next publication retries it.
-                guard downloads.startDownload(for: episode, modelContext: modelContext) else {
-                    continue
-                }
-            case .markHandled:
-                break
-            }
-            autoDownloadSettings.markHandled(
-                episodeID: episode.episodeID,
-                forPodcastID: podcastID,
-                modelContext: modelContext
-            )
-        }
-    }
-
     static func downloadAllFailureMessage(failureCount: Int, candidateCount: Int, reason: String?) -> String {
         // Grammar agreement resolves only on the attributed localization path.
         let subject = failureCount == candidateCount
@@ -1412,14 +1380,17 @@ final class OpenCastAppModel {
             ) {
                 sidecarErrorMessage = sidecarErrorMessage ?? podcastEpisodeListSettings.lastErrorMessage
             }
+            if !downloadSettings.removePreferences(
+                forPodcastID: feedURL,
+                modelContext: modelContext
+            ) {
+                sidecarErrorMessage = sidecarErrorMessage ?? downloadSettings.lastErrorMessage
+            }
             if !playbackSettings.removeVoiceBoostPreferences(
                 forEpisodeIDs: episodeIDs,
                 modelContext: modelContext
             ) {
                 sidecarErrorMessage = sidecarErrorMessage ?? playbackSettings.lastErrorMessage
-            }
-            if !autoDownloadSettings.removePreference(forPodcastID: feedURL, modelContext: modelContext) {
-                sidecarErrorMessage = sidecarErrorMessage ?? autoDownloadSettings.lastErrorMessage
             }
         }
         let warning = sidecarErrorMessage.map {
@@ -1852,11 +1823,56 @@ final class OpenCastAppModel {
 
     func refreshPlaybackSkipZonesForCurrentEpisode() {
         skipZones.refreshForCurrentEpisode()
+        chapters.refreshForCurrentEpisode()
+    }
+
+    func seekCurrentEpisode(
+        toChapter chapter: EpisodeChapter,
+        in list: PlaybackChapterList,
+        modelContext: ModelContext
+    ) {
+        guard let episode = playback.currentEpisode else {
+            return
+        }
+        let episodeID = episode.id.rawValue
+
+        if case .generated(let transcriptSourceSHA256) = list.source {
+            let downloadRecord = downloads.record(for: episodeID)
+            let alignment = TranscriptSourceAlignment.resolve(
+                documentSHA256: transcriptSourceSHA256,
+                trustedDownloadSHA256: downloads.completedSourceIdentity(for: episodeID)?.sha256,
+                downloadFileURL: downloadRecord.flatMap(downloads.localFileURL(for:)),
+                playerItemURL: playback.currentItemSourceIdentity?.assetURL
+            )
+            if case .mismatched(canSwitchToTranscribedCopy: true) = alignment,
+               let snapshot = episodeSnapshot(for: episodeID) {
+                do {
+                    try playEpisode(
+                        snapshot,
+                        at: chapter.startTime,
+                        matchingSourceSHA256: transcriptSourceSHA256,
+                        presentsNowPlaying: false,
+                        autoplay: playback.state == .playing,
+                        modelContext: modelContext
+                    )
+                } catch {
+                    lastPlaybackError = error.localizedDescription
+                }
+                return
+            }
+        }
+
+        playback.seek(to: chapter.startTime, intent: .chapter)
     }
 
     /// Awaits the in-flight skip-zone refresh, if any. Test hook.
     func waitForSkipZoneRefresh() async {
         await skipZones.waitForRefresh()
+    }
+
+    /// Awaits the in-flight chapter refresh, if any. Test hook.
+    func waitForChapterRefresh() async {
+        await chapters.waitForRefresh()
     }
 
     func undoLastAutoSkip() {
@@ -2120,6 +2136,7 @@ final class OpenCastAppModel {
     /// suspended on the store's change stream that would otherwise start a
     /// fresh network analysis mid-nuke.
     private func prepareRuntimeForDataNuke() async {
+        autoDownloads.cancelPendingWork()
         transcriptionRequests.resetForDataNuke()
         await notificationSettings.deleteInstallIfRegistered()
         library.prepareForDataNuke()
@@ -2324,6 +2341,15 @@ final class OpenCastAppModel {
         playbackSettings.setTapToPlayEnabled(isEnabled, modelContext: modelContext)
     }
 
+    @discardableResult
+    func setSleepTimerPreset(
+        _ duration: SleepTimerPresetDuration,
+        at index: Int,
+        modelContext: ModelContext
+    ) -> Bool {
+        playbackSettings.setSleepTimerPreset(duration, at: index, modelContext: modelContext)
+    }
+
     func runVoiceBoostDeviceProbeIfNeeded(modelContext: ModelContext) async {
         #if DEBUG
         guard runsVoiceBoostDeviceProbe, !hasRunVoiceBoostDeviceProbe else {
@@ -2389,7 +2415,7 @@ final class OpenCastAppModel {
         library.resetAfterDataNuke()
         await downloads.load(modelContext: modelContext)
         listeningHistory.load(modelContext: modelContext)
-        autoDownloadSettings.load(modelContext: modelContext)
+        downloadSettings.load(modelContext: modelContext)
         transcriptions.load(modelContext: modelContext)
         adAnalyses.load(modelContext: modelContext)
         transcriptAnalysisQueue.resetAfterDataNuke()
@@ -2628,6 +2654,7 @@ final class OpenCastAppModel {
             skipOutroSeconds: settings.skipOutroSeconds
         )
     }
+
 
     private var currentPlaybackEpisodeSnapshot: EpisodeListItemSnapshot? {
         guard let episode = playback.currentEpisode else {

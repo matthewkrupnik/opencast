@@ -1,6 +1,6 @@
 // Real compiled wasm, D1 and DO paths; no paid model or network access.
 import { SELF, abortAllDurableObjects, env, runInDurableObject, runDurableObjectAlarm } from "cloudflare:test";
-import { afterAll, afterEach, beforeAll, expect, it } from "vitest";
+import { afterAll, afterEach, beforeAll, expect, it, vi } from "vitest";
 import fixture from "../eval/fixtures/promo-carousel.json";
 
 const base = "https://v3.integration.test";
@@ -121,6 +121,7 @@ it("serves the pinned v3 bundle and a complete validated break", async () => {
   const body = await response.json();
   expect(body.policy).toBe("promo_ad_breaks_v3");
   expect(body.model).toBe("gemini-3.8-flash");
+  expect(body.policy_revision).toBe("2026-10-20.2-medium-timeout");
   expect(body.spans).toHaveLength(1);
   expect(body.spans[0].start_boundary).toEqual({ segment_id: 20, quote: "I'm Mira" });
   expect(body.spans[0].end_boundary).toEqual({ segment_id: 50, quote: "wherever you get podcasts" });
@@ -146,6 +147,28 @@ it("includes a short mixed boundary without inventing a word timestamp", async (
   expect(body.spans[0].start_time).toBe(161);
   expect(body.warnings).toEqual(["v3_short_mixed_boundary_included:20-50"]);
 });
+
+it("accepts a medium response whose body finishes after the old 60-second cutoff", async () => {
+  let aborted = false;
+  responses.push((input, init) => {
+    (init?.signal ?? input.signal).addEventListener("abort", () => { aborted = true; });
+    return new Response(new ReadableStream({
+      async start(controller) {
+        await new Promise(resolve => setTimeout(resolve, 65_000));
+        controller.enqueue(new TextEncoder().encode(JSON.stringify(reply([span]))));
+        controller.close();
+      },
+    }), { headers: { "content-type": "application/json" } });
+  });
+  const response = await analyze(request());
+  expect(response.status).toBe(200);
+  const body = await response.json();
+  expect(body.spans).toHaveLength(1);
+  expect(body.accounting.dispatched_attempts).toBe(1);
+  expect(body.accounting.unknown_attempts).toBe(0);
+  expect(payloads).toHaveLength(1);
+  expect(aborted).toBe(false);
+}, 90_000);
 
 it("repairs a wrong existing boundary and accounts for both calls", async () => {
   responses.push(reply([{ ...span, start_segment_id: 10 }]), reply([span]));
@@ -424,7 +447,7 @@ it("retains validation failure on repeated polls/submits and accepts an explicit
   body.job_handle_version = 1;
   responses.push(reply([{...span, start_segment_id: 10}]), reply([]));
   const accepted = await (await analyze(body)).json();
-  expect(accepted.job_id).toBe(`a3.20260924a.${body.transcript.fingerprint}`);
+  expect(accepted.job_id).toBe(`a3.20261020b.${body.transcript.fingerprint}`);
   const poll = () => SELF.fetch(`${base}/v1/ad-analysis/jobs/${accepted.job_id}`, {
     method: "POST", headers, body: JSON.stringify({job_id: accepted.job_id})
   });
@@ -435,11 +458,11 @@ it("retains validation failure on repeated polls/submits and accepts an explicit
     await new Promise(resolve => setTimeout(resolve, 1));
   }
   expect(failed.status).toBe(422);
-  const failedStub = env.AD_ANALYSIS_JOB.getByName(`ad-analysis:v3:2026-09-24.1-dai-budget:flash38-medium:w800:r1:job:${body.transcript.fingerprint}`);
+  const failedStub = env.AD_ANALYSIS_JOB.getByName(`ad-analysis:v3:2026-10-20.2-medium-timeout:flash38-medium:w800:r1:job:${body.transcript.fingerprint}`);
   const failedRecord = await runInDurableObject(failedStub, async (_instance, state) => JSON.parse(await state.storage.get("job")));
   expect(failedRecord.purge_at - Math.floor(Date.now() / 1000)).toBeGreaterThanOrEqual(1795);
   expect(failedRecord.purge_at - Math.floor(Date.now() / 1000)).toBeLessThanOrEqual(1800);
-  expect(await failed.json()).toMatchObject({failure: {category: "validation_exhausted", retry_disposition: "explicit_retry", policy_revision: "2026-09-24.1-dai-budget"}, accounting: {request_count: 1, dispatched_attempts: 2}});
+  expect(await failed.json()).toMatchObject({failure: {category: "validation_exhausted", retry_disposition: "explicit_retry", policy_revision: "2026-10-20.2-medium-timeout"}, accounting: {request_count: 1, dispatched_attempts: 2}});
   expect((await poll()).status).toBe(422);
   expect((await analyze(body)).status).toBe(422);
   expect(payloads).toHaveLength(2);
@@ -453,34 +476,42 @@ it("retains validation failure on repeated polls/submits and accepts an explicit
   }
   expect(failed.status).toBe(200);
   expect(payloads).toHaveLength(3);
-  const completedStub = env.AD_ANALYSIS_JOB.getByName(`ad-analysis:v3:2026-09-24.1-dai-budget:flash38-medium:w800:r1:job:${body.transcript.fingerprint}`);
+  const completedStub = env.AD_ANALYSIS_JOB.getByName(`ad-analysis:v3:2026-10-20.2-medium-timeout:flash38-medium:w800:r1:job:${body.transcript.fingerprint}`);
   const completedRecord = await runInDurableObject(completedStub, async (_instance, state) => JSON.parse(await state.storage.get("job")));
   expect(completedRecord.purge_at - Math.floor(Date.now() / 1000)).toBeGreaterThanOrEqual(86395);
   expect(completedRecord.purge_at - Math.floor(Date.now() / 1000)).toBeLessThanOrEqual(86400);
 
 });
 
-it("polls a retained revision-A record while new submissions select isolated revision B", async () => {
+it.each([
+  ["20260911a", "2026-09-11.1-word-boundaries", "medium"],
+  ["20260911b", "2026-09-11.2-recovery", "medium"],
+  ["20260924a", "2026-09-24.1-dai-budget", "medium"],
+  ["20261020a", "2026-10-20.1-low-thinking", "low"],
+])("polls retained revision %s while new submissions use the medium timeout fix", async (tag, revision, thinking) => {
   const body = request(true);
   body.job_handle_version = 1;
   const fingerprint = body.transcript.fingerprint;
-  const oldHandle = `a3.20260911a.${fingerprint}`;
-  const old = env.AD_ANALYSIS_JOB.getByName(`ad-analysis:v3:2026-09-11.1-word-boundaries:flash38-medium:w800:r1:job:${fingerprint}`);
+  const oldHandle = `a3.${tag}.${fingerprint}`;
+  const old = env.AD_ANALYSIS_JOB.getByName(`ad-analysis:v3:${revision}:flash38-${thinking}:w800:r1:job:${fingerprint}`);
   await runInDurableObject(old, async (_instance, state) => {
     await state.storage.put("job", JSON.stringify({state: "completed", job_id: fingerprint, subjects: [], content_hash: "", purge_at: Math.floor(Date.now()/1000) + 600,
-      result_json: JSON.stringify({policy: "promo_ad_breaks_v3", policy_revision: "2026-09-11.1-word-boundaries", spans: []})}));
+      result_json: JSON.stringify({policy: "promo_ad_breaks_v3", policy_revision: revision, spans: []})}));
   });
   const poll = id => SELF.fetch(`${base}/v1/ad-analysis/jobs/${id}`, {method: "POST", headers, body: JSON.stringify({job_id: id})});
-  expect((await (await poll(oldHandle)).json()).policy_revision).toBe("2026-09-11.1-word-boundaries");
+  expect((await (await poll(oldHandle)).json()).policy_revision).toBe(revision);
   expect(payloads).toHaveLength(0);
   responses.push(reply([span]));
-  expect((await (await analyze(body)).json()).job_id).toBe(`a3.20260924a.${fingerprint}`);
+  expect((await (await analyze(body)).json()).job_id).toBe(`a3.20261020b.${fingerprint}`);
   for (let i = 0; i < 1000; i++) {
-    if ((await poll(`a3.20260924a.${fingerprint}`)).status !== 202) break;
+    if ((await poll(`a3.20261020b.${fingerprint}`)).status !== 202) break;
     await new Promise(resolve => setTimeout(resolve, 1));
   }
-  expect((await (await poll(oldHandle)).json()).policy_revision).toBe("2026-09-11.1-word-boundaries");
-  expect((await poll(fingerprint)).status).toBe(409); // legacy ID cannot choose between bundles
+  expect((await (await poll(oldHandle)).json()).policy_revision).toBe(revision);
+  // Untagged polls probe only the pre-handle namespaces and today's. A
+  // superseded current namespace (0911b, 0924a, 1020a) keeps its tagged
+  // handle but must not make a resubmitted legacy fingerprint ambiguous.
+  expect((await poll(fingerprint)).status).toBe(tag === "20260911a" ? 409 : 200);
   expect((await poll(`a3.unknown.${fingerprint}`)).status).toBe(404);
   await runInDurableObject(old, async (_instance, state) => {
     const record = JSON.parse(await state.storage.get("job"));
@@ -583,10 +614,10 @@ it("times out a stalled response body, aborts its fetch, and bounds recovery", a
   const response = await analyze(request());
   expect(response.status).toBe(200);
   expect(aborted).toBe(true);
-  expect(performance.now() - start).toBeGreaterThanOrEqual(59_000);
+  expect(performance.now() - start).toBeGreaterThanOrEqual(119_000);
   expect(payloads).toHaveLength(2);
   expect(await response.json()).toMatchObject({accounting:{request_count:1, dispatched_attempts:2, unknown_attempts:1}});
-}, 90_000);
+}, 150_000);
 
 it("keeps an interrupted revision-A job addressable after revision B is selected", async () => {
   const fingerprint = crypto.randomUUID().replaceAll("-", "").repeat(2);
@@ -605,4 +636,173 @@ it("keeps an interrupted revision-A job addressable after revision B is selected
   expect(failed.status).toBe(503);
   expect(await failed.json()).toMatchObject({error:"job_failed_transient",failure:{category:"interrupted_job",retry_disposition:"bounded_retry"}});
   expect(payloads).toHaveLength(0);
+});
+
+const RESET = "Durable Object storage operation exceeded timeout which caused object to be reset.";
+const jobObject = body => env.AD_ANALYSIS_JOB.getByName(`ad-analysis:v3:2026-10-20.2-medium-timeout:flash38-medium:w800:r1:job:${body.transcript.fingerprint}`);
+const globalLimiter = () => env.AD_ANALYSIS_USAGE_LIMITER.getByName(`ad-analysis:v1:usage:${Math.floor(Date.now()/86400000)}:global`);
+
+// The job object's next storage read throws the platform's reset error, as
+// in the 2026-10-23 prod-staging stall; its stored record stays intact.
+async function failNextJobRead(stub) {
+  await runInDurableObject(stub, (_instance, state) => {
+    const original = state.storage.get.bind(state.storage);
+    state.storage.get = async () => {
+      state.storage.get = original;
+      throw new Error(RESET);
+    };
+  });
+}
+
+async function failLimiterSql(stub, times) {
+  await runInDurableObject(stub, (_instance, state) => {
+    const sql = state.storage.sql;
+    const original = sql.exec.bind(sql);
+    let remaining = times;
+    sql.exec = (...args) => {
+      if (remaining > 0) {
+        remaining -= 1;
+        throw new Error("injected limiter storage failure");
+      }
+      return original(...args);
+    };
+  });
+}
+
+function logged(spy, event) {
+  return spy.mock.calls.flatMap(([line]) => {
+    try {
+      const value = JSON.parse(line);
+      return value?.event === event ? [value] : [];
+    } catch {
+      return [];
+    }
+  });
+}
+
+async function settle(poll) {
+  let response;
+  for (let i = 0; i < 1000; i++) {
+    response = await poll();
+    if (response.status !== 202) return response;
+    await new Promise(resolve => setTimeout(resolve, 1));
+  }
+  return response;
+}
+
+it("answers a typed transient 503 when the job object throws on poll, then serves the same result", async () => {
+  const log = vi.spyOn(console, "log");
+  try {
+    const body = request(true);
+    body.job_handle_version = 1;
+    responses.push(reply([span]));
+    const accepted = await (await analyze(body)).json();
+    const poll = () => SELF.fetch(`${base}/v1/ad-analysis/jobs/${accepted.job_id}`, {
+      method: "POST", headers, body: JSON.stringify({job_id: accepted.job_id})
+    });
+    expect((await settle(poll)).status).toBe(200);
+    await failNextJobRead(jobObject(body));
+    const unavailable = await poll();
+    expect(unavailable.status).toBe(503);
+    expect(await unavailable.json()).toEqual({error: "job_unavailable"});
+    expect(logged(log, "ad_analysis_job_unavailable")).toEqual([{event: "ad_analysis_job_unavailable", op: "poll", error: expect.stringContaining("exceeded timeout")}]);
+    const served = await poll();
+    expect(served.status).toBe(200);
+    expect((await served.json()).spans).toHaveLength(1);
+    expect(payloads).toHaveLength(1);
+  } finally {
+    log.mockRestore();
+  }
+});
+
+it("answers job_unavailable when the job object throws on submit, then runs the job once", async () => {
+  const log = vi.spyOn(console, "log");
+  try {
+    const body = request(true);
+    body.job_handle_version = 1;
+    await failNextJobRead(jobObject(body));
+    const unavailable = await analyze(body);
+    expect(unavailable.status).toBe(503);
+    expect(await unavailable.json()).toEqual({error: "job_unavailable"});
+    expect(logged(log, "ad_analysis_job_unavailable")).toEqual([{event: "ad_analysis_job_unavailable", op: "submit", error: expect.stringContaining("exceeded timeout")}]);
+    expect(payloads).toHaveLength(0);
+    responses.push(reply([span]));
+    const accepted = await analyze(body);
+    expect(accepted.status).toBe(202);
+    const handle = (await accepted.json()).job_id;
+    const result = await settle(() => SELF.fetch(`${base}/v1/ad-analysis/jobs/${handle}`, {
+      method: "POST", headers, body: JSON.stringify({job_id: handle})
+    }));
+    expect(result.status).toBe(200);
+    expect(payloads).toHaveLength(1);
+  } finally {
+    log.mockRestore();
+  }
+});
+
+it("retries one lost limiter exchange and still makes exactly one model call", async () => {
+  const log = vi.spyOn(console, "log");
+  try {
+    await failLimiterSql(globalLimiter(), 1);
+    responses.push(reply([span]));
+    const response = await analyze(request());
+    expect(response.status).toBe(200);
+    expect((await response.json()).accounting).toMatchObject({request_count: 1, dispatched_attempts: 1, unknown_attempts: 0});
+    expect(payloads).toHaveLength(1);
+    const errors = logged(log, "ad_analysis_accounting_error");
+    expect(errors).toEqual([expect.objectContaining({op: "admit", kind: "transport", attempt: 0, policy_revision: "2026-10-20.2-medium-timeout"})]);
+    expect(errors[0].run_id).toMatch(/^[A-Za-z0-9_-]{32}$/);
+    expect(Object.keys(errors[0]).sort()).toEqual(["attempt", "code", "elapsed_ms", "event", "kind", "op", "policy_revision", "run_id", "status"]);
+  } finally {
+    log.mockRestore();
+  }
+});
+
+it("still fails closed with usage_limiter_error when the retried limiter exchange fails again", async () => {
+  const log = vi.spyOn(console, "log");
+  try {
+    await failLimiterSql(globalLimiter(), 2);
+    const response = await analyze(request());
+    expect(response.status).toBe(503);
+    expect(await response.json()).toMatchObject({error: "usage_limiter_error", failure: {category: "transient_transport"}});
+    expect(payloads).toHaveLength(0);
+    expect(logged(log, "ad_analysis_accounting_error").map(({op, kind, attempt}) => ({op, kind, attempt}))).toEqual([
+      {op: "admit", kind: "transport", attempt: 0},
+      {op: "admit", kind: "transport", attempt: 1},
+    ]);
+  } finally {
+    log.mockRestore();
+  }
+});
+
+it("proceeds exactly once when a committed dispatch loses its response", async () => {
+  const log = vi.spyOn(console, "log");
+  try {
+    // The dispatched record is written, then the exchange fails: the retry
+    // is refused as already dispatched, which proves the first try landed.
+    await runInDurableObject(globalLimiter(), (_instance, state) => {
+      const sql = state.storage.sql;
+      const original = sql.exec.bind(sql);
+      let armed = true;
+      sql.exec = (query, ...bindings) => {
+        const result = original(query, ...bindings);
+        if (armed && query.startsWith("INSERT INTO accounted_runs") && String(bindings[6]).includes('"state":"dispatched"')) {
+          armed = false;
+          throw new Error("injected lost dispatch response");
+        }
+        return result;
+      };
+    });
+    responses.push(reply([span]));
+    const response = await analyze(request());
+    expect(response.status).toBe(200);
+    expect((await response.json()).accounting).toMatchObject({request_count: 1, dispatched_attempts: 1, unknown_attempts: 0});
+    expect(payloads).toHaveLength(1);
+    expect(logged(log, "ad_analysis_accounting_error").map(({op, kind, attempt, code}) => ({op, kind, attempt, code}))).toEqual([
+      {op: "dispatch", kind: "transport", attempt: 0, code: null},
+      {op: "dispatch", kind: "status", attempt: 1, code: "attempt_already_dispatched"},
+    ]);
+  } finally {
+    log.mockRestore();
+  }
 });

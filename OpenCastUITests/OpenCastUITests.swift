@@ -7,6 +7,7 @@ final class OpenCastUITests: XCTestCase {
     private static let seededDownloadSelectionRowIdentifier = "download-selection-row-ui-test-episode-1"
     private static let seededCompletedEpisodeRowIdentifier = "episode-row-ui-test-episode-completed"
     private static let liveAdAnalysisEpisodeRowIdentifier = "episode-row-audio-illusion-that-proves-we-dont-experience-reality"
+    private static let seededFeedURL = "https://example.com/ui-test-feed.xml"
     private static let seededSubscriptionRowIdentifier = "subscription-row-https://example.com/ui-test-feed.xml"
     private static let aardvarkSubscriptionRowIdentifier = "subscription-row-https://example.com/ui-test-aardvark.xml"
     private static let zephyrSubscriptionRowIdentifier = "subscription-row-https://example.com/ui-test-zephyr.xml"
@@ -1118,6 +1119,41 @@ final class OpenCastUITests: XCTestCase {
     }
 
     @MainActor
+    func testSeededSleepTimerPresetsEditInSettingsAndSheet() throws {
+        let app = makeSeededApp()
+        app.launch()
+        openSettings(in: app)
+        app.buttons["Playback"].tap()
+        let presetsRow = app.buttons["playback-sleep-timer-presets-row"]
+        assertHittable(presetsRow, named: "Sleep Timer Presets row")
+        presetsRow.tap()
+        let firstPreset = app.buttons["sleep-timer-preset-1"]
+        assertHittable(firstPreset, named: "first sleep timer preset picker")
+        firstPreset.tap()
+        let twentyMinutesChoice = app.buttons["20 Minutes"]
+        assertHittable(twentyMinutesChoice, named: "20 Minutes preset choice")
+        twentyMinutesChoice.tap()
+
+        openSeededNowPlaying(in: app)
+        let sleepTimerButton = app.buttons["Sleep Timer"]
+        assertHittable(sleepTimerButton, named: "Sleep Timer control")
+        sleepTimerButton.tap()
+        let twentyMinutes = app.buttons["20 Minutes"]
+        assertHittable(twentyMinutes, named: "edited 20 Minutes sleep option")
+        assertDoesNotExist(app.buttons["5 Minutes"], named: "replaced 5 Minutes sleep option")
+
+        let editPresets = app.buttons["Edit Presets"]
+        assertHittable(editPresets, named: "Edit Presets button")
+        editPresets.tap()
+        assertExists(app.buttons["sleep-timer-preset-1"], named: "preset editor pushed inside the sheet")
+        app.navigationBars["Sleep Timer"].buttons.firstMatch.tap()
+
+        assertHittable(twentyMinutes, named: "20 Minutes sleep option after editing")
+        twentyMinutes.tap()
+        assertElementValueNotEqual(sleepTimerButton, "Off", named: "armed Sleep Timer control")
+    }
+
+    @MainActor
     func testSeededStopPlaybackFromMoreMenuRemovesCardAndMiniPlayer() throws {
         let app = makeSeededApp()
         app.launch()
@@ -1287,6 +1323,7 @@ final class OpenCastUITests: XCTestCase {
         app.launch()
 
         assertExists(app.tabBars.buttons["Library"], named: "Library tab")
+        enableTabBarMinimizeOnScroll(in: app)
         openAllPlaylist(in: app)
 
         let inboxEpisode = seededEpisodeRow(in: app)
@@ -1592,13 +1629,18 @@ final class OpenCastUITests: XCTestCase {
         assertExists(list, named: "Library list after choosing Automatic at compact width")
         assertDoesNotExist(grid, named: "Library grid after choosing Automatic at compact width")
 
-        openSettings(in: app)
+        openSettingsScreen("Look & Feel", in: app)
         let badgesToggle = app.switches.matching(
             NSPredicate(format: "label CONTAINS %@", "New Episode Badges")
         ).firstMatch
         assertExists(badgesToggle, named: "New Episode Badges toggle")
         scrollUntilHittable(badgesToggle, in: app, maxSwipes: 3)
         assertToggle(badgesToggle, isOn: true)
+        let minimizeTabBarToggle = app.switches.matching(
+            NSPredicate(format: "label CONTAINS %@", "Minimize Tab Bar on Scroll")
+        ).firstMatch
+        assertExists(minimizeTabBarToggle, named: "Minimize Tab Bar on Scroll toggle")
+        assertToggle(minimizeTabBarToggle, isOn: false)
         tapToggle(badgesToggle, to: false)
 
         openLibrary(in: app)
@@ -1606,8 +1648,8 @@ final class OpenCastUITests: XCTestCase {
         assertNewEpisodeValue(of: zephyr, is: "", named: "Zephyr row with badges off")
         attachSmokeScreenshot(named: "library_compact_list_badges_hidden")
 
-        openSettings(in: app)
-        assertHittable(badgesToggle, named: "New Episode Badges toggle after returning to Settings")
+        openSettingsScreen("Look & Feel", in: app)
+        assertHittable(badgesToggle, named: "New Episode Badges toggle after returning to Look & Feel")
         tapToggle(badgesToggle, to: true)
         openLibrary(in: app)
         assertNewEpisodeValue(of: mainShow, is: "3 new episodes", named: "UI Test Show row with badges back on")
@@ -2958,11 +3000,11 @@ final class OpenCastUITests: XCTestCase {
         attachSmokeScreenshot(named: "settings_sync")
 
         openSettingsScreen("Storage", in: app)
-        let downloadedEpisodesRow = app.staticTexts["Downloaded Episodes"]
-        scrollUntilExists(downloadedEpisodesRow, in: app)
+        let downloadsRow = app.buttons["Settings Row Downloads"]
+        scrollUntilExists(downloadsRow, in: app)
         assertExists(app.staticTexts["Feed Cache"], named: "Feed Cache row")
         assertExists(app.staticTexts["Artwork Cache"], named: "Artwork Cache row")
-        assertExists(downloadedEpisodesRow, named: "Downloaded Episodes row")
+        assertExists(downloadsRow, named: "Downloads routing row")
         attachSmokeScreenshot(named: "settings_storage")
 
         openSettings(in: app)
@@ -3007,12 +3049,18 @@ final class OpenCastUITests: XCTestCase {
         attachSmokeScreenshot(named: "episode_detail_downloaded_menu")
         dismissContextualMenu(in: app)
 
+        // Download settings live in the Downloads tab; Storage routes there.
         openSettingsScreen("Storage", in: app)
+        let downloadsRow = app.buttons["Settings Row Downloads"]
+        scrollUntilHittable(downloadsRow, in: app)
+        assertExists(elementContaining(label: "1 episode,", in: app), named: "Storage downloads summary")
+        downloadsRow.tap()
+        assertExists(app.navigationBars["Download Settings"], named: "Download Settings from Storage")
+        XCTAssertTrue(app.tabBars.buttons["Downloads"].isSelected, "Storage should switch to the Downloads tab")
         let deleteAllDownloadsButton = app.buttons["Delete All Downloads"]
         scrollUntilHittable(deleteAllDownloadsButton, in: app)
-        assertExists(app.staticTexts["Downloaded Episodes"], named: "Downloaded Episodes row")
         assertExists(deleteAllDownloadsButton, named: "Delete All Downloads button")
-        attachSmokeScreenshot(named: "settings_downloads")
+        attachSmokeScreenshot(named: "download_settings")
     }
 
     @MainActor
@@ -3029,16 +3077,26 @@ final class OpenCastUITests: XCTestCase {
         downloadsTab.tap()
 
         assertExists(app.navigationBars["Downloads"], named: "Downloads navigation bar")
-        assertExists(app.staticTexts["Downloaded Episodes"], named: "Downloads storage summary")
         assertExists(app.staticTexts["Downloaded"], named: "Downloaded section")
-
-        let byPodcast = app.buttons["By Podcast"]
-        assertHittable(byPodcast, named: "By Podcast disclosure")
-        byPodcast.tap()
+        let storageButton = app.navigationBars["Downloads"].buttons["Storage"]
+        assertHittable(storageButton, named: "Downloads Storage button")
+        storageButton.tap()
+        assertExists(app.navigationBars["Storage"], named: "Downloads Storage screen")
         assertExists(
-            app.descendants(matching: .any)["download-podcast-https://example.com/ui-test-feed.xml"],
-            named: "downloaded podcast breakdown"
+            app.descendants(matching: .any)["downloads-storage-graph"],
+            named: "Downloads storage graph"
         )
+        assertExists(elementContaining(label: "1 episode,", in: app), named: "Downloads storage caption")
+        let legendRow = app.buttons["download-podcast-\(Self.seededFeedURL)"]
+        assertHittable(legendRow, named: "downloaded podcast legend row")
+        // One tap pushes the show's download settings once, so one Back
+        // returns to Storage.
+        legendRow.tap()
+        assertExists(app.navigationBars["UI Test Show"], named: "show download settings from the legend")
+        tapBackButton(in: app)
+        assertExists(app.navigationBars["Storage"], named: "Storage after the show's settings")
+        tapBackButton(in: app)
+        assertExists(app.navigationBars["Downloads"], named: "Downloads after Storage")
 
         let downloadedRowButton = app.buttons.matching(identifier: Self.seededEpisodeRowIdentifier).firstMatch
         scrollUntilHittable(downloadedRowButton, in: app)
@@ -3072,7 +3130,8 @@ final class OpenCastUITests: XCTestCase {
 
         assertExists(miniPlayer, named: "mini-player after selecting a download")
 
-        let deleteSelected = app.buttons["Delete Selected (1)"]
+        let deleteSelected = app.buttons["downloads-delete-selected"]
+        XCTAssertEqual(deleteSelected.label, "Delete (1)")
         assertMiniPlayerDoesNotCover(
             deleteSelected,
             named: "Delete Selected edit action",
@@ -3091,6 +3150,152 @@ final class OpenCastUITests: XCTestCase {
             named: "Done button after deleting the final completed download",
             timeout: 5
         )
+    }
+
+    @MainActor
+    func testSeededDownloadSettingsScreensAndPodcastMenuEntry() throws {
+        let app = makeSeededApp(seedsCompletedDownload: true)
+        app.launch()
+
+        openSection("Downloads", in: app)
+        let downloadsBar = app.navigationBars["Downloads"]
+        assertExists(downloadsBar, named: "Downloads navigation bar")
+        let settingsButton = downloadsBar.buttons["Download Settings"]
+        assertHittable(settingsButton, named: "Download Settings toolbar button")
+        settingsButton.tap()
+
+        assertExists(app.navigationBars["Download Settings"], named: "Download Settings screen")
+        let wifiOnly = app.switches["download-settings-wifi-only-toggle"]
+        assertExists(wifiOnly, named: "Wi-Fi Only toggle")
+        XCTAssertEqual(wifiOnly.value as? String, "1", "Wi-Fi Only for Automatic Downloads ships on")
+        assertExists(
+            app.descendants(matching: .any)["download-settings-keep-limit-picker"],
+            named: "default Keep Downloaded picker"
+        )
+        let autoDelete = app.switches["download-settings-auto-delete-toggle"]
+        assertExists(autoDelete, named: "Delete Downloads After Played toggle")
+        XCTAssertEqual(autoDelete.value as? String, "0", "Delete Downloads After Played ships off")
+        let showRow = app.buttons["download-settings-show-\(Self.seededFeedURL)"]
+        scrollUntilHittable(showRow, in: app)
+        assertExists(
+            elementContaining(label: "Manual · Default (No Limit)", in: app),
+            named: "show row summary before any change"
+        )
+        attachSmokeScreenshot(named: "download_settings_screen")
+        showRow.tap()
+
+        assertExists(app.navigationBars["UI Test Show"], named: "show download settings")
+        let autoDownload = app.switches["podcast-download-settings-auto-download-toggle"]
+        assertExists(autoDownload, named: "Download New Episodes toggle")
+        XCTAssertEqual(autoDownload.value as? String, "0", "Download New Episodes ships off")
+        let keepLimit = app.buttons["podcast-download-settings-keep-limit-picker"]
+        assertHittable(keepLimit, named: "show Keep Downloaded picker")
+        assertExists(elementContaining(label: "Default (No Limit)", in: app), named: "show limit following the default")
+        assertExists(elementContaining(label: "1 episode,", in: app), named: "show's downloaded summary")
+        assertExists(app.buttons["Delete This Show’s Downloads"], named: "Delete This Show's Downloads button")
+
+        keepLimit.tap()
+        let threeEpisodes = app.buttons["3 Episodes"].firstMatch
+        assertHittable(threeEpisodes, named: "3 Episodes limit option")
+        threeEpisodes.tap()
+        assertExists(elementContaining(label: "3 Episodes", in: app), named: "show limit after choosing 3 Episodes")
+        // The seeded show's only episode is already downloaded, so turning
+        // it on schedules nothing new to download.
+        tapToggle(autoDownload, to: true)
+        attachSmokeScreenshot(named: "podcast_download_settings_pushed")
+
+        tapBackButton(in: app)
+        assertExists(app.navigationBars["Download Settings"], named: "Download Settings after the show")
+        assertExists(
+            elementContaining(label: "Downloads new episodes · Keep 3", in: app),
+            named: "show row summary after the changes"
+        )
+
+        openLibrary(in: app)
+        let libraryPodcast = seededSubscriptionRow(in: app)
+        assertExists(libraryPodcast, named: "seeded library podcast")
+        libraryPodcast.tap()
+        let actionsButton = app.buttons["Podcast Actions"]
+        assertHittable(actionsButton, named: "podcast actions menu")
+        actionsButton.tap()
+        let menuEntry = app.buttons["Download Settings…"]
+        assertHittable(menuEntry, named: "Download Settings… menu action")
+        attachSmokeScreenshot(named: "podcast_actions_download_settings")
+        menuEntry.tap()
+
+        let sheetBar = app.navigationBars["UI Test Show"]
+        assertExists(sheetBar, named: "show download settings sheet")
+        assertExists(
+            app.switches["podcast-download-settings-auto-download-toggle"],
+            named: "Download New Episodes toggle in the sheet"
+        )
+        assertExists(elementContaining(label: "3 Episodes", in: app), named: "sheet showing the saved limit")
+        attachSmokeScreenshot(named: "podcast_download_settings_sheet")
+        let doneButton = sheetBar.buttons["Done"]
+        assertHittable(doneButton, named: "sheet Done button")
+        doneButton.tap()
+        // The show's own screen shares the sheet's title, so the sheet's
+        // Done button is what must go.
+        assertDoesNotExist(doneButton, named: "show download settings sheet after Done", timeout: 5)
+        assertHittable(actionsButton, named: "podcast detail after closing the sheet")
+    }
+
+    @MainActor
+    func testSeededDownloadsGroupByShowSectionShowsCountSizeAndLimitChip() throws {
+        let app = makeSeededApp(seedsCompletedDownload: true)
+        app.launch()
+
+        openSection("Downloads", in: app)
+        let downloadsBar = app.navigationBars["Downloads"]
+        assertExists(downloadsBar, named: "Downloads navigation bar")
+        assertExists(app.staticTexts["Downloaded"], named: "flat Downloaded section")
+
+        let options = downloadsBar.buttons["Download Options"]
+        assertHittable(options, named: "Download Options menu")
+        options.tap()
+        let groupByShow = app.buttons["Group by Show"].firstMatch
+        assertHittable(groupByShow, named: "Group by Show toggle")
+        groupByShow.tap()
+
+        let section = app.descendants(matching: .any)
+            .matching(identifier: "download-show-section-\(Self.seededFeedURL)")
+            .firstMatch
+        assertExists(section, named: "seeded show section")
+        // Scoped to the header: the storage legend renders the same text.
+        let sectionDetail = section.staticTexts
+            .matching(NSPredicate(format: "label MATCHES %@", "1 episode · [0-9.,]+ (bytes|KB|MB|GB)"))
+            .firstMatch
+        assertExists(sectionDetail, named: "show section count and size")
+        let chip = app.descendants(matching: .any)
+            .matching(identifier: "download-show-limit-\(Self.seededFeedURL)")
+            .firstMatch
+        assertExists(chip, named: "show section limit chip")
+        XCTAssertTrue(
+            chip.label.contains("No Limit"),
+            "The chip should name the default limit, got \(chip.label)"
+        )
+        let row = app.buttons.matching(identifier: Self.seededEpisodeRowIdentifier).firstMatch
+        assertExists(row, named: "download row inside the show section")
+        attachSmokeScreenshot(named: "downloads_group_by_show")
+
+        let toggle = app.buttons["download-show-toggle-\(Self.seededFeedURL)"]
+        assertHittable(toggle, named: "show section collapse control")
+        toggle.tap()
+        assertDoesNotExist(row, named: "download row in a collapsed section", timeout: 5)
+        assertExists(section, named: "collapsed show section header")
+        toggle.tap()
+        assertExists(row, named: "download row after expanding")
+
+        chip.tap()
+        assertExists(app.navigationBars["UI Test Show"], named: "show download settings from the chip")
+        tapBackButton(in: app)
+        assertExists(downloadsBar, named: "Downloads after the show's settings")
+
+        options.tap()
+        assertHittable(groupByShow, named: "Group by Show toggle to turn off")
+        groupByShow.tap()
+        assertExists(app.staticTexts["Downloaded"], named: "flat Downloaded section restored")
+        assertDoesNotExist(section, named: "show section after turning grouping off", timeout: 5)
     }
 
     @MainActor
@@ -3463,23 +3668,31 @@ final class OpenCastUITests: XCTestCase {
 
         openSettingsScreen("Storage", in: app)
 
-        let deleteAllDownloadsButton = app.buttons["Delete All Downloads"]
-        scrollUntilHittable(deleteAllDownloadsButton, in: app)
+        let downloadsRow = app.buttons["Settings Row Downloads"]
+        scrollUntilHittable(downloadsRow, in: app)
         assertExists(app.staticTexts["Feed Cache"], named: "Feed Cache row before cache clear")
         assertExists(app.staticTexts["Artwork Cache"], named: "Artwork Cache row before cache clear")
-        assertExists(deleteAllDownloadsButton, named: "Delete All Downloads before cache clear")
+        assertExists(elementContaining(label: "1 episode,", in: app), named: "Downloads summary before cache clear")
 
         let clearCachesButton = app.buttons["Clear Automatic Caches"].firstMatch
         scrollUntilHittable(clearCachesButton, in: app)
         clearCachesButton.tap()
         app.buttons["Clear Automatic Caches"].firstMatch.tap()
 
-        assertExists(deleteAllDownloadsButton, named: "Delete All Downloads after cache clear")
+        assertExists(elementContaining(label: "1 episode,", in: app), named: "Downloads summary after cache clear")
 
+        // Delete All lives in Download Settings, in the Downloads tab.
+        downloadsRow.tap()
+        assertExists(app.navigationBars["Download Settings"], named: "Download Settings from Storage")
+        let deleteAllDownloadsButton = app.buttons["Delete All Downloads"]
+        scrollUntilHittable(deleteAllDownloadsButton, in: app)
         deleteAllDownloadsButton.tap()
         app.buttons["Delete Downloads"].tap()
-
         assertDoesNotExist(deleteAllDownloadsButton, named: "Delete All Downloads after deleting downloads", timeout: 5)
+
+        openSettings(in: app)
+        assertExists(app.navigationBars["Storage"], named: "Storage kept in the Settings tab")
+        assertExists(elementContaining(label: "None", in: app), named: "Downloads summary after deleting downloads")
         assertExists(app.staticTexts["Feed Cache"], named: "Feed Cache row after deleting downloads")
         assertExists(app.staticTexts["Artwork Cache"], named: "Artwork Cache row after deleting downloads")
     }
@@ -4111,6 +4324,123 @@ final class OpenCastUITests: XCTestCase {
         attachSmokeScreenshot(named: "now_playing_expanded_light_paused")
     }
 
+    private static let seededChapterTitles = ["Cold Open", "Main Topic", "Wrap-Up"]
+
+    @MainActor
+    func testSeededChaptersSheetListsAndSeeksChapters() throws {
+        let app = makeSeededApp(seedsChapters: true)
+        app.launch()
+
+        openSeededNowPlaying(in: app)
+
+        let currentChapter = app.descendants(matching: .any)["Now Playing Current Chapter"].firstMatch
+        assertExists(currentChapter, named: "chapter bar")
+        currentChapter.tap()
+
+        assertExists(app.navigationBars["Chapters"], named: "Chapters sheet")
+        for title in Self.seededChapterTitles {
+            assertExists(app.staticTexts[title].firstMatch, named: "chapter row \(title)")
+        }
+        attachSmokeScreenshot(named: "now_playing_chapters_sheet")
+
+        app.staticTexts[Self.seededChapterTitles[2]].firstMatch.tap()
+        XCTAssertTrue(
+            app.navigationBars["Chapters"].waitForNonExistence(timeout: 5),
+            "Tapping a chapter should close the sheet"
+        )
+
+        assertCurrentChapter(Self.seededChapterTitles[2], in: app)
+        let elapsed = try XCTUnwrap(
+            playbackElapsedSeconds(from: playbackProgress(in: app).value as? String ?? "")
+        )
+        XCTAssertGreaterThanOrEqual(elapsed, 200, "Tapping Wrap-Up should seek to its start")
+    }
+
+    @MainActor
+    func testSeededChapterBarSkipsBetweenChapters() throws {
+        let app = makeSeededApp(seedsChapters: true)
+        app.launch()
+
+        openSeededNowPlaying(in: app)
+        assertCurrentChapter(Self.seededChapterTitles[0], in: app)
+
+        let overlay = nowPlayingOverlay(in: app)
+        let pause = overlay.buttons["Pause"].firstMatch
+        assertExists(pause, named: "Pause button")
+        pause.tap()
+        assertExists(overlay.buttons["Play"].firstMatch, named: "Play button after pausing")
+
+        let next = app.buttons["Next Chapter"].firstMatch
+        let previous = app.buttons["Previous Chapter"].firstMatch
+        assertExists(next, named: "Next Chapter button")
+        assertExists(previous, named: "Previous Chapter button")
+
+        next.tap()
+        assertCurrentChapter(Self.seededChapterTitles[1], in: app)
+        next.tap()
+        assertCurrentChapter(Self.seededChapterTitles[2], in: app)
+        XCTAssertFalse(next.isEnabled, "Next Chapter is disabled on the last chapter")
+
+        previous.tap()
+        assertCurrentChapter(Self.seededChapterTitles[1], in: app)
+        attachSmokeScreenshot(named: "now_playing_chapter_bar")
+
+        overlay.buttons["Skip Forward 15 Seconds"].firstMatch.tap()
+        previous.tap()
+        assertCurrentChapter(Self.seededChapterTitles[1], in: app)
+        let elapsed = try XCTUnwrap(
+            playbackElapsedSeconds(from: playbackProgress(in: app).value as? String ?? "")
+        )
+        XCTAssertEqual(elapsed, 60, accuracy: 1.5, "Previous should restart Main Topic at 1:00")
+
+        app.descendants(matching: .any)["Now Playing Current Chapter"].firstMatch.tap()
+        assertExists(app.navigationBars["Chapters"], named: "Chapters sheet from the chapter bar")
+        app.staticTexts[Self.seededChapterTitles[2]].firstMatch.tap()
+        XCTAssertTrue(
+            app.navigationBars["Chapters"].waitForNonExistence(timeout: 5),
+            "Tapping a chapter should close the sheet"
+        )
+        assertCurrentChapter(Self.seededChapterTitles[2], in: app)
+    }
+
+    @MainActor
+    func testSeededChapterBarIsHiddenWithoutChapters() throws {
+        let app = makeSeededApp()
+        app.launch()
+
+        openSeededNowPlaying(in: app)
+        assertExists(playbackProgress(in: app), named: "playback progress")
+
+        XCTAssertFalse(
+            app.descendants(matching: .any)["Now Playing Current Chapter"].exists,
+            "The chapter bar stays hidden without chapters"
+        )
+        XCTAssertFalse(app.buttons["Next Chapter"].exists, "The chapter bar stays hidden without chapters")
+    }
+
+    @MainActor
+    private func assertCurrentChapter(
+        _ title: String,
+        in app: XCUIApplication,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) {
+        let currentChapter = app.descendants(matching: .any)["Now Playing Current Chapter"].firstMatch
+        assertExists(currentChapter, named: "chapter bar", file: file, line: line)
+        let showsTitle = NSPredicate(format: "label CONTAINS %@", title)
+        let result = XCTWaiter().wait(
+            for: [expectation(for: showsTitle, evaluatedWith: currentChapter)],
+            timeout: 5
+        )
+        XCTAssertEqual(
+            result,
+            .completed,
+            "Chapter bar should show \(title), got \(currentChapter.label)",
+            file: file,
+            line: line
+        )
+    }
+
     @MainActor
     func testSeededNowPlayingAirPlayPickerCanOpen() throws {
         #if targetEnvironment(simulator)
@@ -4231,7 +4561,7 @@ final class OpenCastUITests: XCTestCase {
         let app = makeSeededApp(forcesDarkMode: false, forcesLightMode: true)
         app.launch()
 
-        openSettingsScreen("App Icon", expecting: "App Icon", in: app)
+        openAppIconScreen(in: app)
         let violetOption = app.buttons["App Icon Option Violet"]
         let emberOption = app.buttons["App Icon Option Ember"]
         assertHittable(violetOption, named: "Violet app icon option")
@@ -4255,13 +4585,13 @@ final class OpenCastUITests: XCTestCase {
         XCTAssertFalse(emberOption.isSelected, "Ember should no longer be selected")
         attachSmokeScreenshot(named: "settings_app_icon_violet")
 
-        returnToSettingsHub(in: app)
-        let hubRow = app.buttons["Settings Row App Icon"].firstMatch
-        XCTAssertTrue(settingsHubRow(hubRow, showsValue: "Violet"), "App Icon hub row should show Violet")
+        tapBackButton(in: app)
+        let appIconRow = app.buttons["Settings Row App Icon"].firstMatch
+        XCTAssertTrue(settingsRow(appIconRow, showsValue: "Violet"), "Look & Feel's App Icon row should show Violet")
 
         app.terminate()
         app.launch()
-        openSettingsScreen("App Icon", expecting: "App Icon", in: app)
+        openAppIconScreen(in: app)
         XCTAssertTrue(waitForSelection(of: violetOption), "Violet should survive a relaunch")
 
         emberOption.tap()
@@ -4269,8 +4599,8 @@ final class OpenCastUITests: XCTestCase {
         XCTAssertTrue(waitForSelection(of: emberOption), "Ember should be selected after tapping it")
         needsPrimaryAppIconRestore = false
 
-        returnToSettingsHub(in: app)
-        XCTAssertTrue(settingsHubRow(hubRow, showsValue: "Ember"), "App Icon hub row should return to Ember")
+        tapBackButton(in: app)
+        XCTAssertTrue(settingsRow(appIconRow, showsValue: "Ember"), "Look & Feel's App Icon row should return to Ember")
     }
 
     @MainActor
@@ -4380,6 +4710,7 @@ final class OpenCastUITests: XCTestCase {
         return XCTWaiter.wait(for: [expectation], timeout: timeout) == .completed
     }
 
+    /// App Icon lives inside Look & Feel, one push below the Settings hub.
     @MainActor
     private func returnToSettingsHub(in app: XCUIApplication) {
         openSection("Settings", in: app)
@@ -4390,7 +4721,16 @@ final class OpenCastUITests: XCTestCase {
     }
 
     @MainActor
-    private func settingsHubRow(_ row: XCUIElement, showsValue value: String, timeout: TimeInterval = 5) -> Bool {
+    private func openAppIconScreen(in app: XCUIApplication) {
+        openSettingsScreen("Look & Feel", in: app)
+        let appIconRow = app.buttons["Settings Row App Icon"].firstMatch
+        assertHittable(appIconRow, named: "App Icon row in Look & Feel")
+        appIconRow.tap()
+        assertExists(app.navigationBars["App Icon"], named: "App Icon screen")
+    }
+
+    @MainActor
+    private func settingsRow(_ row: XCUIElement, showsValue value: String, timeout: TimeInterval = 5) -> Bool {
         let deadline = Date.now.addingTimeInterval(timeout)
         repeat {
             if row.exists,
@@ -4427,6 +4767,11 @@ final class OpenCastUITests: XCTestCase {
         if !app.navigationBars["Settings"].existsOrWait(timeout: 2) {
             settingsTab.tap()
         }
+        let lookAndFeelRow = app.buttons["Settings Row Look & Feel"].firstMatch
+        guard lookAndFeelRow.waitForExistence(timeout: 5) else {
+            return
+        }
+        lookAndFeelRow.tap()
         let appIconRow = app.buttons["Settings Row App Icon"].firstMatch
         guard appIconRow.existsOrWait(timeout: 5) else {
             return
@@ -4946,16 +5291,22 @@ final class OpenCastUITests: XCTestCase {
         assertExists(app.navigationBars["Downloads"], named: "Downloads navigation bar")
 
         // The seeded audio is a local file, so each download is a quick copy.
-        assertExists(
-            elementContaining(label: "4 episodes,", in: app),
-            named: "four completed downloads in the storage summary",
-            timeout: 30
-        )
         // The Ad Detection section pushes the last downloaded row below the
         // fold, and an off-screen row is not in the hierarchy.
         let completedRow = app.buttons.matching(identifier: Self.seededEpisodeRowIdentifier).firstMatch
         scrollUntilExists(completedRow, in: app)
         attachSmokeScreenshot(named: "playlists_download_all_downloads_tab")
+
+        // The storage summary lives on the Storage screen off the Downloads toolbar.
+        let storageButton = app.navigationBars["Downloads"].buttons["Storage"]
+        assertHittable(storageButton, named: "Downloads Storage button")
+        storageButton.tap()
+        assertExists(app.navigationBars["Storage"], named: "Downloads Storage screen")
+        assertExists(
+            elementContaining(label: "4 episodes,", in: app),
+            named: "four completed downloads in the storage summary",
+            timeout: 30
+        )
     }
 
     /// At accessibility sizes the controls fill the card, so the source pill
@@ -5240,6 +5591,7 @@ final class OpenCastUITests: XCTestCase {
         forcesDarkMode: Bool = true,
         forcesLightMode: Bool = false,
         seedsCompletedDownload: Bool = false,
+        seedsChapters: Bool = false,
         seedsFailedDownload: Bool = false,
         seedsTranscriptionModel: Bool = false,
         seedsCompletedTranscript: Bool = false,
@@ -5289,6 +5641,9 @@ final class OpenCastUITests: XCTestCase {
         if seedsCompletedDownload {
             app.launchArguments.append("--opencast-seed-completed-download")
             app.launchEnvironment["OPENCAST_SEED_COMPLETED_DOWNLOAD"] = "1"
+        }
+        if seedsChapters {
+            app.launchEnvironment["OPENCAST_SEED_CHAPTERS"] = "1"
         }
         if seedsFailedDownload {
             app.launchArguments.append("--opencast-seed-failed-download")
@@ -6822,6 +7177,19 @@ final class OpenCastUITests: XCTestCase {
         }
         let expectation = XCTNSPredicateExpectation(predicate: changed, object: toggle)
         XCTAssertEqual(XCTWaiter.wait(for: [expectation], timeout: 3), .completed, file: file, line: line)
+    }
+
+    /// Minimizing the tab bar on scroll is opt-in (Look & Feel); the tab
+    /// accessory collapses to its inline placement only with it on.
+    @MainActor
+    private func enableTabBarMinimizeOnScroll(in app: XCUIApplication) {
+        openSettingsScreen("Look & Feel", in: app)
+        let toggle = app.switches.matching(
+            NSPredicate(format: "label CONTAINS %@", "Minimize Tab Bar on Scroll")
+        ).firstMatch
+        assertExists(toggle, named: "Minimize Tab Bar on Scroll toggle")
+        scrollUntilHittable(toggle, in: app, maxSwipes: 3)
+        tapToggle(toggle, to: true)
     }
 
     @MainActor

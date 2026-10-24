@@ -119,8 +119,10 @@ jobs:
             --test promo_v3 \
             --test prompt \
             --test routing \
+            --test v3_timeout \
             --test validation \
             --test windowing
+          python3 -B -m unittest discover -s scripts
 
       - name: Run public TranscriptAnalysisWorker host tests
         if: matrix.name == 'TranscriptAnalysisWorker'
@@ -416,6 +418,7 @@ jobs:
           node tests/postgres/test-storage.mjs
           node tests/postgres/test-proxy.mjs
           node tests/postgres/test-timing.mjs
+          node tests/postgres/test-witness.mjs
           node tests/catalog-contract-runtime.mjs
           node tests/current-engine-runtime.mjs
           node tests/delivery-runtime.mjs
@@ -437,6 +440,7 @@ jobs:
           node tests/stage1-review.mjs
           node tests/alerting.mjs
           node tests/permit-reclaim.mjs
+          python3 -B -m unittest discover -s storage_phases
 
   services:
     name: Service (${{ matrix.name }})

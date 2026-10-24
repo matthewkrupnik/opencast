@@ -154,6 +154,36 @@ struct EpisodeTranscriptAnalysisStoreTests {
         #expect(store.document(for: transcript.episodeID) == nil)
     }
 
+    @Test("Unanswered 5xx polls retry the accepted job until it completes, without a resubmit")
+    func unansweredServerErrorPollsRetryAcceptedJob() async throws {
+        let container = try OpenCastModelContainerFactory.make(inMemory: true)
+        let context = ModelContext(container)
+        let client = PollingEpisodeTranscriptAnalysisClient(pollFailures: [
+            EpisodeTranscriptAnalysisHTTPError(statusCode: 500, code: "http_500", detail: nil),
+            EpisodeTranscriptAnalysisHTTPError(statusCode: 503, code: "job_unavailable", detail: nil)
+        ])
+        let store = EpisodeTranscriptAnalysisStore(
+            client: client,
+            fileStore: EpisodeTranscriptAnalysisFileStore(baseDirectory: try makeTemporaryDirectory()),
+            pollingSleep: { _ in }
+        )
+        let transcript = makeTranscriptDocument(episodeID: "chapters-poll-5xx")
+
+        store.startAnalysis(
+            transcript: transcript,
+            episodeTitle: "Episode Title",
+            podcastTitle: "Podcast Title",
+            modelContext: context
+        )
+
+        #expect(await waitUntil {
+            store.record(for: transcript.episodeID)?.state == .completed
+        })
+        let record = try #require(store.record(for: transcript.episodeID))
+        #expect(client.submitCount == 1)
+        #expect(client.polledJobIDs == Array(repeating: record.transcriptFingerprint, count: 3))
+    }
+
     @Test("A response from an unexpected policy fails cleanly")
     func unexpectedPolicyResponseFailsCleanly() async throws {
         let container = try OpenCastModelContainerFactory.make(inMemory: true)
@@ -259,6 +289,131 @@ struct EpisodeTranscriptAnalysisStoreTests {
             return
         }
         #expect(changedIsStale)
+    }
+
+    @Test("A completed analysis whose document was deleted is stale")
+    func completedAnalysisWithoutDocumentIsStale() async throws {
+        let container = try OpenCastModelContainerFactory.make(inMemory: true)
+        let context = ModelContext(container)
+        let fileStore = EpisodeTranscriptAnalysisFileStore(baseDirectory: try makeTemporaryDirectory())
+        let store = EpisodeTranscriptAnalysisStore(client: FakeEpisodeTranscriptAnalysisClient(), fileStore: fileStore)
+        let transcript = makeTranscriptDocument(episodeID: "chapters-missing-document")
+
+        store.startAnalysis(
+            transcript: transcript,
+            episodeTitle: "Episode Title",
+            podcastTitle: "Podcast Title",
+            modelContext: context
+        )
+        #expect(await waitUntil {
+            !store.hasActiveJob && store.record(for: transcript.episodeID)?.state == .completed
+        })
+        let relativePath = try #require(store.record(for: transcript.episodeID)?.analysisRelativePath)
+        try fileStore.delete(relativePath: relativePath)
+
+        guard case .completed(_, isStale: true) = store.jobState(for: transcript) else {
+            Issue.record("A completed analysis still requires its output document.")
+            return
+        }
+    }
+
+    @Test("A Gemini timeout without an output document remains a current, retryable failure after reopening the store")
+    func timeoutWithoutDocumentRemainsCurrentFailureAfterReopening() async throws {
+        let directory = try makeTemporaryDirectory()
+        let configuration = ModelConfiguration(
+            schema: OpenCastModelContainerFactory.localSchema,
+            url: directory.appending(path: "LocalDeviceData.store"),
+            cloudKitDatabase: .none
+        )
+        let fileStore = EpisodeTranscriptAnalysisFileStore(baseDirectory: directory)
+        let client = ThrowingEpisodeTranscriptAnalysisClient(
+            error: EpisodeTranscriptAnalysisHTTPError(statusCode: 503, code: "gemini_timeout", detail: nil)
+        )
+        let transcript = makeTranscriptDocument(episodeID: "chapters-timeout-relaunch")
+
+        do {
+            let container = try ModelContainer(
+                for: OpenCastModelContainerFactory.localSchema,
+                configurations: [configuration]
+            )
+            let store = EpisodeTranscriptAnalysisStore(client: client, fileStore: fileStore)
+            store.startAnalysis(
+                transcript: transcript,
+                episodeTitle: "Episode Title",
+                podcastTitle: "Podcast Title",
+                modelContext: ModelContext(container)
+            )
+            #expect(await waitUntil {
+                !store.hasActiveJob && store.record(for: transcript.episodeID)?.state == .failed
+            })
+            let record = try #require(store.record(for: transcript.episodeID))
+            #expect(!fileStore.documentExists(relativePath: record.analysisRelativePath))
+            guard case .failed(_, isStale: false) = store.jobState(for: transcript) else {
+                Issue.record("A timeout for the current transcript must be a current failure without an output file.")
+                return
+            }
+        }
+
+        let reopenedContainer = try ModelContainer(
+            for: OpenCastModelContainerFactory.localSchema,
+            configurations: [configuration]
+        )
+        let reloadedStore = EpisodeTranscriptAnalysisStore(client: client, fileStore: fileStore)
+        reloadedStore.load(modelContext: ModelContext(reopenedContainer))
+        let detail = await reloadedStore.episodeDetailState(
+            for: transcript,
+            transcriptState: .completed,
+            analysisDocument: nil
+        )
+        guard case .failed(let record, isStale: false) = detail.jobState else {
+            Issue.record("Reopening must preserve the current timeout failure without an output file.")
+            return
+        }
+        #expect(record.failureKind == .generic)
+        #expect(!detail.hasCurrentCompletedAnalysis)
+        #expect(!reloadedStore.hasActiveJob)
+        #expect(client.analyzeCallCount == 1)
+    }
+
+    @Test("A failure without an output document stays stale when the transcript changes")
+    func failureWithoutDocumentStaysStaleForChangedTranscript() async throws {
+        let container = try OpenCastModelContainerFactory.make(inMemory: true)
+        let context = ModelContext(container)
+        let directory = try makeTemporaryDirectory()
+        let client = ThrowingEpisodeTranscriptAnalysisClient(
+            error: EpisodeTranscriptAnalysisHTTPError(statusCode: 503, code: "gemini_timeout", detail: nil)
+        )
+        let store = EpisodeTranscriptAnalysisStore(
+            client: client,
+            fileStore: EpisodeTranscriptAnalysisFileStore(baseDirectory: directory)
+        )
+        var transcript = makeTranscriptDocument(episodeID: "chapters-timeout-changed-transcript")
+        store.startAnalysis(
+            transcript: transcript,
+            episodeTitle: "Episode Title",
+            podcastTitle: "Podcast Title",
+            modelContext: context
+        )
+        #expect(await waitUntil {
+            !store.hasActiveJob && store.record(for: transcript.episodeID)?.state == .failed
+        })
+
+        transcript.segments[0].text = "A different episode opening."
+        transcript.text = transcript.segments.map(\.text).joined(separator: " ")
+        let reloadedStore = EpisodeTranscriptAnalysisStore(
+            client: client,
+            fileStore: EpisodeTranscriptAnalysisFileStore(baseDirectory: directory)
+        )
+        reloadedStore.load(modelContext: context)
+        let detail = await reloadedStore.episodeDetailState(
+            for: transcript,
+            transcriptState: .completed,
+            analysisDocument: nil
+        )
+        guard case .failed(_, isStale: true) = detail.jobState else {
+            Issue.record("A failure for different transcript content must remain stale.")
+            return
+        }
     }
 
     @Test("An active job never marks other episodes as running")
@@ -975,3 +1130,49 @@ private final class FakeEpisodeTranscriptAnalysisClient: EpisodeTranscriptAnalys
         throw EpisodeTranscriptAnalysisError.clientDisabled
     }
 }
+
+/// Accepts every submit as its fingerprint job, fails the first polls with
+/// the scripted errors, then completes like `FakeEpisodeTranscriptAnalysisClient`.
+private final class PollingEpisodeTranscriptAnalysisClient: EpisodeTranscriptAnalysisClient, @unchecked Sendable {
+    private let lock = NSLock()
+    private let completing = FakeEpisodeTranscriptAnalysisClient()
+    private var pendingFailures: [any Error]
+    private var lastRequest: EpisodeTranscriptAnalysisAPIRequest?
+    private var submits = 0
+    private var polls: [String] = []
+
+    init(pollFailures: [any Error]) {
+        pendingFailures = pollFailures
+    }
+
+    var submitCount: Int {
+        lock.withLock { submits }
+    }
+
+    var polledJobIDs: [String] {
+        lock.withLock { polls }
+    }
+
+    func analyze(_ request: EpisodeTranscriptAnalysisAPIRequest) async throws -> EpisodeTranscriptAnalysisSubmitOutcome {
+        lock.withLock {
+            submits += 1
+            lastRequest = request
+        }
+        return .accepted(jobID: request.transcript.fingerprint, pollAfter: 0)
+    }
+
+    func pollJob(id: String) async throws -> EpisodeTranscriptAnalysisJobPollOutcome {
+        let (failure, request): ((any Error)?, EpisodeTranscriptAnalysisAPIRequest?) = lock.withLock {
+            polls.append(id)
+            return (pendingFailures.isEmpty ? nil : pendingFailures.removeFirst(), lastRequest)
+        }
+        if let failure {
+            throw failure
+        }
+        guard let request, case .completed(let response) = try await completing.analyze(request) else {
+            throw EpisodeTranscriptAnalysisError.clientDisabled
+        }
+        return .completed(response)
+    }
+}
+

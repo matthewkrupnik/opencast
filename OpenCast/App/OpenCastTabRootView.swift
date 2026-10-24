@@ -35,9 +35,7 @@ struct OpenCastTabRootView: View {
                 value: AppSection.downloads
             ) {
                 NavigationStack(path: $navigationPaths[.downloads]) {
-                    DownloadsView(
-                        onOpenEpisode: openEpisode(on: .downloads)
-                    )
+                    DownloadsView(onOpenEpisode: openEpisode(on: .downloads))
                     .withOpenCastDestinations(
                         onOpenEpisode: openEpisode(on: .downloads)
                     )
@@ -74,6 +72,7 @@ struct OpenCastTabRootView: View {
                 }
             }
         }
+        .environment(\.openDownloadSettings, OpenDownloadSettingsAction(perform: openDownloadSettings))
         .tabViewStyle(.sidebarAdaptable)
         .tabBarMinimizeBehavior(tabBarMinimizeBehavior)
         .tabViewBottomAccessory(isEnabled: showsTabAccessory) {
@@ -87,6 +86,11 @@ struct OpenCastTabRootView: View {
             isSearchPresented = selectedTab == .search
         }
         .focusedSceneValue(\.openCastCommandActions, commandActions)
+    }
+
+    private func openDownloadSettings() {
+        selectedTab = .downloads
+        navigationPaths[.downloads] = [.downloadSettings]
     }
 
     private func openEpisode(on section: AppSection) -> (String) -> Void {
@@ -121,7 +125,11 @@ struct OpenCastTabRootView: View {
         )
     }
 
+    /// Off unless chosen in Look & Feel: minimizing moves the bottom accessory
+    /// inline, and every minimize or expand re-lays out the navigation stack
+    /// inside the scroll callback, 40–55 ms main-thread stalls on an iPhone
+    /// SE, felt as a stutter when a scroll starts or reaches the top.
     private var tabBarMinimizeBehavior: TabBarMinimizeBehavior {
-        selectedTab == .settings ? .never : .onScrollDown
+        appModel.appearanceSettings.minimizesTabBarOnScroll && selectedTab != .settings ? .onScrollDown : .never
     }
 }

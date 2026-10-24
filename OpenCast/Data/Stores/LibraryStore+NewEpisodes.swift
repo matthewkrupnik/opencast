@@ -54,19 +54,36 @@ extension LibraryStore {
             .first { $0 <= asOf }
     }
 
-    /// The episode `latestReleasedEpisodeDate` dates; Auto-Download's
-    /// one candidate per show.
-    func latestReleasedEpisode(forPodcastID podcastID: String) -> EpisodeListItemSnapshot? {
+    /// The show's newest cached episode released by `asOf`; nil when it has
+    /// no dated, released episode.
+    func newestReleasedEpisode(forPodcastID podcastID: String, asOf: Date) -> EpisodeListItemSnapshot? {
         let episodes = episodes
-        let asOf = newEpisodeReferenceDate
         return episodeReleaseOrderByPodcastID[podcastID]?
             .lazy
             .map { episodes[$0] }
-            .first { episode in
-                guard let publishedAt = episode.publishedAt else {
-                    return false
-                }
-                return publishedAt <= asOf
+            .first { ($0.publishedAt ?? .distantFuture) <= asOf }
+    }
+
+    /// The show's cached episodes released after `publishedAfter` and by
+    /// `asOf`, newest first. Episodes dated later than `asOf` are skipped,
+    /// so a future-dated item never counts as released.
+    func releasedEpisodes(
+        forPodcastID podcastID: String,
+        publishedAfter: Date,
+        asOf: Date
+    ) -> [EpisodeListItemSnapshot] {
+        let episodes = episodes
+        var released: [EpisodeListItemSnapshot] = []
+        for index in episodeReleaseOrderByPodcastID[podcastID] ?? [] {
+            let episode = episodes[index]
+            guard let publishedAt = episode.publishedAt, publishedAt <= asOf else {
+                continue
             }
+            guard publishedAt > publishedAfter else {
+                break
+            }
+            released.append(episode)
+        }
+        return released
     }
 }

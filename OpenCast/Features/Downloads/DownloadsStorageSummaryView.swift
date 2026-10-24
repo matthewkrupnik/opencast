@@ -1,82 +1,35 @@
-import SwiftData
 import SwiftUI
 
+/// The Storage screen's summary row: the bar, the downloads' total and the
+/// device's free space.
 struct DownloadsStorageSummaryView: View {
-    @Environment(OpenCastAppModel.self) private var appModel
-    @Environment(\.modelContext) private var modelContext
-    @State private var isConfirmingDeleteAll = false
-    @State private var isShowingDeleteError = false
-    @State private var deleteErrorMessage = ""
+    @State private var availableByteCount: Int64?
 
-    let breakdowns: [DownloadsPodcastBreakdown]
+    let model: DownloadsStorageGraphModel
 
     var body: some View {
-        Group {
-            LabeledContent {
-                Text(storageDescription)
-            } label: {
-                Label("Downloaded Episodes", systemImage: "arrow.down.circle")
+        VStack(alignment: .leading, spacing: 10) {
+            if !model.segments.isEmpty {
+                DownloadsStorageBarView(model: model)
             }
 
-            if !breakdowns.isEmpty {
-                DisclosureGroup("By Podcast") {
-                    ForEach(breakdowns) { breakdown in
-                        DownloadsPodcastBreakdownRow(
-                            breakdown: breakdown,
-                            onDelete: { deleteDownloads(for: breakdown) }
-                        )
-                    }
-                }
-            }
-
-            if appModel.downloads.completedDownloadCount > 0 {
-                Button(
-                    "Delete All Downloads",
-                    systemImage: "trash",
-                    role: .destructive,
-                    action: confirmDeleteAll
+            VStack(alignment: .leading, spacing: 2) {
+                Text(
+                    DownloadsStorageText.summary(
+                        episodeCount: model.totalEpisodeCount,
+                        byteCount: model.totalByteCount
+                    )
                 )
-                .confirmationDialog(
-                    "Delete all downloaded episodes?",
-                    isPresented: $isConfirmingDeleteAll,
-                    titleVisibility: .visible
-                ) {
-                    Button("Delete Downloads", role: .destructive, action: deleteAllDownloads)
-                    Button("Cancel", role: .cancel) {}
-                } message: {
-                    Text("Downloaded files will be removed from this device. Subscriptions and listening progress are unchanged.")
+                if let availableByteCount {
+                    Text("\(DownloadsStorageText.size(availableByteCount)) available on this device")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
                 }
             }
         }
-        .alert("Couldn’t Delete Downloads", isPresented: $isShowingDeleteError) {
-        } message: {
-            Text(deleteErrorMessage)
-        }
-    }
-
-    private var storageDescription: String {
-        let count = appModel.downloads.completedDownloadCount
-        let episodeLabel = count == 1 ? "episode" : "episodes"
-        return "\(count) \(episodeLabel), \(appModel.downloads.completedDownloadByteCount.formatted(.byteCount(style: .file)))"
-    }
-
-    private func confirmDeleteAll() {
-        isConfirmingDeleteAll = true
-    }
-
-    private func deleteAllDownloads() {
-        appModel.deleteAllDownloads(modelContext: modelContext)
-    }
-
-    private func deleteDownloads(for breakdown: DownloadsPodcastBreakdown) {
-        do {
-            try appModel.deleteCompletedDownloads(
-                forPodcastID: breakdown.podcastID,
-                modelContext: modelContext
-            )
-        } catch {
-            deleteErrorMessage = error.localizedDescription
-            isShowingDeleteError = true
+        .padding(.vertical, 4)
+        .task(id: model.totalByteCount) {
+            availableByteCount = await DownloadsDeviceCapacity.availableForImportantUsage()
         }
     }
 }

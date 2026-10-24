@@ -13,6 +13,7 @@ struct PodcastActionsMenu: View {
     let downloadCount: Int
     let onSearch: () -> Void
     let onPlaybackSettings: () -> Void
+    let onDownloadSettings: () -> Void
     let adAutoDetectBinding: Binding<Bool>
     @Binding var isConfirmingAdAutoDetect: Bool
     @Binding var isConfirmingMarkAllPlayed: Bool
@@ -54,6 +55,8 @@ struct PodcastActionsMenu: View {
 
             Section {
                 Button("Skip Intro & Outro…", systemImage: "scissors", action: onPlaybackSettings)
+
+                Button("Download Settings…", systemImage: "arrow.down.circle", action: onDownloadSettings)
 
                 Toggle(
                     "Automatically Download",
@@ -157,9 +160,9 @@ struct PodcastActionsMenu: View {
 
     private var autoDownloadBinding: Binding<Bool> {
         Binding(
-            get: { appModel.autoDownloadSettings.isEnabled(forPodcastID: subscription.feedURL) },
+            get: { appModel.downloadSettings.autoDownloadsNewEpisodes(forPodcastID: subscription.feedURL) },
             set: { isEnabled in
-                appModel.setAutoDownloadEnabled(
+                appModel.setAutoDownloadsNewEpisodes(
                     isEnabled,
                     forPodcastID: subscription.feedURL,
                     modelContext: modelContext

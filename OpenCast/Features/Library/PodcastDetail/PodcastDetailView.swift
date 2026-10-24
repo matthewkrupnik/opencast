@@ -286,6 +286,7 @@ struct PodcastDetailView: View {
                         downloadCount: downloadCount,
                         onSearch: showSearch,
                         onPlaybackSettings: showPlaybackSettings,
+                        onDownloadSettings: showDownloadSettings,
                         adAutoDetectBinding: adAutoDetectBinding,
                         isConfirmingAdAutoDetect: $isConfirmingAdAutoDetect,
                         isConfirmingMarkAllPlayed: $isConfirmingMarkAllPlayed,
@@ -303,6 +304,10 @@ struct PodcastDetailView: View {
 
     private func showPlaybackSettings() {
         sheetDestination = .podcastPlaybackSettings(feedURL: feedURL)
+    }
+
+    private func showDownloadSettings() {
+        sheetDestination = .podcastDownloadSettings(feedURL: feedURL)
     }
 
     private func dismissSheet() {

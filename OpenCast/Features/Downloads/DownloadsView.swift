@@ -16,8 +16,9 @@ struct DownloadsView: View {
     @State private var editMode: EditMode = .inactive
     @State private var selectedEpisodeIDs: Set<String> = []
     @State private var isConfirmingDeleteSelected = false
-    @State private var isConfirmingMenuRemovePlayed = false
     @State private var isConfirmingEditRemovePlayed = false
+    /// Group by Show sections collapsed this session.
+    @State private var collapsedShowIDs: Set<String> = []
 
     let onOpenEpisode: (String) -> Void
 
@@ -42,19 +43,31 @@ struct DownloadsView: View {
             mode: searchMode
         )
         let searchResults = searchSession.displayedResults(for: searchTaskKey)
+        let library = appModel.library
+        let grouping = appModel.downloadSettings.listGrouping
+        // A search lists matches across shows, as the Inbox does.
+        let showGroups = grouping == .byShow && !hasSearchQuery
+            ? DownloadsShowGroup.make(
+                items: model.downloaded,
+                isSubscribed: { library.isActivelySubscribed(to: $0) }
+            )
+            : nil
 
         List(selection: $selectedEpisodeIDs) {
-            Section("Storage") {
-                DownloadsStorageSummaryView(
-                    breakdowns: DownloadsPodcastBreakdown.make(items: allDownloads.downloaded)
-                )
-                .disabled(editMode == .active)
-            }
-
-            if let downloadErrorMessage = appModel.downloads.lastErrorMessage {
+            // Download Options' Group by Show saves a setting; a failed save
+            // reports here beside, never instead of, a download error.
+            let downloadErrorMessage = appModel.downloads.lastErrorMessage
+            let settingsErrorMessage = appModel.downloadSettings.lastErrorMessage
+            if downloadErrorMessage != nil || settingsErrorMessage != nil {
                 Section {
-                    Label(downloadErrorMessage, systemImage: "exclamationmark.triangle.fill")
-                        .foregroundStyle(.orange)
+                    if let downloadErrorMessage {
+                        Label(downloadErrorMessage, systemImage: "exclamationmark.triangle.fill")
+                            .foregroundStyle(.orange)
+                    }
+                    if let settingsErrorMessage {
+                        Label(settingsErrorMessage, systemImage: "exclamationmark.triangle.fill")
+                            .foregroundStyle(.orange)
+                    }
                 }
             }
 
@@ -89,7 +102,21 @@ struct DownloadsView: View {
             DownloadsAdDetectionSection()
                 .disabled(editMode == .active)
 
-            if !model.downloaded.isEmpty || hasSearchQuery {
+            if let showGroups, !showGroups.isEmpty {
+                ForEach(showGroups) { group in
+                    Section(isExpanded: expansionBinding(for: group.id)) {
+                        ForEach(group.items) { item in
+                            downloadedRow(item: item)
+                        }
+                    } header: {
+                        DownloadsShowSectionHeader(
+                            group: group,
+                            isExpanded: !collapsedShowIDs.contains(group.id),
+                            onToggleExpansion: { toggleExpansion(of: group.id) }
+                        )
+                    }
+                }
+            } else if !model.downloaded.isEmpty || hasSearchQuery {
                 Section("Downloaded") {
                     if hasSearchQuery {
                         if searchSession.isIndexedSearchUnavailable {
@@ -143,32 +170,28 @@ struct DownloadsView: View {
             }
 
             ToolbarItem(placement: .topBarTrailing) {
-                Menu {
-                    Toggle(isOn: $showsUnplayedOnly) {
-                        Label("Unplayed Only", systemImage: "circle")
-                    }
+                DownloadsOptionsMenu(
+                    showsUnplayedOnly: $showsUnplayedOnly,
+                    playedDownloadCount: playedDownloadCount,
+                    onRemovePlayed: removePlayedDownloads
+                )
+                .disabled(editMode == .active)
+            }
+            .visibilityPriority(.low)
 
-                    Button(
-                        "Remove Played",
-                        systemImage: "checkmark.circle",
-                        role: .destructive,
-                        action: confirmMenuRemovePlayed
-                    )
-                    .disabled(playedDownloadCount == 0)
-                } label: {
-                    Label("Download Options", systemImage: "ellipsis.circle")
+            ToolbarItem(placement: .topBarTrailing) {
+                NavigationLink(value: AppRoute.downloadStorage) {
+                    Label("Storage", systemImage: "internaldrive")
+                }
+                .disabled(editMode == .active || allDownloads.downloaded.isEmpty)
+            }
+            .visibilityPriority(.low)
+
+            ToolbarItem(placement: .topBarTrailing) {
+                NavigationLink(value: AppRoute.downloadSettings) {
+                    Label("Download Settings", systemImage: "gear")
                 }
                 .disabled(editMode == .active)
-                .confirmationDialog(
-                    "Remove played downloads?",
-                    isPresented: $isConfirmingMenuRemovePlayed,
-                    titleVisibility: .visible
-                ) {
-                    Button("Remove Played", role: .destructive, action: removePlayedDownloads)
-                    Button("Cancel", role: .cancel) {}
-                } message: {
-                    Text("Played downloads that aren’t currently in use will be removed from this device.")
-                }
             }
             .visibilityPriority(.low)
         }
@@ -242,6 +265,7 @@ struct DownloadsView: View {
             )
         }
         .animation(reduceMotion ? nil : .default, value: model.animationKey)
+        .animation(reduceMotion ? nil : .default, value: grouping)
         .sensoryFeedback(.success, trigger: allDownloads.downloaded.count) { oldCount, newCount in
             newCount > oldCount
         }
@@ -275,6 +299,26 @@ struct DownloadsView: View {
         }
     }
 
+    /// A thin adapter: `Section(isExpanded:)` takes a binding, and the
+    /// session's collapsed set is the one source of truth.
+    private func expansionBinding(for podcastID: String) -> Binding<Bool> {
+        Binding {
+            !collapsedShowIDs.contains(podcastID)
+        } set: { isExpanded in
+            if isExpanded {
+                collapsedShowIDs.remove(podcastID)
+            } else {
+                collapsedShowIDs.insert(podcastID)
+            }
+        }
+    }
+
+    private func toggleExpansion(of podcastID: String) {
+        withAnimation(reduceMotion ? nil : .default) {
+            expansionBinding(for: podcastID).wrappedValue.toggle()
+        }
+    }
+
     private func retryAllFailedDownloads() {
         appModel.downloads.retryAllFailedDownloads(modelContext: modelContext)
     }
@@ -303,10 +347,6 @@ struct DownloadsView: View {
         appModel.deleteDownloads(selectedRecords, modelContext: modelContext)
         selectedEpisodeIDs.removeAll()
         editMode = .inactive
-    }
-
-    private func confirmMenuRemovePlayed() {
-        isConfirmingMenuRemovePlayed = true
     }
 
     private func removePlayedDownloads() {

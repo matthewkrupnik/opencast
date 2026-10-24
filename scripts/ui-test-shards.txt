@@ -9,7 +9,7 @@
 # Balanced by measured per-test wall-clock (log 'passed (N seconds)' lines), NOT the
 # .xcresult duration field — that reports 0.0s for screenshot-matrix tests. Regenerate
 # with scripts/gen-ui-test-shards.py <run-dir> after a fresh run.
-# Current assignments: shard1 74 tests | shard2 64 tests | serial 6 tests | exclude 18 tests
+# Current assignments: shard1 74 tests | shard2 70 tests | serial 6 tests | exclude 18 tests
 # Timing estimates are omitted until these scenarios are remeasured.
 
 # --- shard1 ---
@@ -97,6 +97,9 @@ shard2 OpenCastUITests/OpenCastUITests/testSeededLibraryPodcastCanSwipeRemove
 shard2 OpenCastUITests/OpenCastUITests/testSeededLightNowPlayingScreenshot
 shard2 OpenCastUITests/OpenCastUITests/testSeededLowConfidenceAnalysisRendersDimmedZoneWithoutAutoSkip
 shard2 OpenCastUITests/OpenCastUITests/testSeededMiniPlayerTabAccessorySurvivesInboxScrollAndExpands
+shard2 OpenCastUITests/OpenCastUITests/testSeededChapterBarIsHiddenWithoutChapters
+shard2 OpenCastUITests/OpenCastUITests/testSeededChapterBarSkipsBetweenChapters
+shard2 OpenCastUITests/OpenCastUITests/testSeededChaptersSheetListsAndSeeksChapters
 shard2 OpenCastUITests/OpenCastUITests/testSeededNowPlayingArtworkSlideClosesSoundLabPanel
 shard2 OpenCastUITests/OpenCastUITests/testSeededNowPlayingArtworkSlideOpensSoundLabPanel
 shard2 OpenCastUITests/OpenCastUITests/testSeededNowPlayingMoreMenuOpensTranscriptSheet
@@ -118,11 +121,14 @@ shard2 OpenCastUITests/OpenCastUITests/testSeededTranscriptAskDisclosureThenAnsw
 shard2 OpenCastUITests/OpenCastUITests/testSeededTranscriptAskRendersUnverifiedAndUnanswerableAnswers
 shard2 OpenCastUITests/OpenCastUITests/testSeededCompactLibraryLoadsStoredGridAtLargestText
 shard2 OpenCastUITests/OpenCastUITests/testSeededSleepTimerSheetMarksActiveChoiceAndExtends
+shard2 OpenCastUITests/OpenCastUITests/testSeededSleepTimerPresetsEditInSettingsAndSheet
 shard2 OpenCastUITests/OpenCastUITests/testSeededPlaylistsLightModeScreenshots
 shard2 OpenCastUITests/OpenCastUITests/testSeededPlaylistSourcePillStepsAsideAtAccessibilityXXXL
 shard2 OpenCastUITests/OpenCastUITests/testSeededPlaylistDownloadAllStartsForegroundDownloads
 shard2 OpenCastUITests/OpenCastUITests/testSeededNewPlaylistOpensDetailWithDefaultRules
 shard2 OpenCastUITests/OpenCastUITests/testSeededSmartPlaylistShowsPickerKeepsItsPlaceAcrossPicks
+shard2 OpenCastUITests/OpenCastUITests/testSeededDownloadSettingsScreensAndPodcastMenuEntry
+shard2 OpenCastUITests/OpenCastUITests/testSeededDownloadsGroupByShowSectionShowsCountSizeAndLimitChip
 
 # --- serial tail (timing-sensitive; runs alone) ---
 serial OpenCastUITests/OpenCastUITests/testNowPlayingFramePacing

@@ -7,6 +7,10 @@ struct SettingsRouteDestinationView: View {
         switch route {
         case .playback:
             SettingsPlaybackView()
+        case .sleepTimer:
+            SettingsSleepTimerView()
+        case .lookAndFeel:
+            SettingsLookAndFeelView()
         case .appIcon:
             SettingsAppIconView()
         case .notifications:

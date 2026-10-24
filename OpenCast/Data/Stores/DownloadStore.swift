@@ -50,11 +50,18 @@ final class DownloadStore {
     @ObservationIgnored private var downloadTaskTokens: [String: String] = [:]
     @ObservationIgnored private var progressCheckpoints: [String: DownloadProgressCheckpoint] = [:]
     @ObservationIgnored private var pauseRequestedEpisodeIDs: Set<String> = []
+    // The live response's filename and type, kept per download token until
+    // its task ends, for naming a completed file whose URL has no extension.
+    @ObservationIgnored private var responseMetadataByToken: [String: EpisodeDownloadResponseMetadata] = [:]
     @ObservationIgnored private let stateChanges = StoreChangeNotifier()
     @ObservationIgnored var onEpisodeStateChanged: (@MainActor (String) -> Void)?
-    /// A download that just finished; the app model queues automatic ad
-    /// detection from it.
-    @ObservationIgnored var onDownloadCompleted: (@MainActor (EpisodeDownloadRecord) -> Void)?
+    // Once per finished download, after its completed state is saved.
+    // `onEpisodeStateChanged` is no substitute: it fires on every state
+    // change and for every record a reload touches.
+    @ObservationIgnored var onDownloadCompleted: (@MainActor (EpisodeDownloadRecord, ModelContext) -> Void)?
+    // Runs between launch reconciliation's file probes and their verdicts,
+    // the window in which a fresh download can replace a probed record.
+    @ObservationIgnored var afterReconcileProbesForTesting: (@MainActor () async -> Void)?
 
     private static let minimumProgressPublicationInterval: TimeInterval = 0.25
 
@@ -869,6 +876,7 @@ final class DownloadStore {
         modelContext: ModelContext
     ) async {
         defer {
+            responseMetadataByToken[token] = nil
             withCurrentToken(episodeID, token) {
                 downloadTasks[episodeID] = nil
                 downloadTaskTokens[episodeID] = nil
@@ -905,18 +913,26 @@ final class DownloadStore {
                 return
             }
 
-            try fileStore.moveCompletedDownload(from: temporaryURL, relativePath: relativePath)
-            let fileSize = try fileStore.fileSize(relativePath: relativePath)
+            let completedRelativePath = try settleCompletedRelativePath(
+                episodeID: episodeID,
+                token: token,
+                sourceURL: sourceURL,
+                temporaryURL: temporaryURL,
+                relativePath: relativePath,
+                modelContext: modelContext
+            )
+            try fileStore.moveCompletedDownload(from: temporaryURL, relativePath: completedRelativePath)
+            let fileSize = try fileStore.fileSize(relativePath: completedRelativePath)
             // Definitive identity is always the completed assembled file, so
             // pause/resume and appended partials cannot skew the hash.
             let sourceFileSHA256 = try await OpenCastSHA256.hashFileOffCaller(
-                at: fileStore.fileURL(relativePath: relativePath)
+                at: fileStore.fileURL(relativePath: completedRelativePath)
             )
             try Task.checkCancellation()
             try completeDownload(
                 episodeID: episodeID,
                 token: token,
-                relativePath: relativePath,
+                relativePath: completedRelativePath,
                 bytesReceived: fileSize,
                 sourceFileSHA256: sourceFileSHA256,
                 modelContext: modelContext
@@ -925,6 +941,7 @@ final class DownloadStore {
             handleDownloadCancellation(
                 episodeID: episodeID,
                 token: token,
+                sourceURL: sourceURL,
                 temporaryURL: temporaryURL,
                 modelContext: modelContext
             )
@@ -933,6 +950,7 @@ final class DownloadStore {
                 handleDownloadCancellation(
                     episodeID: episodeID,
                     token: token,
+                    sourceURL: sourceURL,
                     temporaryURL: temporaryURL,
                     modelContext: modelContext
                 )
@@ -1017,6 +1035,7 @@ final class DownloadStore {
     private func handleDownloadCancellation(
         episodeID: String,
         token: String,
+        sourceURL: URL,
         temporaryURL: URL,
         modelContext: ModelContext
     ) {
@@ -1048,11 +1067,19 @@ final class DownloadStore {
                 let temporaryFileSize = try fileStore.fileSize(at: temporaryURL)
                 if temporaryFileSize == bytesExpected,
                    let relativePath = record.localRelativePath {
-                    try fileStore.moveCompletedDownload(from: temporaryURL, relativePath: relativePath)
+                    let completedRelativePath = try settleCompletedRelativePath(
+                        episodeID: episodeID,
+                        token: token,
+                        sourceURL: sourceURL,
+                        temporaryURL: temporaryURL,
+                        relativePath: relativePath,
+                        modelContext: modelContext
+                    )
+                    try fileStore.moveCompletedDownload(from: temporaryURL, relativePath: completedRelativePath)
                     try completeDownload(
                         episodeID: episodeID,
                         token: token,
-                        relativePath: relativePath,
+                        relativePath: completedRelativePath,
                         bytesReceived: temporaryFileSize,
                         modelContext: modelContext
                     )
@@ -1100,12 +1127,52 @@ final class DownloadStore {
         }
     }
 
+    /// Names the completed file after the format its bytes or response prove
+    /// when the enclosure URL carries no audio extension. A changed name is
+    /// saved while the record is still downloading, before the move, so the
+    /// record never names a file that will not exist: a process death after
+    /// the move finalizes through launch reconciliation's downloading branch.
+    private func settleCompletedRelativePath(
+        episodeID: String,
+        token: String,
+        sourceURL: URL,
+        temporaryURL: URL,
+        relativePath: String,
+        modelContext: ModelContext
+    ) throws -> String {
+        let settledRelativePath = fileStore.settledRelativePath(
+            episodeID: episodeID,
+            sourceAudioURL: sourceURL,
+            responseMetadata: responseMetadataByToken[token],
+            fileURL: temporaryURL
+        )
+        guard settledRelativePath != relativePath else {
+            return relativePath
+        }
+
+        try withCurrentToken(episodeID, token) {
+            guard let record = try fetchRecord(episodeID: episodeID, modelContext: modelContext),
+                  record.state == .downloading
+            else {
+                return
+            }
+
+            record.localRelativePath = settledRelativePath
+            record.updatedAt = .now
+            try commit(episodeID: episodeID, modelContext: modelContext)
+        }
+        return settledRelativePath
+    }
+
     private func updateResponseMetadata(
         episodeID: String,
         token: String,
         metadata: EpisodeDownloadResponseMetadata,
         modelContext: ModelContext
     ) {
+        withCurrentToken(episodeID, token) {
+            responseMetadataByToken[token] = metadata
+        }
         do {
             try withCurrentToken(episodeID, token) {
                 guard let record = try fetchRecord(episodeID: episodeID, modelContext: modelContext),
@@ -1186,12 +1253,13 @@ final class DownloadStore {
             record.bytesReceived = max(0, bytesReceived)
             record.bytesExpected = record.bytesExpected ?? record.bytesReceived
             record.errorMessage = nil
+            record.completedAt = .now
             record.updatedAt = .now
             clearTransientProgress(episodeID: episodeID)
             try commit(episodeID: episodeID, modelContext: modelContext, resort: true)
             lastErrorMessage = nil
             lastErrorEpisodeID = nil
-            onDownloadCompleted?(record)
+            onDownloadCompleted?(record, modelContext)
         }
     }
 
@@ -1357,17 +1425,34 @@ final class DownloadStore {
                 episodeID: record.episodeID,
                 state: record.state,
                 localRelativePath: record.localRelativePath,
-                bytesReceived: record.bytesReceived
+                bytesReceived: record.bytesReceived,
+                sourceFileSHA256: record.sourceFileSHA256
             )
         }
-        let claimedRelativePaths = fetchedRecords.compactMap(\.localRelativePath)
+        // A completed record can be replaced by a fresh download while the
+        // probes run; its verdicts apply only if it is still the record that
+        // was probed.
+        let completedSnapshots = Dictionary(
+            fetchedRecords.filter { $0.state == .completed }.map {
+                (ObjectIdentifier($0), DownloadRepairRecordSnapshot($0))
+            },
+            uniquingKeysWith: { first, _ in first }
+        )
+        var claimedRelativePaths = fetchedRecords.compactMap(\.localRelativePath)
         let claimedEpisodeIDs = fetchedRecords.map(\.episodeID)
-        let outcomes = try await Self.reconcileFileOutcomes(inputs: inputs, fileStore: fileStore)
+        let outcomes = try await Self.reconcileFileOutcomes(
+            inputs: inputs,
+            claimedRelativePaths: Set(claimedRelativePaths),
+            fileStore: fileStore
+        )
+        await afterReconcileProbesForTesting?()
 
+        var relocationError: (any Error)?
         for record in fetchedRecords {
             guard let outcome = outcomes[record.episodeID] else {
                 continue
             }
+            let isProbedCompletedRecord = completedSnapshots[ObjectIdentifier(record)]?.matches(record) == true
             switch outcome {
             case .finalizeCompleted(let size):
                 guard record.state == .downloading else { continue }
@@ -1377,6 +1462,7 @@ final class DownloadStore {
                 record.bytesReceived = size
                 record.bytesExpected = size
                 record.errorMessage = nil
+                record.completedAt = .now
                 record.updatedAt = .now
                 changed = true
             case .pauseWithBytes(let resumableByteCount):
@@ -1422,18 +1508,40 @@ final class DownloadStore {
                 record.updatedAt = .now
                 changed = true
             case .markMissing:
-                guard record.state == .completed else { continue }
+                guard isProbedCompletedRecord else { continue }
                 record.state = .missing
                 record.errorMessage = EpisodeDownloadError.missingDownloadedFile.localizedDescription
                 record.updatedAt = .now
                 changed = true
             case .refreshCompletedSize(let fileSize):
-                guard record.state == .completed else { continue }
+                guard isProbedCompletedRecord else { continue }
                 if record.bytesReceived != fileSize {
                     record.bytesReceived = fileSize
                     record.updatedAt = .now
                     changed = true
                 }
+            case .relocateCompleted(let fromPath, let relativePath, let size):
+                guard isProbedCompletedRecord else { continue }
+                // The rename sits beside the record update; a death before
+                // the save leaves the record on a vanished path, which the
+                // next launch's sibling probe re-points. The SHA-256 covers
+                // content only, so it stays valid.
+                if fileStore.fileExists(relativePath: fromPath) {
+                    do {
+                        try fileStore.moveCompletedDownload(
+                            from: fileStore.fileURL(relativePath: fromPath),
+                            relativePath: relativePath
+                        )
+                    } catch {
+                        relocationError = relocationError ?? error
+                        continue
+                    }
+                }
+                record.localRelativePath = relativePath
+                record.bytesReceived = size
+                record.updatedAt = .now
+                claimedRelativePaths.append(relativePath)
+                changed = true
             }
         }
 
@@ -1446,6 +1554,9 @@ final class DownloadStore {
             claimedEpisodeIDs: claimedEpisodeIDs,
             fileStore: fileStore
         )
+        if let relocationError {
+            throw relocationError
+        }
     }
 
     private struct ReconcileFileInput: Sendable {
@@ -1453,6 +1564,7 @@ final class DownloadStore {
         let state: EpisodeDownloadState
         let localRelativePath: String?
         let bytesReceived: Int64
+        let sourceFileSHA256: String
     }
 
     private enum ReconcileFileOutcome: Sendable {
@@ -1463,14 +1575,21 @@ final class DownloadStore {
         case failPausedInterrupted
         case markMissing
         case refreshCompletedSize(Int64)
+        /// Re-points a completed record from `fromPath` to `relativePath`,
+        /// moving the file first when it is still at `fromPath`.
+        case relocateCompleted(fromPath: String, relativePath: String, size: Int64)
     }
 
     @concurrent
     private static func reconcileFileOutcomes(
         inputs: [ReconcileFileInput],
+        claimedRelativePaths: Set<String>,
         fileStore: EpisodeDownloadFileStore
     ) async throws -> [String: ReconcileFileOutcome] {
         var outcomes: [String: ReconcileFileOutcome] = [:]
+        // Relocation targets join the claims as they are chosen, so two
+        // records whose lossy stems collide can never pick the same file.
+        var reservedRelativePaths = claimedRelativePaths
         for input in inputs {
             switch input.state {
             case .downloading:
@@ -1518,15 +1637,51 @@ final class DownloadStore {
                     }
                 }
             case .completed:
-                guard let relativePath = input.localRelativePath,
-                      fileStore.fileExists(relativePath: relativePath)
-                else {
+                guard let relativePath = input.localRelativePath else {
                     outcomes[input.episodeID] = .markMissing
                     continue
                 }
-                outcomes[input.episodeID] = .refreshCompletedSize(
-                    try fileStore.fileSize(relativePath: relativePath)
-                )
+                guard fileStore.fileExists(relativePath: relativePath) else {
+                    if let siblingRelativePath = fileStore.completedSiblingRelativePath(
+                        episodeID: input.episodeID,
+                        expectedSize: input.bytesReceived,
+                        expectedSHA256: input.sourceFileSHA256,
+                        excluding: reservedRelativePaths
+                    ) {
+                        reservedRelativePaths.insert(siblingRelativePath)
+                        outcomes[input.episodeID] = .relocateCompleted(
+                            fromPath: relativePath,
+                            relativePath: siblingRelativePath,
+                            size: input.bytesReceived
+                        )
+                    } else {
+                        outcomes[input.episodeID] = .markMissing
+                    }
+                    continue
+                }
+                let fileSize = try fileStore.fileSize(relativePath: relativePath)
+                // Downloads named before their bytes were sniffed (`.audio`,
+                // `.php`) cannot open in AVFoundation; rename once the bytes
+                // classify, unless another record holds the name.
+                if fileStore.needsExtensionRepair(relativePath: relativePath),
+                   let format = EpisodeDownloadAudioFormat.sniff(
+                       fileAt: fileStore.fileURL(relativePath: relativePath)
+                   ) {
+                    let repairedRelativePath = fileStore.relativePath(
+                        episodeID: input.episodeID,
+                        extension: format.fileExtension
+                    )
+                    if !reservedRelativePaths.contains(repairedRelativePath) {
+                        reservedRelativePaths.insert(repairedRelativePath)
+                        outcomes[input.episodeID] = .relocateCompleted(
+                            fromPath: relativePath,
+                            relativePath: repairedRelativePath,
+                            size: fileSize
+                        )
+                        continue
+                    }
+                }
+                outcomes[input.episodeID] = .refreshCompletedSize(fileSize)
             case .failed, .missing:
                 break
             }

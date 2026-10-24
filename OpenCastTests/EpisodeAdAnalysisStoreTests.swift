@@ -831,6 +831,10 @@ struct EpisodeAdAnalysisStoreTests {
         await startAndWait(store: store, transcript: transcript, modelContext: context)
         let relativePath = try #require(store.record(for: transcript.episodeID)?.analysisRelativePath)
         try fileStore.delete(relativePath: relativePath)
+        guard case .completed(_, isStale: true) = store.jobState(for: transcript) else {
+            Issue.record("A completed analysis still requires its output document.")
+            return
+        }
 
         let reloadedStore = EpisodeAdAnalysisStore(
             client: FakeEpisodeAdAnalysisClient(),
@@ -930,19 +934,22 @@ struct EpisodeAdAnalysisStoreTests {
         #expect(failedRecord.failureKind == .capExceeded)
     }
 
-    @Test("Non-cap failures thread the generic failure kind")
-    func nonCapFailuresThreadGenericFailureKind() async throws {
-        let errors: [Error] = [
-            EpisodeAdAnalysisHTTPError(statusCode: 500, code: "internal", detail: nil),
-            EpisodeAdAnalysisHTTPError(statusCode: 429, code: "rate_limited_other", detail: nil)
+    @Test("Non-cap failures thread their failure kind")
+    func nonCapFailuresThreadTheirFailureKind() async throws {
+        // A 5xx submit can follow a started run, so it is not repeated.
+        let cases: [(error: Error, kind: EpisodeAnalysisFailureKind, submits: Int)] = [
+            (EpisodeAdAnalysisHTTPError(statusCode: 500, code: "internal", detail: nil), .serviceUnavailable, 1),
+            (EpisodeAdAnalysisHTTPError(statusCode: 429, code: "rate_limited_other", detail: nil), .generic, 1)
         ]
-        for (index, error) in errors.enumerated() {
+        for (index, testCase) in cases.enumerated() {
             let container = try OpenCastModelContainerFactory.make(inMemory: true)
             let context = ModelContext(container)
             let temporaryDirectory = try makeTemporaryDirectory()
+            let client = ThrowingEpisodeAdAnalysisClient(error: testCase.error)
             let store = EpisodeAdAnalysisStore(
-                client: ThrowingEpisodeAdAnalysisClient(error: error),
-                fileStore: EpisodeAdAnalysisFileStore(baseDirectory: temporaryDirectory)
+                client: client,
+                fileStore: EpisodeAdAnalysisFileStore(baseDirectory: temporaryDirectory),
+                pollingSleep: { _ in }
             )
             let transcript = makeTranscriptDocument(episodeID: "ad-generic-kind-\(index)")
 
@@ -952,7 +959,8 @@ struct EpisodeAdAnalysisStoreTests {
                 store.record(for: transcript.episodeID)?.state == .failed
             })
             let record = try #require(store.record(for: transcript.episodeID))
-            #expect(record.failureKind == .generic)
+            #expect(record.failureKind == testCase.kind)
+            #expect(client.calls == testCase.submits)
         }
     }
 

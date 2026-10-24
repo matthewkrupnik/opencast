@@ -78,6 +78,9 @@ final class LibraryStore {
     var refreshCompletedToken: Int {
         feedRefreshes.refreshCompletedToken
     }
+    var contentRefreshToken: Int {
+        feedRefreshes.contentRefreshToken
+    }
     /// Set when a refresh could not reach the network at all; cleared by any
     /// refresh that reached a feed host and by `recoverConnectivity`.
     var lastRefreshWasOffline: Bool {
@@ -144,9 +147,6 @@ final class LibraryStore {
     @ObservationIgnored private var episodeIndicesByPodcastID: [String: [Int]] = [:]
     /// Read by the new-episode lookups in `LibraryStore+NewEpisodes`.
     @ObservationIgnored private(set) var episodeReleaseOrderByPodcastID: [String: [Int]] = [:]
-    /// Runs after every full episode-list publication (refresh, subscribe,
-    /// sync import); the app model's Auto-Download check hangs off it.
-    @ObservationIgnored var onLibraryPublished: (() -> Void)?
     /// The instant new-episode badges and the Recent Episodes sort evaluate
     /// against. It moves with every library publication and on Library entry
     /// or scene activation — never on a timer — so time-based changes land
@@ -1342,7 +1342,6 @@ final class LibraryStore {
         unpublishedFeedChanges = []
         rebuildLatestRefreshLogByFeedURL()
         prepareEpisodeSearchIndexIfNeeded()
-        onLibraryPublished?()
     }
 
     /// Replaces `podcastIDs`' episodes in an already-ordered list with

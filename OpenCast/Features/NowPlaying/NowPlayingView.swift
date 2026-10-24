@@ -90,7 +90,7 @@ struct NowPlayingView: View {
                         }
                         .layoutPriority(0)
 
-                        NowPlayingProgressSection()
+                        NowPlayingProgressSection(onShowChapters: { utilitySheet = .chapters })
                             .padding(.top, 4)
                             .layoutPriority(2)
 
@@ -269,6 +269,12 @@ struct NowPlayingView: View {
                         .presentationDragIndicator(.visible)
                 case .sleep:
                     SleepTimerView()
+                        .environment(appModel)
+                        .modelContext(modelContext)
+                        .presentationDetents([.medium, .large])
+                        .presentationDragIndicator(.visible)
+                case .chapters:
+                    NowPlayingChaptersView()
                         .environment(appModel)
                         .modelContext(modelContext)
                         .presentationDetents([.medium, .large])

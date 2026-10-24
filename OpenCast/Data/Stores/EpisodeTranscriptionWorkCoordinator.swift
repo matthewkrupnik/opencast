@@ -23,6 +23,12 @@ final class EpisodeTranscriptionWorkCoordinator {
     private var localReservationEpisodeID: String?
     private var localReservationIDs: Set<UUID> = []
 
+    /// Whether a transcription request holds the episode, from its first
+    /// step (download, model or asset preparation) to its release.
+    func holdsReservation(forEpisodeID episodeID: String) -> Bool {
+        localReservationEpisodeID == episodeID
+    }
+
     func reserveLocal(episodeID: String) -> Result<LocalReservation, Conflict> {
         if localReservationEpisodeID != nil {
             return .failure(.anotherLocalTranscription)
