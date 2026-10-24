@@ -95,6 +95,9 @@ final class OpenCastUITests: XCTestCase {
             XCTAssertTrue(app.tabBars.buttons[tab].isSelected, "\(shortcut) shortcut selects the \(tab) tab")
         }
 
+        // The Search shortcut leaves the search field focused, and the
+        // keyboard covers the tab bar until the search is dismissed.
+        dismissActiveSearch(in: app)
         app.tabBars.buttons["Library"].tap()
         XCTAssertTrue(
             app.navigationBars.buttons["Shortcut Settings"].existsOrWait(timeout: 5),
@@ -129,9 +132,8 @@ final class OpenCastUITests: XCTestCase {
     }
 
     /// An open menu must not rebuild as the playhead ticks: that collapsed
-    /// the detail menu's Share submenu before an item could be tapped, and
-    /// made the Now Playing menu pulse once a second. While playing, the
-    /// entry is "Share from Current Time"; paused, it names the time.
+    /// the detail menu's Share entry before it could be tapped, and made the
+    /// Now Playing menu pulse once a second.
     @MainActor
     func testSeededShareMenusHoldStillAndShareWhilePlaying() throws {
         let app = makeSeededApp(seedsCompletedDownload: true)
@@ -144,67 +146,43 @@ final class OpenCastUITests: XCTestCase {
         waitForPlaybackElapsed(playbackProgress(in: app), atLeast: 2, timeout: 10)
 
         app.buttons["More Actions"].tap()
-        let shareFromNowPlaying = openShareSubmenuAndAssertItHoldsStill(in: app, named: "Now Playing")
-        XCTAssertEqual(shareFromNowPlaying.label, "Share from Current Time")
-        shareFromNowPlaying.tap()
-        assertEpisodeShareSheetThenDismiss(in: app, screenshotName: "now_playing_share_from_current_time_sheet")
+        assertShareEntryHoldsStill(in: app, named: "Now Playing").tap()
+        assertEpisodeShareSheetThenDismiss(in: app, screenshotName: "now_playing_share_while_playing_sheet")
 
         openCurrentEpisodeDetailFromNowPlaying(in: app)
-        let pauseEpisode = app.buttons["Pause Episode"]
-        assertExists(pauseEpisode, named: "episode still playing in detail")
+        assertExists(app.buttons["Pause Episode"], named: "episode still playing in detail")
         let actionsButton = app.buttons["Episode Actions"].firstMatch
         assertHittable(actionsButton, named: "Episode Actions menu")
         actionsButton.tap()
-        let shareFromDetail = openShareSubmenuAndAssertItHoldsStill(in: app, named: "episode detail")
-        XCTAssertEqual(shareFromDetail.label, "Share from Current Time")
-        let shareEpisode = app.buttons["Share Episode"].firstMatch
-        assertHittable(shareEpisode, named: "Share Episode after the playhead moved")
-        shareEpisode.tap()
+        assertShareEntryHoldsStill(in: app, named: "episode detail").tap()
         assertEpisodeShareSheetThenDismiss(in: app, screenshotName: "episode_detail_share_while_playing_sheet")
-
-        pauseEpisode.tap()
-        assertExists(app.buttons["Play Episode"], named: "episode paused in detail")
-        actionsButton.tap()
-        let share = app.buttons["Share"].firstMatch
-        assertHittable(share, named: "episode detail Share submenu while paused")
-        share.tap()
-        let pausedShareFrom = app.buttons.matching(NSPredicate(
-            format: "label MATCHES %@",
-            "Share from [0-9]+:[0-9]{2}"
-        )).firstMatch
-        assertExists(pausedShareFrom, named: "Share from the paused time")
     }
 
-    /// Expands the open menu's Share submenu, then fails if its "Share from"
-    /// entry disappears or relabels across several playhead ticks (a menu
-    /// rebuild).
+    /// Fails if the open menu's "Share Episode" entry disappears across
+    /// several playhead ticks (a menu rebuild), then returns it.
     @MainActor
-    private func openShareSubmenuAndAssertItHoldsStill(
+    private func assertShareEntryHoldsStill(
         in app: XCUIApplication,
         named name: String,
         file: StaticString = #filePath,
         line: UInt = #line
     ) -> XCUIElement {
-        let share = app.buttons["Share"].firstMatch
-        assertHittable(share, named: "\(name) Share submenu", file: file, line: line)
-        share.tap()
-        let shareFrom = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Share from ")).firstMatch
-        assertExists(shareFrom, named: "\(name) Share from entry", file: file, line: line)
-        let openedLabel = shareFrom.label
+        let shareEpisode = app.buttons["Share Episode"].firstMatch
+        assertExists(shareEpisode, named: "\(name) Share Episode entry", file: file, line: line)
 
-        let changed = expectation(
+        let vanished = expectation(
             for: NSPredicate { object, _ in
                 guard let element = object as? XCUIElement else {
                     return false
                 }
-                return !element.exists || element.label != openedLabel
+                return !element.exists
             },
-            evaluatedWith: shareFrom
+            evaluatedWith: shareEpisode
         )
-        changed.isInverted = true
-        wait(for: [changed], timeout: 3.5)
-        assertHittable(shareFrom, named: "\(name) Share from entry after the playhead moved", file: file, line: line)
-        return shareFrom
+        vanished.isInverted = true
+        wait(for: [vanished], timeout: 3.5)
+        assertHittable(shareEpisode, named: "\(name) Share Episode after the playhead moved", file: file, line: line)
+        return shareEpisode
     }
 
     /// Scopes to the remote share sheet: its Link Presentation caption
@@ -700,7 +678,7 @@ final class OpenCastUITests: XCTestCase {
                 guard let app = object as? XCUIApplication else {
                     return false
                 }
-                return app.buttons["Install Fast Model"].exists
+                return app.buttons["Install Model"].exists
                     || app.buttons["Check Model"].exists
             }
             let modelManagementExpectation = XCTNSPredicateExpectation(
@@ -712,8 +690,6 @@ final class OpenCastUITests: XCTestCase {
                 .completed,
                 "Expected the Transcription screen to expose Whisper model management."
             )
-            assertExists(app.buttons["Fast"], named: "Fast model picker")
-            assertExists(app.buttons["Accurate"], named: "Accurate model picker")
             scrollUntilExists(app.staticTexts["Apple Speech"], in: app)
             assertExists(app.staticTexts["Apple Speech"], named: "Apple speech section")
             let installedStatus = elementContaining(label: "Installed", in: app)
@@ -851,7 +827,7 @@ final class OpenCastUITests: XCTestCase {
         tapToggle(tapToPlayToggle, to: false)
         attachSmokeScreenshot(named: "settings_playback_tap_to_play_off")
 
-        openSection("Inbox", in: app)
+        openAllPlaylist(in: app)
         let inboxEpisode = seededEpisodeRow(in: app)
         assertHittable(inboxEpisode, named: "seeded inbox episode")
         attachSmokeScreenshot(named: "inbox_episode_row_tap_to_play_off")
@@ -2351,7 +2327,7 @@ final class OpenCastUITests: XCTestCase {
         XCTAssertFalse(nowPlayingSoundLabPanel(in: app).exists)
 
         app.tabBars.buttons["Settings"].tap()
-        app.tabBars.buttons["Inbox"].tap()
+        app.tabBars.buttons["Library"].tap()
         app.buttons["Open Now Playing"].tap()
         assertNowPlayingOverlay(in: app)
         XCTAssertFalse(nowPlayingSoundLabPanel(in: app).exists, "Sound Lab must reopen closed")

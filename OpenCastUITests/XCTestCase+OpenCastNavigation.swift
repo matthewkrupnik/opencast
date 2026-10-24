@@ -121,6 +121,32 @@ extension XCTestCase {
         ).firstMatch
     }
 
+    /// Ends a focused search so the tab bar is reachable again: the search
+    /// tab's keyboard covers it. An active search may instead collapse the
+    /// other tabs into one pill, which brings them back when tapped.
+    @MainActor
+    func dismissActiveSearch(in app: XCUIApplication) {
+        let collapsedTabs = app.tabBars.buttons.matching(
+            NSPredicate(format: "value == %@", "Collapsed")
+        ).firstMatch
+        if collapsedTabs.exists, collapsedTabs.isHittable {
+            collapsedTabs.tap()
+            return
+        }
+        for name in ["Close", "Cancel"] {
+            let button = app.buttons[name].firstMatch
+            if button.exists, button.isHittable {
+                button.tap()
+                _ = app.keyboards.firstMatch.absentOrWait(timeout: 3)
+                return
+            }
+        }
+        if app.keyboards.firstMatch.exists {
+            app.typeText("\n")
+            _ = app.keyboards.firstMatch.absentOrWait(timeout: 3)
+        }
+    }
+
     @MainActor
     func visibleTabButton(
         _ title: String,
