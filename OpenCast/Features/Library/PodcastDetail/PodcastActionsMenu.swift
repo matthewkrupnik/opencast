@@ -87,6 +87,10 @@ struct PodcastActionsMenu: View {
                     action: confirmUnsubscribe
                 )
             }
+
+            Section {
+                Text("Subscribed \(subscription.subscribedAt, format: .dateTime.month(.wide).year())")
+            }
         } label: {
             Label("Podcast Actions", systemImage: "ellipsis.circle")
         }

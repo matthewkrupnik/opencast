@@ -51,7 +51,6 @@ struct OpenCastRootView: View {
                 selectedTab: $selectedTab,
                 navigationPaths: $navigationPaths,
                 onAdd: presentAddPodcast,
-                onOpenUpNext: presentUpNextQueue,
                 onPresentNowPlaying: presentNowPlaying
             )
         }
@@ -172,10 +171,6 @@ struct OpenCastRootView: View {
         sheetDestination = .addPodcast
     }
 
-    private func presentUpNextQueue() {
-        sheetDestination = .upNext
-    }
-
     private func presentOnboardingIfNeeded() {
         guard appModel.onboardingState.shouldPresentOnboarding else {
             return
@@ -273,7 +268,7 @@ struct OpenCastRootView: View {
             openRouteInLibrary(route)
             return
         }
-        if navigationPaths[selectedTab].last?.opensSameScreen(as: route) != true {
+        if navigationPaths[selectedTab].last != route {
             navigationPaths[selectedTab].append(route)
         }
     }
@@ -767,7 +762,7 @@ struct OpenCastRootView: View {
 
     private func isRouteInvalid(_ route: AppRoute) -> Bool {
         switch route {
-        case .podcastDetail(let feedURL, _):
+        case .podcastDetail(let feedURL):
             !appModel.library.isActivelySubscribed(to: feedURL)
         case .episodeDetail(let id), .episodeTranscript(let id), .episodeArtwork(let id):
             appModel.library.episode(with: id) == nil && appModel.downloads.record(for: id) == nil

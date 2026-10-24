@@ -8,7 +8,6 @@ struct OpenCastTabRootView: View {
     @Binding var selectedTab: AppSection
     @Binding var navigationPaths: AppNavigationPaths
     let onAdd: () -> Void
-    let onOpenUpNext: () -> Void
     let onPresentNowPlaying: () -> Void
 
     var body: some View {
@@ -17,7 +16,6 @@ struct OpenCastTabRootView: View {
                 NavigationStack(path: $navigationPaths[.library]) {
                     LibraryView(
                         onAdd: onAdd,
-                        onOpenUpNext: onOpenUpNext,
                         onOpenPlaylist: openPlaylist(on: .library),
                         onOpenAdDetectionQueue: {
                             navigationPaths[.library].append(.adDetectionQueue)
@@ -104,22 +102,13 @@ struct OpenCastTabRootView: View {
     }
 
     private var showsTabAccessory: Bool {
-        appModel.playback.currentEpisode != nil || appModel.showsUpNextAccessory
+        appModel.playback.currentEpisode != nil
     }
 
-    /// One system accessory, two contents: the mini player while an episode
-    /// is loaded, otherwise the queue head with a play control.
-    @ViewBuilder
     private var tabAccessory: some View {
-        if appModel.playback.currentEpisode != nil {
-            MiniPlayerView(
-                onExpand: onPresentNowPlaying
-            )
-        } else {
-            UpNextAccessoryView(
-                onOpenQueue: onOpenUpNext
-            )
-        }
+        MiniPlayerView(
+            onExpand: onPresentNowPlaying
+        )
     }
 
     private var commandActions: OpenCastCommandActions {

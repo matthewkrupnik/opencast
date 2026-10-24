@@ -1,7 +1,6 @@
 import SwiftUI
 
 struct PodcastHeaderMetadataView: View {
-    let subscription: SubscriptionRecord
     let episodeCount: Int
     let unplayedCount: Int
     let lastRefreshedAt: Date?
@@ -12,12 +11,8 @@ struct PodcastHeaderMetadataView: View {
 
     var body: some View {
         VStack(spacing: 5) {
-            Text("\(episodeCount) episodes · \(unplayedCount) unplayed")
+            Text("^[\(episodeCount) episode](inflect: true) · \(unplayedCount) unplayed")
                 .font(.subheadline)
-
-            Text("Subscribed \(subscription.subscribedAt, format: .dateTime.month(.wide).year())")
-                .font(.caption)
-                .foregroundStyle(.secondary)
 
             if let checkedUpdatedLine = health?.checkedUpdatedLine {
                 HStack(spacing: 6) {

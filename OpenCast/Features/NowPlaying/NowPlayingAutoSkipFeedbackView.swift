@@ -4,7 +4,6 @@ import SwiftUI
 /// without replaying feedback when the prepared card becomes visible again.
 struct NowPlayingAutoSkipFeedbackView: View {
     @Environment(OpenCastAppModel.self) private var appModel
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.pinsAppStoreAutoSkipPill) private var pinsAutoSkipPill
     @State private var feedback = 0
     @State private var showsPill = false
@@ -14,7 +13,6 @@ struct NowPlayingAutoSkipFeedbackView: View {
             if showsPill || pinsAutoSkipPill {
                 NowPlayingAutoSkipPill(onUndo: undoLastAutoSkip)
                     .transition(.opacity)
-                    .offset(y: reduceMotion ? 0 : -28)
             }
         }
         .sensoryFeedback(.impact(flexibility: .soft), trigger: feedback)

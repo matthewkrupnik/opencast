@@ -6,9 +6,6 @@ final class OpenCastUITests: XCTestCase {
     private static let seededEpisodeRowIdentifier = "episode-row-ui-test-episode-1"
     private static let seededDownloadSelectionRowIdentifier = "download-selection-row-ui-test-episode-1"
     private static let seededCompletedEpisodeRowIdentifier = "episode-row-ui-test-episode-completed"
-    private static let seededQueuedEpisodeRowIdentifiers = (1...3).map {
-        "episode-row-ui-test-queued-episode-\($0)"
-    }
     private static let liveAdAnalysisEpisodeRowIdentifier = "episode-row-audio-illusion-that-proves-we-dont-experience-reality"
     private static let seededSubscriptionRowIdentifier = "subscription-row-https://example.com/ui-test-feed.xml"
     private static let aardvarkSubscriptionRowIdentifier = "subscription-row-https://example.com/ui-test-aardvark.xml"
@@ -1081,31 +1078,6 @@ final class OpenCastUITests: XCTestCase {
     }
 
     @MainActor
-    func testSeededMiniPlayerUsesConfiguredSkipInterval() throws {
-        let app = makeSeededApp(audioDurationSeconds: 600)
-        app.launch()
-        openSettings(in: app)
-        app.buttons["Playback"].tap()
-        let picker = app.buttons["playback-skip-forward-picker"]
-        assertHittable(picker, named: "Skip Forward picker")
-        picker.tap()
-        app.buttons["45s"].tap()
-        openAllPlaylist(in: app)
-        openSeededNowPlaying(in: app)
-        let overlay = nowPlayingOverlay(in: app)
-        assertHittable(overlay.buttons["Pause"], named: "Pause before testing skip")
-        overlay.buttons["Pause"].tap()
-        let before = try XCTUnwrap(playbackElapsedSeconds(from: playbackProgress(in: app).value as? String ?? ""))
-        dismissNowPlayingOverlay(in: app)
-        let skip = app.buttons["Skip Forward 45 Seconds"]
-        assertHittable(skip, named: "configured mini-player skip")
-        skip.tap()
-        app.buttons["Open Now Playing"].tap()
-        assertNowPlayingOverlay(in: app)
-        _ = waitForPlaybackElapsed(playbackProgress(in: app), in: (before + 44)..<(before + 47), timeout: 5)
-    }
-
-    @MainActor
     func testSeededCompletionRemovesCollapsedMiniPlayer() throws {
         let app = makeSeededApp(audioDurationSeconds: 15)
         app.launch()
@@ -1355,7 +1327,6 @@ final class OpenCastUITests: XCTestCase {
         XCTAssertTrue(miniPlayer.isHittable)
         let expanded = app.descendants(matching: .any)["mini-player-expanded"].firstMatch
         assertExists(expanded, named: "expanded player placement")
-        assertHittable(app.buttons["Skip Forward 15 Seconds"], named: "expanded player skip")
         attachSmokeScreenshot(named: "mini_player_tab_accessory_expanded")
 
         scrollUntilExists(seededExtraEpisodeRow(in: app, index: 8), in: app, maxSwipes: 4)
@@ -1365,15 +1336,9 @@ final class OpenCastUITests: XCTestCase {
         XCTAssertTrue(miniPlayer.isHittable)
         let inline = app.descendants(matching: .any)["mini-player-inline"].firstMatch
         assertExists(inline, named: "inline player placement after scrolling")
-        // The expanded control may still be animating out; let it settle.
-        let expandedSkip = app.buttons["Skip Forward 15 Seconds"]
-        if !expandedSkip.absentOrWait(timeout: 3) {
-            XCTAssertFalse(expandedSkip.isHittable)
-        }
         attachSmokeScreenshot(named: "mini_player_tab_accessory_inbox_scrolled")
 
         scrollBackUpUntilExists(expanded, in: app, named: "expanded player restored on upward scroll")
-        assertHittable(app.buttons["Skip Forward 15 Seconds"], named: "restored skip control")
 
         app.tabBars.buttons["Search"].tap()
         assertExists(app.searchFields.firstMatch, named: "Search tab search field")
@@ -2408,17 +2373,25 @@ final class OpenCastUITests: XCTestCase {
     }
 
     @MainActor
-    func testSeededSoundLabStaysOpenWhenQueueAdvances() throws {
+    func testSeededSoundLabStaysOpenWhenPlaylistAdvances() throws {
+        // The queue seed adds the Queued UI Episodes to the feed; only a
+        // start from a playlist plays on after the episode ends.
         let app = makeSeededApp(seedsUpNextQueue: true, audioDurationSeconds: 25)
         app.launch()
-        openSeededNowPlayingSoundLab(in: app)
+        openAllPlaylist(in: app)
+        let row = seededEpisodeRow(in: app)
+        assertExists(row, named: "seeded All Episodes row")
+        row.tap()
+        assertNowPlayingOverlay(in: app)
+        revealNowPlayingSoundLab(in: app)
+        assertExists(nowPlayingSoundLabPanel(in: app), named: "Now Playing Sound Lab panel")
 
         let title = app.buttons["Now Playing Episode Title"]
         let advanced = NSPredicate(format: "label == %@", "Queued UI Episode 1")
         XCTAssertEqual(
             XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: advanced, object: title)], timeout: 35),
             .completed,
-            "Natural completion should advance to the first queued episode"
+            "Natural completion should advance to the next episode in the playlist"
         )
         XCTAssertTrue(nowPlayingSoundLabPanel(in: app).exists, "Auto-advance must preserve the open Sound Lab")
         assertHittable(app.switches["Voice Boost"], named: "Voice Boost after auto-advance")
@@ -4163,164 +4136,6 @@ final class OpenCastUITests: XCTestCase {
     }
 
     @MainActor
-    func testSeededUpNextQueueSmoke() throws {
-        let app = makeSeededApp(seedsUpNextQueue: true)
-        app.launch()
-
-        openSeededNowPlaying(in: app)
-        let upNextButton = nowPlayingOverlay(in: app).buttons["Up Next"].firstMatch
-        assertNowPlayingControlIsReachable(upNextButton, named: "Up Next control", in: app)
-        upNextButton.tap()
-
-        assertExists(app.navigationBars["Up Next"], named: "Up Next sheet")
-        let rowQueries = Self.seededQueuedEpisodeRowIdentifiers.map {
-            app.buttons.matching(identifier: $0)
-        }
-        let rows = rowQueries.map { query in
-            query.allElementsBoundByIndex.first(where: \.isHittable) ?? query.firstMatch
-        }
-        for index in rowQueries.indices {
-            assertExists(rows[index], named: "queued episode \(index + 1)")
-        }
-
-        app.buttons["Edit"].tap()
-        let reorderHandles = app.images.matching(NSPredicate(format: "label == %@", "drag"))
-        XCTAssertEqual(reorderHandles.count, 3, "Every queued row should expose a reorder handle.")
-        let reorderStart = reorderHandles.element(boundBy: 2)
-            .coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
-        let reorderEnd = reorderHandles.element(boundBy: 0)
-            .coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.1))
-        reorderStart.press(
-            forDuration: 1,
-            thenDragTo: reorderEnd,
-            withVelocity: .slow,
-            thenHoldForDuration: 0.4
-        )
-        let thirdMovedBeforeFirst = NSPredicate { _, _ in
-            rows[0].exists && rows[2].exists && rows[2].frame.midY < rows[0].frame.midY
-        }
-        let reorderExpectation = XCTNSPredicateExpectation(
-            predicate: thirdMovedBeforeFirst,
-            object: app
-        )
-        XCTAssertEqual(
-            XCTWaiter.wait(for: [reorderExpectation], timeout: 5),
-            .completed,
-            "Dragging the third queued row should persist its new visible order."
-        )
-        app.buttons["Done"].tap()
-
-        rows[1].swipeLeft()
-        let deleteButton = app.buttons["Delete"].firstMatch
-        assertExists(deleteButton, named: "queued row delete action")
-        deleteButton.tap()
-        let deletedFromQueue = NSPredicate { _, _ in rowQueries[1].count == 1 }
-        let deleteExpectation = XCTNSPredicateExpectation(predicate: deletedFromQueue, object: app)
-        XCTAssertEqual(
-            XCTWaiter.wait(for: [deleteExpectation], timeout: 5),
-            .completed,
-            "Deleting from Up Next should remove only the sheet copy of the queued episode."
-        )
-
-        app.buttons["Clear"].tap()
-        let confirmClearButton = app.buttons["Clear Up Next"].firstMatch
-        assertExists(confirmClearButton, named: "clear queue confirmation")
-        confirmClearButton.tap()
-        assertExists(app.staticTexts["Nothing Up Next"], named: "empty Up Next state")
-    }
-
-    @MainActor
-    func testSeededUpNextAccessoryPlaysQueueHeadWhenNothingIsPlaying() throws {
-        let app = makeSeededApp(seedsUpNextQueue: true, extraFeedCount: 12)
-        app.launch()
-
-        openAllPlaylist(in: app)
-        let accessory = app.buttons["Open Up Next"]
-        let miniPlayer = app.buttons["Open Now Playing"]
-        assertExists(accessory, named: "Up Next accessory with nothing playing")
-        assertDoesNotExist(miniPlayer, named: "mini-player with nothing playing")
-        assertValue(of: accessory, contains: "Queued UI Episode 1", named: "Up Next accessory")
-        assertValue(of: accessory, contains: "3 episodes queued", named: "Up Next accessory")
-        let expanded = app.descendants(matching: .any)["up-next-accessory-expanded"].firstMatch
-        assertExists(expanded, named: "expanded Up Next accessory placement")
-        let playUpNext = app.buttons["Play Up Next"]
-        assertHittable(playUpNext, named: "Play Up Next")
-        attachSmokeScreenshot(named: "up_next_accessory_expanded")
-
-        scrollUntilExists(seededExtraEpisodeRow(in: app, index: 8), in: app, maxSwipes: 4)
-        let inline = app.descendants(matching: .any)["up-next-accessory-inline"].firstMatch
-        assertExists(inline, named: "inline Up Next accessory placement after scrolling")
-        assertHittable(playUpNext, named: "Play Up Next while inline")
-        attachSmokeScreenshot(named: "up_next_accessory_inline")
-
-        scrollBackUpUntilExists(expanded, in: app, named: "expanded Up Next accessory restored on upward scroll")
-
-        playUpNext.tap()
-
-        assertExists(miniPlayer, named: "mini-player after Play Up Next")
-        assertValue(of: miniPlayer, contains: "Queued UI Episode 1", named: "mini-player after Play Up Next")
-        assertDoesNotExist(accessory, named: "Up Next accessory while playing", timeout: 5)
-        XCTAssertFalse(
-            nowPlayingOverlay(in: app).isHittable,
-            "Play Up Next should start the queue head without presenting Now Playing."
-        )
-        attachSmokeScreenshot(named: "up_next_accessory_became_mini_player")
-
-        miniPlayer.tap()
-        assertNowPlayingOverlay(in: app)
-        openUpNextSheetFromNowPlaying(in: app)
-        assertQueuedRowsInUpNextSheet(remaining: [2, 3], in: app)
-    }
-
-    @MainActor
-    func testSeededUpNextAccessoryOpensQueueSheetAndPlaysARow() throws {
-        let app = makeSeededApp(seedsUpNextQueue: true)
-        app.launch()
-
-        let accessory = app.buttons["Open Up Next"]
-        assertHittable(accessory, named: "Up Next accessory")
-        accessory.tap()
-
-        assertExists(app.navigationBars["Up Next"], named: "Up Next sheet from the accessory")
-        assertQueuedRowsInUpNextSheet(remaining: [1, 2, 3], in: app)
-        attachSmokeScreenshot(named: "up_next_accessory_sheet")
-        let secondRow = try XCTUnwrap(hittableQueuedRow(2, in: app), "Queued episode 2 should be tappable in the sheet")
-        secondRow.tap()
-
-        XCTAssertTrue(
-            app.navigationBars["Up Next"].absentOrWait(timeout: 5),
-            "Playing a queued row should dismiss the Up Next sheet."
-        )
-        let miniPlayer = app.buttons["Open Now Playing"]
-        assertExists(miniPlayer, named: "mini-player after playing a queued row")
-        assertValue(of: miniPlayer, contains: "Queued UI Episode 2", named: "mini-player after playing a queued row")
-        assertDoesNotExist(accessory, named: "Up Next accessory while playing", timeout: 5)
-
-        miniPlayer.tap()
-        assertNowPlayingOverlay(in: app)
-        openUpNextSheetFromNowPlaying(in: app)
-        assertQueuedRowsInUpNextSheet(remaining: [1, 3], in: app)
-    }
-
-    @MainActor
-    func testSeededRestoredPlaybackWinsOverQueuedAccessory() throws {
-        let app = makeSeededApp(seedsEpisodeProgress: true, seedsUpNextQueue: true)
-        app.launch()
-
-        let miniPlayer = app.buttons["Open Now Playing"]
-        assertExists(miniPlayer, named: "restored mini-player")
-        assertValue(of: miniPlayer, contains: "Deterministic UI Episode", named: "restored mini-player")
-        assertDoesNotExist(app.buttons["Open Up Next"], named: "Up Next accessory over a restored episode", timeout: 2)
-        assertDoesNotExist(app.buttons["Play Up Next"], named: "Play Up Next over a restored episode")
-
-        miniPlayer.tap()
-        assertNowPlayingOverlay(in: app)
-        assertExists(nowPlayingOverlay(in: app).buttons["Play"].firstMatch, named: "restored paused playback control")
-        openUpNextSheetFromNowPlaying(in: app)
-        assertQueuedRowsInUpNextSheet(remaining: [1, 2, 3], in: app)
-    }
-
-    @MainActor
     func testSeededNowPlayingAirPlayPickerCanOpen() throws {
         #if targetEnvironment(simulator)
         throw XCTSkip("AirPlay route-picker presentation is a physical-device check; see docs/simulator-limitations.md.")
@@ -4383,7 +4198,6 @@ final class OpenCastUITests: XCTestCase {
         assertNowPlayingControlIsReachable(app.buttons["Playback Speed"], named: "Playback Speed control", in: app)
         assertNowPlayingControlIsReachable(app.buttons["AirPlay"], named: "AirPlay control", in: app)
         assertNowPlayingControlIsReachable(app.buttons["Sleep Timer"], named: "Sleep Timer control", in: app)
-        assertNowPlayingControlIsReachable(app.buttons["Up Next"], named: "Up Next control", in: app)
         assertPlayerUtilityControlHeightsAreBalanced(in: app)
         attachSmokeScreenshot(named: "now_playing_expanded_accessibility_xxxl")
 
@@ -5037,7 +4851,7 @@ final class OpenCastUITests: XCTestCase {
     }
 
     @MainActor
-    func testSeededPlaylistPlayWithEmptyQueueLoadsUpNext() throws {
+    func testSeededPlaylistPlayStartsWithoutConfirmation() throws {
         let app = makeSeededApp(seedsPlaylists: true, seedsPlaylistQueueItems: true)
         app.launch()
 
@@ -5045,13 +4859,9 @@ final class OpenCastUITests: XCTestCase {
         openSeededCommutePlaylist(in: app)
         tapPlaylistPlay(Self.commutePlaylistID, in: app)
 
-        // Replace presents the card, so the card appearing is the proof that
-        // an empty Up Next skipped the confirmation.
+        // Play presents the card at once; there is no queue to confirm
+        // replacing.
         assertNowPlayingOverlay(in: app)
-        assertDoesNotExist(
-            elementContaining(label: "Replace Up Next?", in: app),
-            named: "Replace Up Next confirmation with an empty queue"
-        )
         dismissNowPlayingOverlay(in: app)
 
         assertExists(
@@ -5074,11 +4884,6 @@ final class OpenCastUITests: XCTestCase {
         assertNowPlayingOverlay(in: app)
 
         let pill = assertNowPlayingSourcePill(reads: "Playing from Seeded Commute", in: app)
-        assertValue(
-            of: nowPlayingOverlay(in: app).buttons["Up Next"].firstMatch,
-            becomes: "3 episodes left in Seeded Commute",
-            named: "Now Playing Up Next control"
-        )
         attachSmokeScreenshot(named: "playlists_now_playing_source_pill")
 
         pill.tap()
@@ -5094,105 +4899,7 @@ final class OpenCastUITests: XCTestCase {
     }
 
     @MainActor
-    func testSeededPlaylistPlayWithQueuedEpisodesOffersReplaceOrAddAfter() throws {
-        // Without the playlist queue items Seeded Commute's limit keeps it to
-        // the Deterministic UI Episode.
-        let app = makeSeededApp(seedsUpNextQueue: true, seedsPlaylists: true)
-        app.launch()
-
-        openLibraryPlaylists(in: app)
-        openSeededCommutePlaylist(in: app)
-        tapPlaylistPlay(Self.commutePlaylistID, in: app)
-
-        assertExists(elementContaining(label: "Replace Up Next?", in: app), named: "Replace Up Next confirmation")
-        assertExists(
-            elementContaining(label: "Up Next has 3 episodes.", in: app),
-            named: "Replace Up Next confirmation message"
-        )
-        let replace = app.buttons["Replace Up Next"].firstMatch
-        let addAfter = app.buttons["Add After Up Next"].firstMatch
-        assertHittable(replace, named: "Replace Up Next button")
-        assertHittable(addAfter, named: "Add After Up Next button")
-        attachSmokeScreenshot(named: "playlists_replace_up_next_dialog")
-        addAfter.tap()
-
-        // Nothing was loaded, so the queue head starts without presenting the card.
-        let miniPlayer = app.buttons["Open Now Playing"].firstMatch
-        assertExists(miniPlayer, named: "mini player after Add After Up Next", timeout: 10)
-        assertValue(of: miniPlayer, becomes: "Queued UI Episode 1, UI Test Show", named: "mini player")
-        assertDoesNotExist(nowPlayingOverlay(in: app), named: "Now Playing after Add After Up Next", timeout: 2)
-
-        miniPlayer.tap()
-        assertNowPlayingOverlay(in: app)
-        assertNowPlayingTitle(reads: "Queued UI Episode 1", in: app)
-        assertDoesNotExist(
-            nowPlayingSourcePill(in: app),
-            named: "source pill for a hand-queued episode",
-            timeout: 2
-        )
-        assertValue(
-            of: nowPlayingOverlay(in: app).buttons["Up Next"].firstMatch,
-            becomes: "3 episodes queued",
-            named: "Now Playing Up Next control"
-        )
-
-        openUpNextSheetFromNowPlaying(in: app)
-        assertQueuedRowsInUpNextSheet(remaining: [2, 3], in: app)
-        var deterministicRow = hittableUpNextRow(Self.seededEpisodeRowIdentifier, in: app)
-        if deterministicRow == nil {
-            // The third row can sit below the medium detent's fold.
-            app.navigationBars["Up Next"].swipeUp()
-            deterministicRow = hittableUpNextRow(Self.seededEpisodeRowIdentifier, in: app)
-        }
-        let secondQueuedRow = try XCTUnwrap(hittableQueuedRow(2, in: app), "Queued UI Episode 2 in the Up Next sheet")
-        let thirdQueuedRow = try XCTUnwrap(hittableQueuedRow(3, in: app), "Queued UI Episode 3 in the Up Next sheet")
-        let appendedRow = try XCTUnwrap(deterministicRow, "Deterministic UI Episode in the Up Next sheet")
-        XCTAssertLessThan(
-            secondQueuedRow.frame.midY,
-            thirdQueuedRow.frame.midY,
-            "The existing queue should keep its order"
-        )
-        XCTAssertLessThan(
-            thirdQueuedRow.frame.midY,
-            appendedRow.frame.midY,
-            "Add After Up Next should append the playlist after the existing queue"
-        )
-        assertDoesNotExist(
-            app.navigationBars["Up Next"].staticTexts.matching(NSPredicate(format: "label BEGINSWITH %@", "From ")).firstMatch,
-            named: "Up Next playlist subtitle while playing a hand-queued episode"
-        )
-        assertDoesNotExist(
-            elementContaining(label: "ahead of the rest of", in: app),
-            named: "Up Next playlist footer while playing a hand-queued episode"
-        )
-        attachSmokeScreenshot(named: "playlists_add_after_up_next_sheet")
-
-        // The in-memory store reseeds the same queue on relaunch.
-        app.terminate()
-        app.launch()
-
-        openLibraryPlaylists(in: app)
-        openSeededCommutePlaylist(in: app)
-        tapPlaylistPlay(Self.commutePlaylistID, in: app)
-        let replaceAfterRelaunch = app.buttons["Replace Up Next"].firstMatch
-        assertHittable(replaceAfterRelaunch, named: "Replace Up Next button after relaunch")
-        replaceAfterRelaunch.tap()
-
-        assertNowPlayingOverlay(in: app)
-        assertNowPlayingTitle(reads: "Deterministic UI Episode", in: app)
-        assertNowPlayingSourcePill(reads: "Playing from Seeded Commute", in: app)
-        assertValue(
-            of: nowPlayingOverlay(in: app).buttons["Up Next"].firstMatch,
-            becomes: "Empty",
-            named: "Now Playing Up Next control after Replace Up Next"
-        )
-        openUpNextSheetFromNowPlaying(in: app)
-        assertExists(app.staticTexts["Nothing Up Next"], named: "empty Up Next after Replace Up Next")
-        attachSmokeScreenshot(named: "playlists_replace_up_next_empty_sheet")
-    }
-
-    @MainActor
-    func testSeededPlaylistSourceShowsInMiniPlayerNowPlayingAndUpNextSheet() throws {
+    func testSeededPlaylistSourceShowsInMiniPlayerAndNowPlaying() throws {
         let app = makeSeededApp(
             seedsEpisodeProgress: true,
             seedsUpNextQueue: true,
@@ -5215,36 +4922,7 @@ final class OpenCastUITests: XCTestCase {
         miniPlayer.tap()
         assertNowPlayingOverlay(in: app)
         assertNowPlayingSourcePill(reads: "Playing from Seeded Commute", in: app)
-        let upNextControl = nowPlayingOverlay(in: app).buttons["Up Next"].firstMatch
-        assertValue(of: upNextControl, becomes: "3 episodes left in Seeded Commute", named: "Now Playing Up Next control")
         attachSmokeScreenshot(named: "playlists_source_now_playing")
-
-        openUpNextSheetFromNowPlaying(in: app)
-        assertExists(
-            app.navigationBars["Up Next"].staticTexts["From Seeded Commute \u{00B7} 3 left"],
-            named: "Up Next playlist subtitle"
-        )
-        // The sheet opens at the medium detent, where the section footer can
-        // sit below the fold and out of the accessibility tree.
-        let footer = elementContaining(
-            label: "Play Next puts an episode ahead of the rest of Seeded Commute.",
-            in: app
-        )
-        if !footer.existsOrWait(timeout: 2) {
-            app.navigationBars["Up Next"].swipeUp()
-        }
-        assertExists(footer, named: "Up Next playlist footer")
-        attachSmokeScreenshot(named: "playlists_up_next_sheet_source")
-
-        let secondQueuedRow = try XCTUnwrap(hittableQueuedRow(2, in: app), "Queued UI Episode 2 in the Up Next sheet")
-        secondQueuedRow.tap()
-        XCTAssertTrue(
-            app.navigationBars["Up Next"].absentOrWait(timeout: 5),
-            "Playing a row should dismiss the Up Next sheet"
-        )
-        // The sheet belonged to Now Playing, so the card stays up.
-        assertNowPlayingTitle(reads: "Queued UI Episode 2", in: app)
-        assertValue(of: upNextControl, becomes: "2 episodes left in Seeded Commute", named: "Now Playing Up Next control")
 
         let moreActions = app.buttons["More Actions"].firstMatch
         assertHittable(moreActions, named: "Now Playing More Actions menu")
@@ -5261,10 +4939,9 @@ final class OpenCastUITests: XCTestCase {
         assertExists(app.navigationBars["Seeded Commute"], named: "Seeded Commute detail from the More menu")
         assertValue(
             of: app.buttons["Open Now Playing"].firstMatch,
-            becomes: "Queued UI Episode 2, playing from Seeded Commute, 2 left",
-            named: "mini player after playing a row from the sheet"
+            becomes: "Deterministic UI Episode, playing from Seeded Commute, 3 left",
+            named: "mini player after Show Seeded Commute"
         )
-        attachSmokeScreenshot(named: "playlists_source_mini_player_after_row")
     }
 
     @MainActor
@@ -5324,8 +5001,8 @@ final class OpenCastUITests: XCTestCase {
         miniPlayer.tap()
         assertNowPlayingOverlay(in: app)
         assertExists(
-            nowPlayingOverlay(in: app).buttons["Up Next"].firstMatch,
-            named: "Now Playing Up Next control at Accessibility XXXL"
+            nowPlayingOverlay(in: app).buttons["Sleep Timer"].firstMatch,
+            named: "Now Playing Sleep Timer control at Accessibility XXXL"
         )
         assertDoesNotExist(
             nowPlayingSourcePill(in: app),
@@ -5407,20 +5084,9 @@ final class OpenCastUITests: XCTestCase {
         assertSmartPlaylistRows(unplayedEpisodeIDs, in: app)
 
         tapPlaylistPlay(Self.smartPlaylistID, in: app)
-        // Replace presents the card, so the card appearing is the proof that
-        // an empty Up Next skipped the confirmation.
         assertNowPlayingOverlay(in: app)
-        assertDoesNotExist(
-            elementContaining(label: "Replace Up Next?", in: app),
-            named: "Replace Up Next confirmation with an empty queue"
-        )
         assertNowPlayingTitle(reads: "Deterministic UI Episode", in: app)
         assertNowPlayingSourcePill(reads: "Playing from Seeded Unplayed", in: app)
-        assertValue(
-            of: nowPlayingOverlay(in: app).buttons["Up Next"].firstMatch,
-            becomes: "3 episodes left in Seeded Unplayed",
-            named: "Now Playing Up Next control"
-        )
         dismissNowPlayingOverlay(in: app)
         assertValue(
             of: app.buttons["Open Now Playing"].firstMatch,
@@ -6393,16 +6059,11 @@ final class OpenCastUITests: XCTestCase {
                 line: line
             )
         }
-        // The shared row menu carries these actions on every surface.
-        assertExists(
+        // The shared row menu carries these actions on every surface; there
+        // is no queue to add to.
+        assertDoesNotExist(
             app.buttons["Play Next"].firstMatch,
             named: "\(name) Play Next context action",
-            file: file,
-            line: line
-        )
-        assertExists(
-            app.buttons["Play Last"].firstMatch,
-            named: "\(name) Play Last context action",
             file: file,
             line: line
         )
@@ -6440,13 +6101,9 @@ final class OpenCastUITests: XCTestCase {
         let airPlayButtonCount = app.buttons.matching(NSPredicate(format: "label == %@", "AirPlay")).count
         XCTAssertEqual(airPlayButtonCount, 1, "AirPlay should expose one accessible control", file: file, line: line)
         assertExists(app.buttons["Sleep Timer"], named: "Sleep Timer control")
-        let upNextControl = app.buttons["Up Next"].firstMatch
-        assertExists(upNextControl, named: "Up Next control", file: file, line: line)
-        let upNextValue = (upNextControl.value as? String)?
-            .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        XCTAssertFalse(
-            upNextValue.isEmpty,
-            "Up Next should expose its queue state as an accessibility value",
+        assertDoesNotExist(
+            nowPlayingOverlay(in: app).buttons["Up Next"].firstMatch,
+            named: "Up Next control",
             file: file,
             line: line
         )
@@ -6472,8 +6129,7 @@ final class OpenCastUITests: XCTestCase {
         let controls = [
             (name: "Playback Speed", element: overlay.buttons["Playback Speed"].firstMatch),
             (name: "AirPlay", element: overlay.buttons["AirPlay"].firstMatch),
-            (name: "Sleep Timer", element: overlay.buttons["Sleep Timer"].firstMatch),
-            (name: "Up Next", element: overlay.buttons["Up Next"].firstMatch)
+            (name: "Sleep Timer", element: overlay.buttons["Sleep Timer"].firstMatch)
         ]
 
         for (name, control) in controls {
@@ -6666,41 +6322,6 @@ final class OpenCastUITests: XCTestCase {
             file: file,
             line: line
         )
-    }
-
-    @MainActor
-    private func openUpNextSheetFromNowPlaying(in app: XCUIApplication) {
-        let upNextButton = nowPlayingOverlay(in: app).buttons["Up Next"].firstMatch
-        assertNowPlayingControlIsReachable(upNextButton, named: "Up Next control", in: app)
-        upNextButton.tap()
-        assertExists(app.navigationBars["Up Next"], named: "Up Next sheet")
-    }
-
-    /// A show's episode list and the Up Next sheet share row identifiers;
-    /// while the sheet is up only its copies are hittable, and behind the Now
-    /// Playing card the list's copies leave the accessibility tree altogether.
-    @MainActor
-    private func hittableQueuedRow(_ number: Int, in app: XCUIApplication) -> XCUIElement? {
-        app.buttons.matching(identifier: Self.seededQueuedEpisodeRowIdentifiers[number - 1])
-            .allElementsBoundByIndex
-            .first(where: \.isHittable)
-    }
-
-    @MainActor
-    private func assertQueuedRowsInUpNextSheet(
-        remaining: [Int],
-        in app: XCUIApplication,
-        file: StaticString = #filePath,
-        line: UInt = #line
-    ) {
-        for number in 1...Self.seededQueuedEpisodeRowIdentifiers.count {
-            let row = hittableQueuedRow(number, in: app)
-            if remaining.contains(number) {
-                XCTAssertNotNil(row, "Queued episode \(number) should remain in the Up Next sheet", file: file, line: line)
-            } else {
-                XCTAssertNil(row, "Queued episode \(number) should have left the Up Next sheet", file: file, line: line)
-            }
-        }
     }
 
     @MainActor
@@ -7329,8 +6950,8 @@ final class OpenCastUITests: XCTestCase {
         XCTFail("\(name) should exist", file: file, line: line)
     }
 
-    /// Library (Up Next, then the playlists) → the seeded Commute detail,
-    /// attaching the representative screenshots.
+    /// Library playlists → the seeded Commute detail, attaching the
+    /// representative screenshots.
     @MainActor
     private func walkSeededPlaylistsFromLibrary(
         in app: XCUIApplication,
@@ -7339,38 +6960,19 @@ final class OpenCastUITests: XCTestCase {
         line: UInt = #line
     ) {
         openLibrary(in: app, file: file, line: line)
-        let upNextRow = app.buttons.matching(identifier: "Library Up Next Row").firstMatch
         assertLibraryPlaylistCount(3, in: app, file: file, line: line)
-        // Nothing is queued, so the Up Next count is hidden.
-        assertLibraryCollectionRowValue(of: upNextRow, is: "", named: "Library Up Next row", file: file, line: line)
+        assertDoesNotExist(
+            app.buttons.matching(identifier: "Library Up Next Row").firstMatch,
+            named: "Library Up Next row",
+            file: file,
+            line: line
+        )
         attachSmokeScreenshot(named: "playlists_library_rows\(screenshotSuffix)")
-        openAndDismissUpNextFromLibrary(upNextRow, in: app, file: file, line: line)
 
         openSeededCommutePlaylist(in: app, file: file, line: line)
         scrollUntilExists(smartPlaylistRow("ui-test-episode-1", in: app), in: app, file: file, line: line)
         app.swipeDown()
         attachSmokeScreenshot(named: "playlists_detail\(screenshotSuffix)")
-    }
-
-    /// The Up Next row sits right above the playlist rows, so a tap on it
-    /// must open the queue sheet without also pushing a playlist.
-    @MainActor
-    private func openAndDismissUpNextFromLibrary(
-        _ upNextRow: XCUIElement,
-        in app: XCUIApplication,
-        file: StaticString = #filePath,
-        line: UInt = #line
-    ) {
-        assertHittable(upNextRow, named: "Library Up Next row", file: file, line: line)
-        upNextRow.tap()
-        let upNextBar = app.navigationBars["Up Next"]
-        assertExists(upNextBar, named: "Up Next sheet from the Library", file: file, line: line)
-
-        let dismissalStart = upNextBar.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
-        let dismissalEnd = app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.98))
-        dismissalStart.press(forDuration: 0.05, thenDragTo: dismissalEnd)
-        assertDoesNotExist(upNextBar, named: "Up Next sheet after dismissal", timeout: 10, file: file, line: line)
-        assertExists(app.navigationBars["Library"], named: "Library after closing Up Next", file: file, line: line)
     }
 
     /// The Library lists every playlist as its own row.
@@ -7386,24 +6988,6 @@ final class OpenCastUITests: XCTestCase {
         XCTAssertTrue(
             waitUntil { rows.count == expected },
             "The Library should list \(expected) playlists; got \(rows.count)",
-            file: file,
-            line: line
-        )
-    }
-
-    /// The Library collection rows expose their count as the value, empty at zero.
-    @MainActor
-    private func assertLibraryCollectionRowValue(
-        of row: XCUIElement,
-        is expected: String,
-        named name: String,
-        file: StaticString = #filePath,
-        line: UInt = #line
-    ) {
-        assertExists(row, named: name, file: file, line: line)
-        XCTAssertTrue(
-            waitUntil { (row.value as? String ?? "") == expected },
-            "\(name) should read \"\(expected)\", got \"\(row.value as? String ?? "nil")\"",
             file: file,
             line: line
         )
@@ -7821,12 +7405,12 @@ final class OpenCastUITests: XCTestCase {
         let pill = nowPlayingSourcePill(in: app)
         assertHittable(pill, named: "Now Playing source pill", file: file, line: line)
         XCTAssertEqual(pill.label, expectedLabel, "Now Playing source pill label", file: file, line: line)
-        let upNext = nowPlayingOverlay(in: app).buttons["Up Next"].firstMatch
-        assertExists(upNext, named: "Now Playing Up Next control", file: file, line: line)
+        let sleepTimer = nowPlayingOverlay(in: app).buttons["Sleep Timer"].firstMatch
+        assertExists(sleepTimer, named: "Now Playing Sleep Timer control", file: file, line: line)
         XCTAssertGreaterThanOrEqual(
             pill.frame.minY,
-            upNext.frame.maxY,
-            "The source pill should sit below the utility row; pill \(pill.frame), Up Next \(upNext.frame)",
+            sleepTimer.frame.maxY,
+            "The source pill should sit below the utility row; pill \(pill.frame), Sleep Timer \(sleepTimer.frame)",
             file: file,
             line: line
         )
@@ -7886,14 +7470,6 @@ final class OpenCastUITests: XCTestCase {
         let play = app.buttons.matching(NSPredicate(format: "label == %@", "Play")).firstMatch
         assertHittable(play, named: "playlist row Play menu item", file: file, line: line)
         play.tap()
-    }
-
-    /// Up Next sheet rows share identifiers with the episode list behind it.
-    @MainActor
-    private func hittableUpNextRow(_ identifier: String, in app: XCUIApplication) -> XCUIElement? {
-        app.buttons.matching(identifier: identifier)
-            .allElementsBoundByIndex
-            .first(where: \.isHittable)
     }
 }
 

@@ -16,7 +16,7 @@ nonisolated enum OpenCastSystemActionError: Error, CustomLocalizedStringResource
         case .noUnplayedEpisode: "This show has no cached unplayed episodes."
         case .libraryUnavailable: "OpenCast could not load your library. Open the app and try again."
         case .playbackFailed: "OpenCast could not start playback."
-        case .queueFailed: "OpenCast could not save Up Next."
+        case .queueFailed: "OpenCast could not save the rest of the playlist."
         case .queryTooLarge: "Choose up to 100 items at a time."
         case .unsupportedPlaybackOptions: "OpenCast cannot apply those playback or queue options to this content."
         case .playlistHasNoUnplayedEpisodes: "Nothing to play. Every episode in this playlist is played or unavailable."

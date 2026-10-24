@@ -23,7 +23,9 @@ struct SettingsStorageView: View {
                     Label("Artwork Cache", systemImage: "photo")
                 }
 
-                Button("Clear Automatic Caches", systemImage: "trash", role: .destructive, action: confirmClearCaches)
+                Button(role: .destructive, action: confirmClearCaches) {
+                    destructiveLabel("Clear Automatic Caches")
+                }
                     .confirmationDialog(
                         "Clear automatic caches?",
                         isPresented: $isConfirmingClearCaches,
@@ -48,15 +50,12 @@ struct SettingsStorageView: View {
                     Label("Downloaded Episodes", systemImage: "arrow.down.circle")
                 }
 
-                Toggle("Delete Downloads After Played", isOn: autoDeletePlayedDownloadsBinding)
+                Toggle("Delete Downloads After Played", systemImage: "trash.circle", isOn: autoDeletePlayedDownloadsBinding)
 
                 if appModel.downloads.completedDownloadCount > 0 {
-                    Button(
-                        "Delete All Downloads",
-                        systemImage: "trash",
-                        role: .destructive,
-                        action: confirmDeleteAllDownloads
-                    )
+                    Button(role: .destructive, action: confirmDeleteAllDownloads) {
+                        destructiveLabel("Delete All Downloads")
+                    }
                     .confirmationDialog(
                         "Delete all downloaded episodes?",
                         isPresented: $isConfirmingDeleteAllDownloads,
@@ -82,6 +81,17 @@ struct SettingsStorageView: View {
         .settingsSubscreen(title: "Storage")
         .task {
             appModel.cacheController.refreshSummaries()
+        }
+    }
+
+    /// A destructive Form button colours only its title; the icon keeps the
+    /// accent unless it is set here.
+    private func destructiveLabel(_ title: LocalizedStringKey) -> some View {
+        Label {
+            Text(title)
+        } icon: {
+            Image(systemName: "trash")
+                .foregroundStyle(.red)
         }
     }
 

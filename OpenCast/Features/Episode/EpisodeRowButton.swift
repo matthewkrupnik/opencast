@@ -19,6 +19,8 @@ struct EpisodeRowButton: View {
                 episode: episode,
                 searchResult: searchResult,
                 showsLocalStatusBadges: showsLocalStatusBadges,
+                // Without Go to Show the row is already on that show's page.
+                showsPodcastTitle: showsGoToShow,
                 onPlay: playButtonAction
             )
         }

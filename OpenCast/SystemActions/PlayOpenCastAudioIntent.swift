@@ -14,17 +14,12 @@ struct PlayOpenCastAudioIntent: AudioPlaybackIntent {
         guard playbackAttributes.isEmpty, warmupAudioQueueResult == nil else {
             throw OpenCastSystemActionError.unsupportedPlaybackOptions
         }
-        let action: OpenCastSystemAction
-        switch audioEntity {
-        case .episode(let episode):
-            action = switch queueLocation {
-            case .next: .enqueueNext(episode.id)
-            case .tail: .enqueue(episode.id)
-            case nil: .playEpisode(episode.id)
-            }
-        case .show(let show):
-            guard queueLocation == nil else { throw OpenCastSystemActionError.unsupportedPlaybackOptions }
-            action = .playLatest(show.id)
+        // There is no queue to add to: playback follows the playlist an
+        // episode was started from.
+        guard queueLocation == nil else { throw OpenCastSystemActionError.unsupportedPlaybackOptions }
+        let action: OpenCastSystemAction = switch audioEntity {
+        case .episode(let episode): .playEpisode(episode.id)
+        case .show(let show): .playLatest(show.id)
         }
         try await OpenCastIntentAccess.perform(action)
         return .result()

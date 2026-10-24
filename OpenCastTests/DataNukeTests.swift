@@ -438,7 +438,7 @@ struct DataNukeTests {
         try await appModel.nukeAllData(modelContext: context)
 
         #expect(defaults.bool(forKey: PlaylistLocalStoreMigration.completedDefaultsKey))
-        // Only the default "All" playlist the store creates when it loads empty.
+        // Only the default "All Episodes" playlist the store creates when it loads empty.
         #expect(try context.fetch(FetchDescriptor<PlaylistRecord>()).allSatisfy { $0.playlistID == PlaylistStore.defaultAllPlaylistID })
 
         // Neither the pending snapshot on the next core load nor a fresh

@@ -25,13 +25,6 @@ struct OpenCastRootPresentationModifier: ViewModifier {
                 Text(message)
             }
             .alert(
-                "Up Next Error",
-                item: $appModel.lastUpNextError
-            ) { _ in
-            } message: { message in
-                Text(message)
-            }
-            .alert(
                 "Playlist Error",
                 item: $appModel.lastPlaylistError
             ) { _ in

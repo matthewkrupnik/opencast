@@ -9,7 +9,7 @@ import SwiftUI
 ///
 /// The body reads the evaluation once, through the app model's memo, which
 /// recomputes only when a token the rule depends on changes. The body never
-/// reads Up Next.
+/// reads the playing playlist's remainder.
 struct SmartPlaylistDetailView: View {
     @Environment(OpenCastAppModel.self) private var appModel
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -22,11 +22,6 @@ struct SmartPlaylistDetailView: View {
 
     var body: some View {
         let evaluation = appModel.smartPlaylistEvaluation(for: summary)
-        // Play Next and Play Last skip the episode now playing.
-        let currentEpisodeID = appModel.playback.currentEpisode?.id.rawValue
-        let canEnqueue = evaluation.episodes.contains {
-            $0.episodeID != currentEpisodeID && isCandidate($0)
-        }
         let visibleEpisodes = evaluation.episodes.prefix(visibleEpisodeCount)
 
         List {
@@ -62,7 +57,6 @@ struct SmartPlaylistDetailView: View {
             ToolbarItem(placement: .primaryAction) {
                 PlaylistActionsMenu(
                     summary: summary,
-                    canEnqueue: canEnqueue,
                     canDownloadAll: appModel.hasPlaylistDownloadAllCandidates(summary.playlistID),
                     onShowSettings: showSettings
                 )
@@ -98,13 +92,6 @@ struct SmartPlaylistDetailView: View {
 
     private var listAnimation: Animation? {
         reduceMotion ? nil : .default
-    }
-
-    /// The candidate rule `OpenCastAppModel` plays a playlist with, so
-    /// Play Next and Play Last are enabled exactly when they would queue
-    /// something.
-    private func isCandidate(_ episode: EpisodeListItemSnapshot) -> Bool {
-        !appModel.library.progressSummary(for: episode).isCompleted
     }
 
     private func showSettings() {

@@ -200,7 +200,7 @@ final class CarPlayInterfaceCoordinator {
             } ?? false,
             isVoiceBoostEnabled: playbackSettings.isVoiceBoostEnabled,
             canChangeVoiceBoost: playbackSettings.canChangeCurrentEpisodeVoiceBoost,
-            hasQueuedEpisodes: !appModel.upNextQueue.items.isEmpty
+            hasQueuedEpisodes: !appModel.currentPlaylistRemainder.isEmpty
         )
     }
 
@@ -420,15 +420,16 @@ final class CarPlayInterfaceCoordinator {
     }
 
     private func pushUpNext() {
-        // The button is disabled with an empty queue; a tap that races the
-        // last item leaving has nothing to show.
-        guard !appModel.upNextQueue.items.isEmpty else {
+        // The button is disabled with nothing left in the playlist; a tap
+        // that races the last item leaving has nothing to show.
+        let remainder = appModel.currentPlaylistRemainder
+        guard !remainder.isEmpty else {
             return
         }
 
         push(
             CarPlayBrowseModelBuilder.upNext(
-                queueItems: appModel.upNextQueue.items,
+                queueItems: remainder,
                 library: appModel.library,
                 downloadRecords: appModel.downloads.records,
                 nowPlaying: Self.nowPlayingState(appModel: appModel),

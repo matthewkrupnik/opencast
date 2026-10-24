@@ -4,15 +4,17 @@ struct ArtworkPlaceholderVisual: View {
     let title: String
     let image: UIImage?
     let preview: ArtworkPreview?
+    /// Fill crops non-square art to the square frame; fit shows all of it.
+    var contentMode: ContentMode = .fill
 
     @ViewBuilder
     var body: some View {
         if let image {
             Image(uiImage: image)
                 .resizable()
-                .scaledToFit()
+                .aspectRatio(contentMode: contentMode)
         } else if let preview {
-            ArtworkPreviewImage(preview: preview)
+            ArtworkPreviewImage(preview: preview, contentMode: contentMode)
         } else {
             RoundedRectangle(cornerRadius: 8)
                 .fill(placeholderBackground)

@@ -11,11 +11,6 @@ final class AppStoreScreenshotUITests: XCTestCase {
         "app-store-paper-lanterns-episode-1",
         primaryEpisodeID
     ]
-    private static let upNextEpisodeIDs = [
-        "app-store-kitchen-table-episode-1",
-        "app-store-long-way-round-episode-1",
-        "app-store-half-time-episode-1"
-    ]
     private static let primarySubscriptionRowIdentifier = "subscription-row-\(primaryFeedURL)"
     private static let autoSkipPillArgument = "--opencast-pin-app-store-autoskip-pill"
     private static let forceOnboardingArgument = "--opencast-force-onboarding"
@@ -38,7 +33,7 @@ final class AppStoreScreenshotUITests: XCTestCase {
     }
 
     // Capture order differs from App Store order. One base launch carries the
-    // library, transcript, chapters, pipeline, search, Sound Lab, and Up Next
+    // library, transcript, chapters, pipeline, search, and Sound Lab
     // frames; the ad-skip hero, the welcome page, and the notification each
     // relaunch with their own flag so a pinned pill or forced onboarding
     // never leaks into another frame. The notification goes last so its
@@ -105,17 +100,6 @@ final class AppStoreScreenshotUITests: XCTestCase {
             openLibrary(in: app)
             assertExists(app.staticTexts["Weeknight Notes"], named: "last library tile")
             attachAppStoreScreenshot(named: "app_store_02_library_grid")
-        } else {
-            // Up Next gets its own launch: the row context menus that fill the
-            // queue drop the simulator's status-bar override for the rest of
-            // the launch (the Up Next frame bleeds its status bar, the Sound
-            // Lab frame does not), and tapping the primary row afterwards
-            // opens Now Playing without any dismissal dance.
-            app.launch()
-            enqueueUpNextEpisodes(in: app)
-            startPrimaryEpisodePlayback(in: app)
-            openUpNextQueue(in: app)
-            attachAppStoreScreenshot(named: "app_store_10_up_next")
         }
 
         app.launchEnvironment.removeValue(forKey: Self.queueOverrideEnvironmentKey)
@@ -320,8 +304,8 @@ final class AppStoreScreenshotUITests: XCTestCase {
     // MARK: - Playback
 
     // The primary episode is the newest row; after the All playlist has been
-    // scrolled (Up Next enqueueing reaches its fourth-day rows) the lazy list
-    // no longer holds it, so scroll back up until it does.
+    // scrolled the lazy list no longer holds it, so scroll back up until it
+    // does.
     @MainActor
     private func startPrimaryEpisodePlayback(in app: XCUIApplication) {
         openAllEpisodes(in: app)
@@ -432,32 +416,6 @@ final class AppStoreScreenshotUITests: XCTestCase {
         assertNowPlayingOverlay(in: app)
     }
 
-    @MainActor
-    private func openUpNextQueue(in app: XCUIApplication) {
-        let upNextButton = app.buttons["Up Next"].firstMatch
-        assertExists(upNextButton, named: "Up Next utility button")
-        upNextButton.tap()
-        assertExists(app.navigationBars["Up Next"], named: "Up Next sheet")
-        for episodeID in Self.upNextEpisodeIDs {
-            assertExists(episodeRow(episodeID, in: app), named: "Up Next row \(episodeID)")
-        }
-    }
-
-    // Play Last keeps the deck's order: the first enqueued row stays first.
-    @MainActor
-    private func enqueueUpNextEpisodes(in app: XCUIApplication) {
-        openAllEpisodes(in: app)
-        for episodeID in Self.upNextEpisodeIDs {
-            let row = episodeRow(episodeID, in: app)
-            scrollUntilHittable(row, in: app)
-            row.press(forDuration: 1.2)
-            let playLast = app.buttons["Play Last"].firstMatch
-            assertExists(playLast, named: "Play Last context action for \(episodeID)")
-            playLast.tap()
-            _ = playLast.absentOrWait(timeout: 2)
-        }
-    }
-
     // MARK: - Navigation
 
     @MainActor
@@ -562,8 +520,7 @@ final class AppStoreScreenshotUITests: XCTestCase {
     }
 
     // A row can report hittable while its lower half sits under the docked
-    // tab accessory, and a long press there opens Now Playing (or Up Next,
-    // when nothing is playing) instead.
+    // tab accessory, and a long press there opens Now Playing instead.
     @MainActor
     private func isClearOfMiniPlayer(_ element: XCUIElement, in app: XCUIApplication) -> Bool {
         guard element.isHittable else {
@@ -686,9 +643,7 @@ final class AppStoreScreenshotUITests: XCTestCase {
 
     @MainActor
     private func tabAccessory(in app: XCUIApplication) -> XCUIElement {
-        app.buttons
-            .matching(NSPredicate(format: "label IN %@", ["Open Now Playing", "Open Up Next"]))
-            .firstMatch
+        app.buttons["Open Now Playing"].firstMatch
     }
 
     // Tabs keep their pushed stacks (episode detail opened from Now Playing

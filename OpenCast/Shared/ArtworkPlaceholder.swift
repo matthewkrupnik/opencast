@@ -7,6 +7,7 @@ struct ArtworkPlaceholder: View {
     let targetPixelSize: CGSize?
     let cacheKind: ArtworkCacheKind
     let preview: ArtworkPreview?
+    let contentMode: ContentMode
     let onPreviewResolved: ((ArtworkPreview) -> Void)?
 
     @State private var imageState = ArtworkImageState()
@@ -19,6 +20,7 @@ struct ArtworkPlaceholder: View {
         targetPixelSize: CGSize? = nil,
         cacheKind: ArtworkCacheKind = .show,
         preview: ArtworkPreview? = nil,
+        contentMode: ContentMode = .fill,
         onPreviewResolved: ((ArtworkPreview) -> Void)? = nil
     ) {
         self.init(
@@ -28,6 +30,7 @@ struct ArtworkPlaceholder: View {
             targetPixelSize: targetPixelSize,
             cacheKind: cacheKind,
             preview: preview,
+            contentMode: contentMode,
             onPreviewResolved: onPreviewResolved
         )
     }
@@ -39,6 +42,7 @@ struct ArtworkPlaceholder: View {
         targetPixelSize: CGSize? = nil,
         cacheKind: ArtworkCacheKind = .show,
         preview: ArtworkPreview? = nil,
+        contentMode: ContentMode = .fill,
         onPreviewResolved: ((ArtworkPreview) -> Void)? = nil
     ) {
         self.title = title
@@ -47,6 +51,7 @@ struct ArtworkPlaceholder: View {
         self.targetPixelSize = targetPixelSize
         self.cacheKind = cacheKind
         self.preview = preview
+        self.contentMode = contentMode
         self.onPreviewResolved = onPreviewResolved
     }
 
@@ -56,7 +61,8 @@ struct ArtworkPlaceholder: View {
         ArtworkPlaceholderVisual(
             title: title,
             image: imageState.resolvedImage(for: request),
-            preview: imageState.resolvedPreview(for: request, fallbackPreview: preview)
+            preview: imageState.resolvedPreview(for: request, fallbackPreview: preview),
+            contentMode: contentMode
         )
             .frame(width: displaySize.width, height: displaySize.height)
             .clipShape(.rect(cornerRadius: 8))

@@ -80,16 +80,16 @@ extension XCTestCase {
     ) {
         // Already there: re-tapping the tab would pop to the Library and
         // push All again, moving rows mid-assertion.
-        if app.navigationBars["All"].exists, app.tabBars.buttons["Library"].isSelected {
+        if app.navigationBars["All Episodes"].exists, app.tabBars.buttons["Library"].isSelected {
             return
         }
         openSection("Library", in: app, file: file, line: line)
         // Switching back to the tab keeps its stack, which may already show
         // All; anything else pushed is popped by tapping the tab again.
         // Polls both outcomes briefly instead of waiting out either one.
-        let allBar = app.navigationBars["All"]
+        let allBar = app.navigationBars["All Episodes"]
         let allPlaylist = app.descendants(matching: .any)
-            .matching(NSPredicate(format: "identifier BEGINSWITH %@ AND label BEGINSWITH %@", "playlist-row-", "All"))
+            .matching(NSPredicate(format: "identifier BEGINSWITH %@ AND label BEGINSWITH %@", "playlist-row-", "All Episodes"))
             .firstMatch
         let deadline = Date().addingTimeInterval(2)
         while !allBar.exists, !allPlaylist.exists, Date() < deadline {
@@ -104,7 +104,7 @@ extension XCTestCase {
         XCTAssertTrue(allPlaylist.existsOrWait(timeout: 10), "All playlist should exist", file: file, line: line)
         allPlaylist.tap()
         XCTAssertTrue(
-            app.navigationBars["All"].existsOrWait(timeout: 10),
+            app.navigationBars["All Episodes"].existsOrWait(timeout: 10),
             "All playlist should open",
             file: file,
             line: line

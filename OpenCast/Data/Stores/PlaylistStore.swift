@@ -60,7 +60,7 @@ final class PlaylistStore {
                 .shadowsPlaylist(Self.defaultAllPlaylistID) {
                 modelContext.insert(PlaylistRecord(
                     playlistID: Self.defaultAllPlaylistID,
-                    name: "All",
+                    name: "All Episodes",
                     kind: .smart,
                     // Every unplayed episode, newest first: the list the Inbox was.
                     ruleJSON: PlaylistRule(sortOrder: .newestFirst).encodedJSON(),

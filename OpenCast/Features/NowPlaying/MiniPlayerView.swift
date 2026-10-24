@@ -30,7 +30,7 @@ struct MiniPlayerView: View {
                         ArtworkPlaceholder(
                             title: episode.podcastTitle,
                             imageURL: episode.artworkURL?.absoluteString,
-                            size: isInline ? 30 : 38,
+                            size: isInline ? 36 : 42,
                             cacheKind: .episode
                         )
                         .accessibilityHidden(true)
@@ -64,7 +64,7 @@ struct MiniPlayerView: View {
                                 .contentTransition(reduceMotion ? .identity : .symbolEffect(.replace))
                         }
                     }
-                    .font(dynamicTypeSize.isAccessibilitySize ? .caption : .title3)
+                    .font(dynamicTypeSize.isAccessibilitySize ? .caption : .title)
                     .animation(reduceMotion ? nil : .easeOut(duration: 0.2), value: state.showsLoadingIndicator)
                     .frame(width: 44, height: 44)
                     .contentShape(.rect)
@@ -73,17 +73,6 @@ struct MiniPlayerView: View {
                 .accessibilityLabel(showsPauseButton ? "Pause" : "Play")
                 .accessibilityInputLabels(showsPauseButton ? ["Pause"] : ["Play"])
                 .accessibilityValue(state.accessibilityDescription)
-
-                if !isInline && !dynamicTypeSize.isAccessibilitySize {
-                    Button(action: skipForward) {
-                        Label(skipForwardLabel, systemImage: "goforward.\(skipForwardSeconds)")
-                            .labelStyle(.iconOnly)
-                            .font(.title3)
-                            .frame(width: 44, height: 44)
-                            .contentShape(.rect)
-                    }
-                    .buttonStyle(.plain)
-                }
             }
             .padding(.horizontal, isInline ? 8 : 12)
             .padding(.vertical, isInline ? 0 : 6)
@@ -114,14 +103,6 @@ struct MiniPlayerView: View {
         )
     }
 
-    private var skipForwardSeconds: Int {
-        Int(appModel.playbackSettings.skipForwardOption.seconds.rounded())
-    }
-
-    private var skipForwardLabel: String {
-        "Skip Forward \(skipForwardSeconds) Seconds"
-    }
-
     private func expand() {
         nowPlayingProbeMark("miniplayer-tap")
         onExpand()
@@ -134,10 +115,5 @@ struct MiniPlayerView: View {
     private func togglePlayPause() {
         transportFeedback += 1
         appModel.playback.togglePlayPause()
-    }
-
-    private func skipForward() {
-        transportFeedback += 1
-        appModel.playback.skip(by: appModel.playbackSettings.skipForwardOption.seconds)
     }
 }

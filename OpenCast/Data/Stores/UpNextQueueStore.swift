@@ -3,6 +3,9 @@ import Observation
 import SwiftData
 import SwiftUI
 
+/// The rest of the playlist being played, in rule order: what plays after
+/// the current episode. Persisted and synced so playback continues after a
+/// relaunch. Only playing a playlist fills it; there is no user-facing queue.
 @Observable
 final class UpNextQueueStore {
     private(set) var items: [UpNextQueueItem] = []
@@ -67,37 +70,8 @@ final class UpNextQueueStore {
             onQueueChanged?()
         } catch {
             modelContext.rollback()
-            lastErrorMessage = "Unable to load Up Next: \(error.localizedDescription)"
+            lastErrorMessage = "Unable to load the rest of the playlist: \(error.localizedDescription)"
         }
-    }
-
-    @discardableResult
-    func enqueueNext(
-        _ episode: EpisodeListItemSnapshot,
-        source: String? = nil,
-        modelContext: ModelContext
-    ) -> Bool {
-        enqueue([episode], atFront: true, source: source, modelContext: modelContext)
-    }
-
-    @discardableResult
-    func enqueueLast(
-        _ episode: EpisodeListItemSnapshot,
-        source: String? = nil,
-        modelContext: ModelContext
-    ) -> Bool {
-        enqueue([episode], atFront: false, source: source, modelContext: modelContext)
-    }
-
-    /// Inserts the whole batch at the front in array order, so `episodes[0]`
-    /// becomes the new head. One save; a failure leaves the queue untouched.
-    @discardableResult
-    func enqueueNext(
-        _ episodes: [EpisodeListItemSnapshot],
-        source: String?,
-        modelContext: ModelContext
-    ) -> Bool {
-        enqueue(episodes, atFront: true, source: source, modelContext: modelContext)
     }
 
     /// Appends the whole batch in array order. One save; a failure leaves the
@@ -108,7 +82,7 @@ final class UpNextQueueStore {
         source: String?,
         modelContext: ModelContext
     ) -> Bool {
-        enqueue(episodes, atFront: false, source: source, modelContext: modelContext)
+        enqueue(episodes, source: source, modelContext: modelContext)
     }
 
     @discardableResult
@@ -145,10 +119,7 @@ final class UpNextQueueStore {
                 throw error
             }
         } catch {
-            let operation = episodeIDs.count == 1
-                ? "Unable to remove the episode from Up Next"
-                : "Unable to remove episodes from Up Next"
-            lastErrorMessage = "\(operation): \(error.localizedDescription)"
+            lastErrorMessage = "Unable to update the rest of the playlist: \(error.localizedDescription)"
             return false
         }
     }
@@ -180,53 +151,7 @@ final class UpNextQueueStore {
                 throw error
             }
         } catch {
-            lastErrorMessage = "Unable to update Up Next: \(error.localizedDescription)"
-            return false
-        }
-    }
-
-    @discardableResult
-    func reorderVisibleEpisodeIDs(
-        _ orderedEpisodeIDs: [String],
-        modelContext: ModelContext
-    ) -> Bool {
-        let orderedEpisodeIDSet = Set(orderedEpisodeIDs)
-        let currentVisibleEpisodeIDs = items.compactMap { item in
-            orderedEpisodeIDSet.contains(item.episodeID) ? item.episodeID : nil
-        }
-        guard orderedEpisodeIDSet.count == orderedEpisodeIDs.count,
-              Set(currentVisibleEpisodeIDs) == orderedEpisodeIDSet,
-              currentVisibleEpisodeIDs.count == orderedEpisodeIDs.count
-        else {
-            lastErrorMessage = "Unable to reorder Up Next because the queue changed. Try again."
-            return false
-        }
-        guard currentVisibleEpisodeIDs != orderedEpisodeIDs else {
-            return true
-        }
-
-        let previousItems = items
-        var reorderedEpisodeIDs = orderedEpisodeIDs.makeIterator()
-        for index in items.indices where orderedEpisodeIDSet.contains(items[index].episodeID) {
-            guard let episodeID = reorderedEpisodeIDs.next(),
-                  let replacement = previousItems.first(where: { $0.episodeID == episodeID })
-            else {
-                items = previousItems
-                lastErrorMessage = "Unable to reorder Up Next because the queue changed. Try again."
-                return false
-            }
-            items[index] = replacement
-        }
-        renumberItems()
-
-        do {
-            try persistCurrentOrder(modelContext: modelContext)
-            didMutate()
-            return true
-        } catch {
-            modelContext.rollback()
-            items = previousItems
-            lastErrorMessage = "Unable to reorder Up Next: \(error.localizedDescription)"
+            lastErrorMessage = "Unable to update the rest of the playlist: \(error.localizedDescription)"
             return false
         }
     }
@@ -254,7 +179,7 @@ final class UpNextQueueStore {
                 throw error
             }
         } catch {
-            lastErrorMessage = "Unable to clear Up Next: \(error.localizedDescription)"
+            lastErrorMessage = "Unable to update the rest of the playlist: \(error.localizedDescription)"
             return false
         }
     }
@@ -274,14 +199,10 @@ final class UpNextQueueStore {
         } catch {
             modelContext.rollback()
             items = previousItems
-            let message = "Unable to advance Up Next: \(error.localizedDescription)"
+            let message = "Unable to play the next playlist episode: \(error.localizedDescription)"
             lastErrorMessage = message
             return .failure(message)
         }
-    }
-
-    func contains(episodeID: String) -> Bool {
-        items.contains { $0.episodeID == episodeID }
     }
 
     func resetAfterDataNuke() {
@@ -301,7 +222,6 @@ final class UpNextQueueStore {
     /// their stored order without a rewrite.
     private func enqueue(
         _ episodes: [EpisodeListItemSnapshot],
-        atFront: Bool,
         source: String?,
         modelContext: ModelContext
     ) -> Bool {
@@ -313,9 +233,7 @@ final class UpNextQueueStore {
 
         let previousItems = items
         let remainingItems = items.filter { !batchEpisodeIDs.contains($0.episodeID) }
-        let firstSequence = atFront
-            ? (remainingItems.first?.sequence ?? batch.count) - batch.count
-            : (remainingItems.last?.sequence ?? -1) + 1
+        let firstSequence = (remainingItems.last?.sequence ?? -1) + 1
         let enqueuedAt = Date.now
         let addedItems = batch.enumerated().map { offset, episode in
             UpNextQueueItem(
@@ -326,7 +244,7 @@ final class UpNextQueueStore {
                 sourcePlaylistID: source
             )
         }
-        items = atFront ? addedItems + remainingItems : remainingItems + addedItems
+        items = remainingItems + addedItems
 
         do {
             let records = try modelContext.fetch(FetchDescriptor<UpNextQueueItemRecord>())
@@ -350,10 +268,7 @@ final class UpNextQueueStore {
         } catch {
             modelContext.rollback()
             items = previousItems
-            let operation = batch.count == 1
-                ? "Unable to add the episode to Up Next"
-                : "Unable to add episodes to Up Next"
-            lastErrorMessage = "\(operation): \(error.localizedDescription)"
+            lastErrorMessage = "Unable to save the rest of the playlist: \(error.localizedDescription)"
             return false
         }
     }

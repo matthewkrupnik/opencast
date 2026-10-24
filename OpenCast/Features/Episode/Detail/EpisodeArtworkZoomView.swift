@@ -48,6 +48,7 @@ struct EpisodeArtworkZoomView: View {
                         targetPixelSize: Self.targetPixelSize,
                         cacheKind: .episode,
                         preview: episode.artworkPreview,
+                        contentMode: .fit,
                         onPreviewResolved: updateArtworkPreview
                     )
                 }

@@ -3,7 +3,7 @@ import SwiftUI
 
 /// A playlist episode that still resolves: the Inbox row, played from here
 /// by a tap, or by its play button with Tap to Play off (the rest of the
-/// playlist replaces Up Next), with the shared episode context menu.
+/// playlist plays after it), with the shared episode context menu.
 struct PlaylistEpisodeRowView: View {
     @Environment(OpenCastAppModel.self) private var appModel
     @Environment(\.modelContext) private var modelContext

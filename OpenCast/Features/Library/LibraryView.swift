@@ -1,7 +1,7 @@
 import SwiftData
 import SwiftUI
 
-/// The Library: Up Next, every playlist, then the shows, as a list or with
+/// The Library: every playlist, then the shows, as a list or with
 /// the shows as a grid. New playlists open through `onOpenPlaylist` once
 /// their name prompt has dismissed, so their rules can be set.
 struct LibraryView: View {
@@ -19,7 +19,6 @@ struct LibraryView: View {
     @State private var adDetectionIndicatorAppearance = 0
 
     let onAdd: () -> Void
-    let onOpenUpNext: () -> Void
     let onOpenPlaylist: (String) -> Void
     let onOpenAdDetectionQueue: () -> Void
 
@@ -112,9 +111,8 @@ struct LibraryView: View {
         default:
             if subscriptions.isEmpty {
                 List {
-                    // Playlists outlive their shows, so Up Next and the
-                    // playlists stay while there are no shows.
-                    collectionsSection
+                    // Playlists outlive their shows, so they stay while
+                    // there are no shows.
                     playlistsSection
 
                     LibraryEmptyStateView(
@@ -133,8 +131,6 @@ struct LibraryView: View {
                     if appModel.library.lastRefreshWasOffline {
                         LibraryOfflineNotice()
                     }
-                    collectionsHeader
-                        .padding(.vertical, 4)
                     playlistsGridHeader
                     if !appModel.playlists.playlists.isEmpty {
                         sectionTitle("Shows")
@@ -145,7 +141,6 @@ struct LibraryView: View {
                 List {
                     offlineNoticeSection
 
-                    collectionsSection
                     playlistsSection
 
                     Section {
@@ -176,22 +171,6 @@ struct LibraryView: View {
                     .listRowBackground(Color.clear)
             }
         }
-    }
-
-    private var collectionsSection: some View {
-        Section {
-            collectionsHeader
-                .listRowInsets(.vertical, 0)
-                .listRowSeparator(.hidden)
-                .listRowBackground(Color.clear)
-        }
-    }
-
-    private var collectionsHeader: some View {
-        LibraryCollectionsHeader(
-            upNextCount: appModel.upNextQueue.items.count,
-            onOpenUpNext: onOpenUpNext
-        )
     }
 
     @ViewBuilder

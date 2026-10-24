@@ -1,8 +1,7 @@
 import SwiftData
 import SwiftUI
 
-/// The playlist detail toolbar menu: Play Next, Play Last and Download All,
-/// then Playlist Settings, rename and delete. The rule decides the order and
+/// The playlist detail toolbar menu: Download All, then Playlist Settings, rename and delete. The rule decides the order and
 /// membership, so there is no reordering here. Deleting pops back to the collection.
 struct PlaylistActionsMenu: View {
     @Environment(OpenCastAppModel.self) private var appModel
@@ -10,7 +9,6 @@ struct PlaylistActionsMenu: View {
     @Environment(\.modelContext) private var modelContext
 
     let summary: PlaylistSummary
-    let canEnqueue: Bool
     let canDownloadAll: Bool
     let onShowSettings: () -> Void
     @State private var namePromptRequest: PlaylistNamePromptRequest?
@@ -21,20 +19,6 @@ struct PlaylistActionsMenu: View {
 
     var body: some View {
         Menu {
-            Button(
-                "Play Next",
-                systemImage: "text.line.first.and.arrowtriangle.forward",
-                action: enqueueNext
-            )
-            .disabled(!canEnqueue)
-
-            Button(
-                "Play Last",
-                systemImage: "text.line.last.and.arrowtriangle.forward",
-                action: enqueueLast
-            )
-            .disabled(!canEnqueue)
-
             Button("Download All", systemImage: "arrow.down.circle", action: confirmDownloadAll)
                 .disabled(!canDownloadAll)
 
@@ -85,14 +69,6 @@ struct PlaylistActionsMenu: View {
 
     private var downloadAllTitle: String {
         String(AttributedString(localized: "Download ^[\(downloadAllCount) Episode](inflect: true)?").characters)
-    }
-
-    private func enqueueNext() {
-        appModel.enqueuePlaylist(summary.playlistID, position: .next, modelContext: modelContext)
-    }
-
-    private func enqueueLast() {
-        appModel.enqueuePlaylist(summary.playlistID, position: .last, modelContext: modelContext)
     }
 
     // The candidates are resolved at tap time, not in `body`: resolving them

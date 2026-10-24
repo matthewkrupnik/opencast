@@ -78,31 +78,11 @@ final class OpenCastAppModel {
     var hasNowPlayingPresentationContent: Bool {
         playback.currentEpisode != nil || finishedPlaybackPresentation != nil
     }
-    /// The queue head the tab accessory offers while nothing is loaded. Nil
-    /// until the launch restore has run and while the Finished card is
-    /// retained; skips unresolvable items so a stale head never renders a
-    /// blank accessory.
-    var upNextAccessoryEpisode: EpisodeListItemSnapshot? {
-        guard hasRestoredPlaybackSurface, !hasNowPlayingPresentationContent else {
-            return nil
-        }
-
-        for item in upNextQueue.items {
-            if let episode = episodeSnapshot(for: item.episodeID) {
-                return episode
-            }
-        }
-        return nil
-    }
-    var showsUpNextAccessory: Bool {
-        upNextAccessoryEpisode != nil
-    }
     var onboardingPresentationRequest = 0
     /// The nuke sheet stays hoisted at the root so `resetAfterDataNuke()` can
     /// swap it for onboarding in one transaction; Delete Data requests it here.
     var dataNukeConfirmationPresentationRequest = 0
     var lastPlaybackError: String?
-    var lastUpNextError: String?
     var lastPlaylistError: String?
     /// The playlist the loaded episode was started from, or derived from the
     /// queue row it was popped from; nil for any untagged start.
@@ -117,7 +97,7 @@ final class OpenCastAppModel {
         }
         return PlaylistPlaybackSource(playlistID: summary.playlistID, name: summary.name)
     }
-    /// The library, downloads, Up Next, and playlist snapshots are all ready
+    /// The library, downloads, playlist remainder, and playlist snapshots are all ready
     /// for list views to derive cross-store state without observing partial
     /// startup data.
     private(set) var coreStoresHydrated = false
@@ -494,7 +474,7 @@ final class OpenCastAppModel {
                 modelContext: modelContext
             )
             if let message = upNextQueue.consumeLastErrorMessage() {
-                lastUpNextError = message
+                lastPlaylistError = message
             }
             coreStoresHydrated = true
             autoDownloadLatestEpisodes(modelContext: modelContext)
@@ -673,8 +653,18 @@ final class OpenCastAppModel {
         )
     }
 
+    /// Plays the next episode of the playlist the finished one came from.
+    /// The queue only ever holds the rest of that playlist; an item from any
+    /// other source (left by an older build's Play Next) is dropped, and an
+    /// episode started outside a playlist plays nothing after it.
     @discardableResult
     func advanceToNextQueuedEpisode(modelContext: ModelContext) -> Bool {
+        guard let playlistID = currentPlaylistSourceID else {
+            // As for an exhausted playlist: the finished episode's played
+            // state must land before playback unloads.
+            flushPlaybackProgress(modelContext: modelContext)
+            return false
+        }
         var hadCandidate = false
         var playbackFailureMessage: String?
 
@@ -683,23 +673,25 @@ final class OpenCastAppModel {
             switch upNextQueue.popNext(modelContext: modelContext) {
             case .item(let nextItem):
                 item = nextItem
-                hadCandidate = true
             case .empty:
                 flushPlaybackProgress(modelContext: modelContext)
                 if hadCandidate {
                     lastPlaybackError = playbackFailureMessage
-                        ?? "None of the episodes in Up Next are available to play."
+                        ?? "None of the remaining episodes in this playlist are available to play."
                 }
                 return false
             case .failure(let message):
                 flushPlaybackProgress(modelContext: modelContext)
-                lastUpNextError = upNextQueue.consumeLastErrorMessage() ?? message
+                lastPlaylistError = upNextQueue.consumeLastErrorMessage() ?? message
                 return false
             }
 
-            guard let episode = episodeSnapshot(for: item.episodeID) else {
+            guard item.sourcePlaylistID == playlistID,
+                  let episode = episodeSnapshot(for: item.episodeID)
+            else {
                 continue
             }
+            hadCandidate = true
 
             do {
                 try playEpisode(
@@ -829,13 +821,6 @@ final class OpenCastAppModel {
         sweepPlayedDownloadsIfEnabled(modelContext: modelContext)
     }
 
-    func performUpNextQueueMutation(_ mutation: () -> Bool) {
-        guard !mutation() else {
-            return
-        }
-        lastUpNextError = upNextQueue.consumeLastErrorMessage()
-    }
-
     /// Generic so `create` and `add` still hand back their summary and count.
     /// A successful mutation clears the store's message, so consuming after
     /// every call is safe.
@@ -883,15 +868,13 @@ final class OpenCastAppModel {
         return true
     }
 
-    /// Copies the playlist's first `smartPlaylistQueueLimit` unplayed
-    /// episodes into Up Next; the playlist itself is never consumed.
-    /// `replace` starts the first episode before touching the queue, so a
-    /// failed start leaves the listener's queue as it was. `addAfter` skips
-    /// the episode already playing.
+    /// Starts the playlist's first unplayed episode and keeps the rest of
+    /// its first `smartPlaylistQueueLimit` as what plays after it; the
+    /// playlist itself is never consumed. The start comes first, so a failed
+    /// start leaves the previous playlist's remainder as it was.
     @discardableResult
     func playPlaylist(
         _ playlistID: String,
-        mode: PlaylistPlayMode = .replace,
         presentsNowPlaying: Bool = true,
         modelContext: ModelContext
     ) -> Bool {
@@ -901,44 +884,18 @@ final class OpenCastAppModel {
             return false
         }
 
-        switch mode {
-        case .replace:
-            do {
-                try playEpisode(
-                    first,
-                    presentsNowPlaying: presentsNowPlaying,
-                    sourcePlaylistID: playlistID,
-                    modelContext: modelContext
-                )
-            } catch {
-                lastPlaybackError = error.localizedDescription
-                return false
-            }
-            guard upNextQueue.clear(modelContext: modelContext),
-                  upNextQueue.enqueueLast(Array(episodes.dropFirst()), source: playlistID, modelContext: modelContext)
-            else {
-                lastUpNextError = upNextQueue.consumeLastErrorMessage()
-                return false
-            }
-            return true
-        case .addAfter:
-            // The playing episode never joins the queue behind itself: it
-            // would replay from the start once the queue reached it, the
-            // same reason Play Next / Play Last are disabled for it.
-            let remainder = episodes.filter { !isCurrentEpisode($0) }
-            guard upNextQueue.enqueueLast(remainder, source: playlistID, modelContext: modelContext) else {
-                lastUpNextError = upNextQueue.consumeLastErrorMessage()
-                return false
-            }
-            guard playback.currentEpisode == nil else {
-                return true
-            }
-            return advanceToNextQueuedEpisode(modelContext: modelContext)
+        return playPlaylistEpisodes(
+            first,
+            in: playlistID,
+            presentsNowPlaying: presentsNowPlaying,
+            modelContext: modelContext
+        ) {
+            Array(episodes.dropFirst())
         }
     }
 
     /// "Play from here" by episode: tapping a row means playing that
-    /// playlist, so Up Next is replaced by the playlist's evaluation in rule
+    /// playlist, so what plays next is the playlist's evaluation in rule
     /// order after the tapped episode, which with those queued after it stays
     /// within `smartPlaylistQueueLimit`. The tapped episode must still be
     /// listed.
@@ -973,8 +930,8 @@ final class OpenCastAppModel {
         }
     }
 
-    /// Starts `tapped`, then replaces Up Next with the episodes `following`
-    /// returns, both tagged with the playlist. `following` runs after the
+    /// Starts `tapped`, then replaces the queued remainder with the episodes
+    /// `following` returns, both tagged with the playlist. `following` runs after the
     /// start, so played state reflects the previous episode's final flush. A
     /// failed start leaves the queue untouched.
     private func playPlaylistEpisodes(
@@ -999,45 +956,19 @@ final class OpenCastAppModel {
         guard upNextQueue.clear(modelContext: modelContext),
               upNextQueue.enqueueLast(following(), source: playlistID, modelContext: modelContext)
         else {
-            lastUpNextError = upNextQueue.consumeLastErrorMessage()
+            lastPlaylistError = upNextQueue.consumeLastErrorMessage()
             return false
         }
         return true
     }
 
-    /// Play Next / Play Last for a whole playlist (a smart playlist's first
-    /// `smartPlaylistQueueLimit` candidates); never starts playback.
-    @discardableResult
-    func enqueuePlaylist(
-        _ playlistID: String,
-        position: UpNextQueuePosition,
-        modelContext: ModelContext
-    ) -> Bool {
-        let candidates = playlistPlaybackCandidates(playlistID, smartLimit: Self.smartPlaylistQueueLimit)
-        guard !candidates.isEmpty else {
-            lastPlaylistError = Self.nothingToPlayMessage
-            return false
+    /// What plays after the current episode: the rest of the playlist it was
+    /// started from. Items an older build queued from elsewhere are left out.
+    var currentPlaylistRemainder: [UpNextQueueItem] {
+        guard let currentPlaylistSourceID else {
+            return []
         }
-        // The playing episode never joins the queue behind itself, as in
-        // `.addAfter`. When it was the only candidate there is nothing left
-        // to queue, which is a no-op rather than an error: it is neither
-        // played nor unavailable.
-        let episodes = candidates.filter { !isCurrentEpisode($0) }
-        guard !episodes.isEmpty else {
-            return true
-        }
-
-        let didEnqueue = switch position {
-        case .next:
-            upNextQueue.enqueueNext(episodes, source: playlistID, modelContext: modelContext)
-        case .last:
-            upNextQueue.enqueueLast(episodes, source: playlistID, modelContext: modelContext)
-        }
-        guard didEnqueue else {
-            lastUpNextError = upNextQueue.consumeLastErrorMessage()
-            return false
-        }
-        return true
+        return upNextQueue.items.filter { $0.sourcePlaylistID == currentPlaylistSourceID }
     }
 
     func remainingQueuedCount(forPlaylist playlistID: String) -> Int {
@@ -1194,10 +1125,9 @@ final class OpenCastAppModel {
         }
     }
 
-    /// The most episodes one Play, Play Next, Play Last or play-from-here
-    /// takes from a playlist (the largest Limit preset): a No Limit
-    /// rule can list the whole library, and every Up Next edit refetches
-    /// every queued row. The list itself and Download All stay uncapped.
+    /// The most episodes one Play or play-from-here takes from a playlist
+    /// (the largest Limit preset): a No Limit rule can list the whole
+    /// library, and every remainder edit refetches every queued row. The list itself and Download All stay uncapped.
     static let smartPlaylistQueueLimit = 100
 
     private static let nothingToPlayMessage = "Nothing to play. Every episode in this playlist is played or unavailable."
@@ -2341,7 +2271,6 @@ final class OpenCastAppModel {
         playback.unload()
         coreStoresHydrated = false
         lastPlaybackError = nil
-        lastUpNextError = nil
         lastPlaylistError = nil
         lastUnsubscribeErrorMessage = nil
         playbackRestorePreference.resetAfterDataNuke()
@@ -2415,6 +2344,7 @@ final class OpenCastAppModel {
         modelContext: ModelContext
     ) throws {
         let episode = try resolvedPlaybackEpisode(for: snapshot, source: source, modelContext: modelContext)
+        let isReloadingCurrentEpisode = playback.currentEpisode?.id.rawValue == snapshot.episodeID
         flushPlaybackProgress(modelContext: modelContext)
         nowPlayingProbeMark("play-validated")
         applyVoiceBoostSetting(for: episode, modelContext: modelContext)
@@ -2430,10 +2360,16 @@ final class OpenCastAppModel {
         )
         finishedPlaybackPresentation = nil
         // Assigned only once the load succeeds: the flush above remembered
-        // the previous episode's pair, and a failed start keeps it.
-        currentPlaylistSourceID = sourcePlaylistID
-            ?? upNextQueue.items.first { $0.episodeID == snapshot.episodeID }?.sourcePlaylistID
-        _ = upNextQueue.remove(episodeID: snapshot.episodeID, modelContext: modelContext)
+        // the previous episode's pair, and a failed start keeps it. Reloading
+        // the loaded episode (a transcript tap) keeps its playlist; any other
+        // start outside a playlist ends that playlist, so nothing follows it.
+        if let sourcePlaylistID {
+            currentPlaylistSourceID = sourcePlaylistID
+            _ = upNextQueue.remove(episodeID: snapshot.episodeID, modelContext: modelContext)
+        } else if !isReloadingCurrentEpisode {
+            currentPlaylistSourceID = nil
+            _ = upNextQueue.clear(modelContext: modelContext)
+        }
         downloadCleanup.deferPlayedSweep(modelContext: modelContext)
         refreshPlaybackSkipZonesForCurrentEpisode()
         nowPlayingProbeMark("play-loaded")

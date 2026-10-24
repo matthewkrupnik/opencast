@@ -24,7 +24,7 @@ struct EpisodeHeroHeaderView: View {
             .accessibilityHint("Opens a zoomable artwork view")
             .accessibilityIdentifier("Episode Artwork")
 
-            VStack(spacing: 6) {
+            VStack(spacing: 0) {
                 Text(episode.title)
                     .font(.title2.bold())
                     .multilineTextAlignment(.center)

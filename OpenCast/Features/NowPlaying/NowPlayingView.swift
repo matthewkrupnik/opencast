@@ -90,15 +90,9 @@ struct NowPlayingView: View {
                         }
                         .layoutPriority(0)
 
-                        ZStack(alignment: .top) {
-                            NowPlayingProgressSection()
-                                .padding(.top, accessibilityReduceMotion ? 30 : 0)
-
-                            NowPlayingAutoSkipFeedbackView()
-                                .id(episode.id)
-                        }
-                        .padding(.top, 4)
-                        .layoutPriority(2)
+                        NowPlayingProgressSection()
+                            .padding(.top, 4)
+                            .layoutPriority(2)
 
                         if case .failed(let message) = appModel.playback.state {
                             VStack(spacing: 8) {
@@ -135,8 +129,7 @@ struct NowPlayingView: View {
                         NowPlayingUtilityControls(
                             rate: appModel.playback.rate,
                             onShowSpeed: { utilitySheet = .speed },
-                            onShowSleepTimer: { utilitySheet = .sleep },
-                            onShowUpNext: { utilitySheet = .upNext }
+                            onShowSleepTimer: { utilitySheet = .sleep }
                         )
                         .padding(.top, utilityTopPadding)
                         .layoutPriority(1)
@@ -204,6 +197,33 @@ struct NowPlayingView: View {
                     .animation(.easeOut(duration: 0.15), value: isSoundLabInteractionActive)
                 }
             }
+            .overlay(alignment: .topLeading) {
+                if appModel.playback.currentEpisode != nil {
+                    Button(action: onDismiss) {
+                        Label("Close", systemImage: "chevron.down")
+                            .labelStyle(.iconOnly)
+                            .font(.title3)
+                            .frame(width: 44, height: 44)
+                            .contentShape(.circle)
+                    }
+                    .buttonStyle(.plain)
+                    .glassEffect(.regular.interactive(), in: .circle)
+                    .padding(.top, moreMenuTopPadding)
+                    .padding(.leading, 20)
+                    .opacity(isSoundLabInteractionActive ? 0 : 1)
+                    .allowsHitTesting(!isSoundLabInteractionActive)
+                    .animation(.easeOut(duration: 0.15), value: isSoundLabInteractionActive)
+                    .accessibilityIdentifier("Close Now Playing")
+                }
+            }
+            .overlay(alignment: .top) {
+                // Sits between Close and More so it never covers the titles.
+                if let episodeID = appModel.playback.currentEpisode?.id {
+                    NowPlayingAutoSkipFeedbackView()
+                        .id(episodeID)
+                        .padding(.top, moreMenuTopPadding + 8)
+                }
+            }
             .overlay(alignment: .top) {
                 if let transcriptionRequest {
                     NowPlayingTranscriptionToast(
@@ -248,12 +268,6 @@ struct NowPlayingView: View {
                         .presentationDragIndicator(.visible)
                 case .sleep:
                     SleepTimerView()
-                        .environment(appModel)
-                        .modelContext(modelContext)
-                        .presentationDetents([.medium, .large])
-                        .presentationDragIndicator(.visible)
-                case .upNext:
-                    UpNextQueueView()
                         .environment(appModel)
                         .modelContext(modelContext)
                         .presentationDetents([.medium, .large])

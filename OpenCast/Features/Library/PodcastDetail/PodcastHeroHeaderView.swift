@@ -45,7 +45,6 @@ struct PodcastHeroHeaderView: View {
             .accessibilityElement(children: .combine)
 
             PodcastHeaderMetadataView(
-                subscription: subscription,
                 episodeCount: episodeCount,
                 unplayedCount: unplayedCount,
                 lastRefreshedAt: lastRefreshedAt,

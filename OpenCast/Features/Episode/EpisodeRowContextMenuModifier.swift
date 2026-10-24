@@ -14,7 +14,6 @@ struct EpisodeRowContextMenuModifier: ViewModifier {
 
         content
             .contextMenu {
-            let isCurrentlyPlaying = appModel.playback.currentEpisode?.id.rawValue == episode.episodeID
             Section {
                 EpisodeShareMenu(episode: episode)
             }
@@ -24,18 +23,6 @@ struct EpisodeRowContextMenuModifier: ViewModifier {
                     Label("Go to Show", systemImage: "rectangle.stack")
                 }
             }
-            Button(
-                "Play Next",
-                systemImage: "text.line.first.and.arrowtriangle.forward",
-                action: enqueueNext
-            )
-            .disabled(isCurrentlyPlaying)
-            Button(
-                "Play Last",
-                systemImage: "text.line.last.and.arrowtriangle.forward",
-                action: enqueueLast
-            )
-            .disabled(isCurrentlyPlaying)
             Button(
                 isPlayed ? "Mark Unplayed" : "Mark Played",
                 systemImage: isPlayed ? "arrow.uturn.backward.circle" : "checkmark.circle",
@@ -76,18 +63,6 @@ struct EpisodeRowContextMenuModifier: ViewModifier {
 
     private func togglePlayed() {
         appModel.toggleEpisodePlayed(episode, modelContext: modelContext)
-    }
-
-    private func enqueueNext() {
-        appModel.performUpNextQueueMutation {
-            appModel.upNextQueue.enqueueNext(episode, modelContext: modelContext)
-        }
-    }
-
-    private func enqueueLast() {
-        appModel.performUpNextQueueMutation {
-            appModel.upNextQueue.enqueueLast(episode, modelContext: modelContext)
-        }
     }
 
     private func detectAds() {

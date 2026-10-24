@@ -10,6 +10,7 @@ struct EpisodeActionBar: View {
     @ScaledMetric(relativeTo: .body) private var sideIconSize: CGFloat = 26
     @ScaledMetric(relativeTo: .body) private var playIconSize: CGFloat = 32
     @ScaledMetric(relativeTo: .body) private var completionBadgeSize: CGFloat = 20
+    @ScaledMetric(relativeTo: .caption) private var captionSpace: CGFloat = 22
     @State private var playFeedback = 0
     private let playIconOpticalOffset: CGFloat = 3
 
@@ -38,11 +39,14 @@ struct EpisodeActionBar: View {
                     onCancel: onCancelDownload,
                     onDelete: onDeleteDownload
                 )
+                .overlay(alignment: .bottom) { caption(downloadCaption) }
 
                 playButton
 
                 makeAdFreeButton
+                    .overlay(alignment: .bottom) { caption("Make Ad-Free") }
             }
+            .padding(.bottom, captionSpace)
         }
         .overlay(alignment: .topTrailing) {
             if detectAdsState == .detected {
@@ -112,6 +116,31 @@ struct EpisodeActionBar: View {
         .disabled(!detectAdsState.isEnabled)
         .accessibilityLabel("Make Ad-Free")
         .accessibilityValue(makeAdFreeAccessibilityValue)
+    }
+
+    /// Sits just below its circle; the bar's bottom padding reserves the
+    /// room. Hidden from VoiceOver because each button already says it.
+    private func caption(_ text: String) -> some View {
+        Text(text)
+            .font(.caption2)
+            .foregroundStyle(.secondary)
+            .fixedSize()
+            .alignmentGuide(.bottom) { $0[.top] - 6 }
+            .allowsHitTesting(false)
+            .accessibilityHidden(true)
+    }
+
+    private var downloadCaption: String {
+        switch downloadRecord?.state {
+        case .downloading:
+            "Downloading"
+        case .completed:
+            "Downloaded"
+        case .paused:
+            "Resume"
+        case .failed, .missing, nil:
+            "Download"
+        }
     }
 
     private var makeAdFreeAccessibilityValue: String {

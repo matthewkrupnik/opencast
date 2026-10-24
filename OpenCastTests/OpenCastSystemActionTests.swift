@@ -6,12 +6,10 @@ import Testing
 @MainActor
 @Suite("System actions")
 struct OpenCastSystemActionTests {
-    @Test func coldLaunchHydratesOnceAndPreservesQueueOrder() async throws {
+    @Test func coldLaunchHydratesOnce() async throws {
         let fixture = try await OpenCastSystemActionFixture.make()
-        try await fixture.model.systemActions.perform(.enqueue("episode-1"), modelContext: fixture.context)
-        try await fixture.model.systemActions.perform(.enqueue("episode-2"), modelContext: fixture.context)
-        try await fixture.model.systemActions.perform(.enqueue("episode-1"), modelContext: fixture.context)
-        #expect(fixture.model.upNextQueue.items.map(\.episodeID) == ["episode-1", "episode-2"])
+        try await fixture.model.systemActions.perform(.search("first"), modelContext: fixture.context)
+        try await fixture.model.systemActions.perform(.search("second"), modelContext: fixture.context)
         #expect(fixture.model.playbackSurfaceRestorationCount == 1)
         #expect(fixture.model.playback.currentEpisode == nil)
     }
@@ -79,17 +77,8 @@ struct OpenCastSystemActionTests {
         #expect(catalog.shows.isEmpty)
         #expect(catalog.episodes.isEmpty)
         await #expect(throws: OpenCastSystemActionError.self) {
-            try await fixture.model.systemActions.perform(.enqueue("episode-1"), modelContext: fixture.context)
+            try await fixture.model.systemActions.perform(.playEpisode("episode-1"), modelContext: fixture.context)
         }
-    }
-
-    @Test func queueSaveFailureIsAnIntentFailure() async throws {
-        let queue = UpNextQueueStore { _ in throw CocoaError(.fileWriteOutOfSpace) }
-        let fixture = try await OpenCastSystemActionFixture.make(queue: queue)
-        await #expect(throws: OpenCastSystemActionError.self) {
-            try await fixture.model.systemActions.perform(.enqueue("episode-1"), modelContext: fixture.context)
-        }
-        #expect(fixture.model.upNextQueue.items.isEmpty)
     }
 
     @Test func queryRejectsUnboundedIdentifierRequests() async {
@@ -121,7 +110,6 @@ struct OpenCastSystemActionTests {
     @Test func playPlaylistReplacesQueueAndStartsSilently() async throws {
         let fixture = try await OpenCastSystemActionFixture.make(episodeCount: 4)
         let playlists = try await fixture.seedPlaylists()
-        try await fixture.model.systemActions.perform(.enqueue("episode-3"), modelContext: fixture.context)
         try await fixture.model.systemActions.perform(.playPlaylist(playlists.commuteID), modelContext: fixture.context)
         defer { fixture.model.playback.pause() }
         #expect(fixture.model.playback.currentEpisode?.id.rawValue == "episode-1")

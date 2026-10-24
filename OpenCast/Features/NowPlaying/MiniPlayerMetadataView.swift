@@ -19,10 +19,10 @@ struct MiniPlayerMetadataView: View {
             } else {
                 VStack(alignment: .leading, spacing: 1) {
                     Text(title)
-                        .font(.subheadline)
+                        .font(.body)
                         .foregroundStyle(.primary)
                     secondaryLine
-                        .font(.caption)
+                        .font(.footnote)
                         .foregroundStyle(.secondary)
                 }
             }
@@ -34,11 +34,12 @@ struct MiniPlayerMetadataView: View {
 
     @ViewBuilder
     private var secondaryLine: some View {
-        if let playlistSource {
-            // The count keeps layout priority so a long playlist name
-            // truncates before "N left" does.
+        if playlistSource != nil {
+            // The show stays the subject; Now Playing names the playlist. The
+            // count keeps layout priority so a long show name truncates
+            // before "N left" does.
             HStack(alignment: .firstTextBaseline, spacing: 0) {
-                Text("\(Image(systemName: "music.note.list")) \(playlistSource.name)")
+                Text(podcastTitle)
                 if playlistRemainingCount >= 1 {
                     Text(PlaylistPlaybackSourceText.miniPlayerRemainingSegment(remainingCount: playlistRemainingCount))
                         .layoutPriority(1)

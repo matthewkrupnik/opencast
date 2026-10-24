@@ -4,21 +4,13 @@ import Testing
 @testable import OpenCast
 
 @MainActor
-@Suite("Up Next queue store")
+@Suite("Playlist remainder store")
 struct UpNextQueueStoreTests {
-    @Test("Play Next fronts the queue and Play Last preserves FIFO order")
-    func frontAndBackOrdering() throws {
-        let fixture = try makeFixture()
-        let first = episode("first")
-        let second = episode("second")
-        let next = episode("next")
+    @Test("Enqueued episodes pop in FIFO order")
+    func fifoOrdering() throws {
+        let fixture = try loadedFixture(ids: ["first", "second"])
 
-        #expect(fixture.store.enqueueLast(first, modelContext: fixture.context))
-        #expect(fixture.store.enqueueLast(second, modelContext: fixture.context))
-        #expect(fixture.store.enqueueNext(next, modelContext: fixture.context))
-
-        #expect(fixture.store.items.map(\.episodeID) == ["next", "first", "second"])
-        #expect(popEpisodeID(from: fixture.store, modelContext: fixture.context) == "next")
+        #expect(fixture.store.items.map(\.episodeID) == ["first", "second"])
         #expect(popEpisodeID(from: fixture.store, modelContext: fixture.context) == "first")
         #expect(popEpisodeID(from: fixture.store, modelContext: fixture.context) == "second")
         #expect(popEpisodeID(from: fixture.store, modelContext: fixture.context) == nil)
@@ -26,46 +18,17 @@ struct UpNextQueueStoreTests {
 
     @Test("Re-enqueueing moves an item instead of duplicating it")
     func dedupeMoves() throws {
-        let fixture = try makeFixture()
-        #expect(fixture.store.enqueueLast(episode("first"), modelContext: fixture.context))
-        #expect(fixture.store.enqueueLast(episode("second"), modelContext: fixture.context))
+        let fixture = try loadedFixture(ids: ["first", "second"])
 
-        #expect(fixture.store.enqueueNext(episode("second"), modelContext: fixture.context))
+        #expect(enqueue("first", into: fixture))
 
         #expect(fixture.store.items.map(\.episodeID) == ["second", "first"])
         #expect(try fixture.context.fetch(FetchDescriptor<UpNextQueueItemRecord>()).count == 2)
     }
 
-    @Test("Reordering is persisted across a fresh store load")
-    func reorderPersists() throws {
-        let fixture = try makeFixture()
-        for id in ["first", "second", "third"] {
-            #expect(fixture.store.enqueueLast(episode(id), modelContext: fixture.context))
-        }
-        #expect(
-            fixture.store.reorderVisibleEpisodeIDs(
-                ["second", "third", "first"],
-                modelContext: fixture.context
-            )
-        )
-        let reloaded = UpNextQueueStore()
-        let freshContext = ModelContext(fixture.container)
-
-        reloaded.load(
-            resolveEpisode: { self.episode($0) },
-            mayPruneUnresolved: true,
-            modelContext: freshContext
-        )
-
-        #expect(reloaded.items.map(\.episodeID) == ["second", "third", "first"])
-        #expect(reloaded.items.map(\.sequence) == [0, 1, 2])
-    }
-
     @Test("Popping the head deletes its persisted record")
     func popDeletesRecord() throws {
-        let fixture = try makeFixture()
-        #expect(fixture.store.enqueueLast(episode("first"), modelContext: fixture.context))
-        #expect(fixture.store.enqueueLast(episode("second"), modelContext: fixture.context))
+        let fixture = try loadedFixture(ids: ["first", "second"])
 
         #expect(popEpisodeID(from: fixture.store, modelContext: fixture.context) == "first")
 
@@ -75,9 +38,7 @@ struct UpNextQueueStoreTests {
 
     @Test("Clear removes every queue item")
     func clear() throws {
-        let fixture = try makeFixture()
-        #expect(fixture.store.enqueueLast(episode("first"), modelContext: fixture.context))
-        #expect(fixture.store.enqueueLast(episode("second"), modelContext: fixture.context))
+        let fixture = try loadedFixture(ids: ["first", "second"])
 
         #expect(fixture.store.clear(modelContext: fixture.context))
 
@@ -90,13 +51,8 @@ struct UpNextQueueStoreTests {
         let fixture = try makeFixture()
         #expect(
             fixture.store.enqueueLast(
-                episode("removed", podcastID: "removed-show"),
-                modelContext: fixture.context
-            )
-        )
-        #expect(
-            fixture.store.enqueueLast(
-                episode("kept", podcastID: "kept-show"),
+                [episode("removed", podcastID: "removed-show"), episode("kept", podcastID: "kept-show")],
+                source: "playlist-a",
                 modelContext: fixture.context
             )
         )
@@ -224,62 +180,8 @@ struct UpNextQueueStoreTests {
         )
 
         #expect(store.items.map(\.episodeID) == ["missing", "kept"])
-        #expect(store.lastErrorMessage?.contains("Unable to load Up Next") == true)
+        #expect(store.lastErrorMessage?.contains("Unable to load the rest of the playlist") == true)
         try expectPersistedOrder(["missing", "kept"], container: container)
-    }
-
-    @Test("Visible reorder leaves an unresolved head in its fixed slot")
-    func reorderWithUnresolvedHead() throws {
-        let fixture = try loadedFixture(ids: ["unresolved", "b", "c"])
-
-        #expect(
-            fixture.store.reorderVisibleEpisodeIDs(
-                ["c", "b"],
-                modelContext: fixture.context
-            )
-        )
-
-        #expect(fixture.store.items.map(\.episodeID) == ["unresolved", "c", "b"])
-        try expectPersistedOrder(
-            ["unresolved", "c", "b"],
-            container: fixture.container
-        )
-    }
-
-    @Test("Visible reorder leaves an unresolved middle slot fixed")
-    func reorderWithUnresolvedMiddle() throws {
-        let fixture = try loadedFixture(ids: ["b", "unresolved", "c"])
-
-        #expect(
-            fixture.store.reorderVisibleEpisodeIDs(
-                ["c", "b"],
-                modelContext: fixture.context
-            )
-        )
-
-        #expect(fixture.store.items.map(\.episodeID) == ["c", "unresolved", "b"])
-        try expectPersistedOrder(
-            ["c", "unresolved", "b"],
-            container: fixture.container
-        )
-    }
-
-    @Test("Visible multi-row reorder persists through a fresh context")
-    func multiRowVisibleReorder() throws {
-        let fixture = try loadedFixture(ids: ["a", "unresolved", "b", "c", "d"])
-
-        #expect(
-            fixture.store.reorderVisibleEpisodeIDs(
-                ["c", "d", "a", "b"],
-                modelContext: fixture.context
-            )
-        )
-
-        #expect(fixture.store.items.map(\.episodeID) == ["c", "unresolved", "d", "a", "b"])
-        try expectPersistedOrder(
-            ["c", "unresolved", "d", "a", "b"],
-            container: fixture.container
-        )
     }
 
     @Test("Bulk removal rolls back all selected episodes after one save failure")
@@ -306,21 +208,23 @@ struct UpNextQueueStoreTests {
         #expect(!store.remove(episodeIDs: ["first", "third"], modelContext: context))
         #expect(store.items.map(\.episodeID) == ["first", "second", "third"])
         try expectPersistedOrder(["first", "second", "third"], container: container)
-        #expect(store.lastErrorMessage?.contains("Unable to remove episodes from Up Next") == true)
+        #expect(store.lastErrorMessage?.contains("Unable to update the rest of the playlist") == true)
     }
 
     @Test("No-op clear and podcast removal preserve an unconsumed error and skip notifications")
     func noOpMutationsStayHonest() throws {
-        let fixture = try makeFixture()
+        let context = ModelContext(try OpenCastModelContainerFactory.make(inMemory: true))
+        let store = UpNextQueueStore { _ in throw QueueSaveFailure() }
         var changeCount = 0
-        fixture.store.onQueueChanged = { changeCount += 1 }
-        #expect(!fixture.store.reorderVisibleEpisodeIDs(["missing"], modelContext: fixture.context))
-        let error = fixture.store.lastErrorMessage
+        store.onQueueChanged = { changeCount += 1 }
+        #expect(!store.enqueueLast([episode("failed")], source: "playlist-a", modelContext: context))
+        let error = store.lastErrorMessage
+        #expect(error != nil)
 
-        #expect(fixture.store.clear(modelContext: fixture.context))
-        #expect(fixture.store.removeAll(forPodcastID: "missing", modelContext: fixture.context))
+        #expect(store.clear(modelContext: context))
+        #expect(store.removeAll(forPodcastID: "missing", modelContext: context))
 
-        #expect(fixture.store.lastErrorMessage == error)
+        #expect(store.lastErrorMessage == error)
         #expect(changeCount == 0)
     }
 
@@ -334,11 +238,11 @@ struct UpNextQueueStoreTests {
                 modelContext: fixture.context
             )
         )
-        #expect(fixture.store.enqueueLast(episode("hand"), modelContext: fixture.context))
-        #expect(fixture.store.enqueueNext(episode("front"), source: "playlist-b", modelContext: fixture.context))
+        #expect(fixture.store.enqueueLast([episode("hand")], source: nil, modelContext: fixture.context))
+        #expect(enqueue("last", source: "playlist-b", into: fixture))
 
-        let expected: [String?] = ["playlist-b", "playlist-a", "playlist-a", nil]
-        #expect(fixture.store.items.map(\.episodeID) == ["front", "first", "second", "hand"])
+        let expected: [String?] = ["playlist-a", "playlist-a", nil, "playlist-b"]
+        #expect(fixture.store.items.map(\.episodeID) == ["first", "second", "hand", "last"])
         #expect(fixture.store.items.map(\.sourcePlaylistID) == expected)
 
         let reloaded = UpNextQueueStore()
@@ -347,47 +251,38 @@ struct UpNextQueueStoreTests {
             mayPruneUnresolved: true,
             modelContext: ModelContext(fixture.container)
         )
-        #expect(reloaded.items.map(\.episodeID) == ["front", "first", "second", "hand"])
+        #expect(reloaded.items.map(\.episodeID) == ["first", "second", "hand", "last"])
         #expect(reloaded.items.map(\.sourcePlaylistID) == expected)
     }
 
     @Test("Re-enqueueing a queued episode moves it and takes the new source value")
     func reEnqueueTakesNewSource() throws {
         let fixture = try makeFixture()
-        #expect(fixture.store.enqueueLast(episode("first"), source: "playlist-a", modelContext: fixture.context))
-        #expect(fixture.store.enqueueLast(episode("second"), modelContext: fixture.context))
+        #expect(enqueue("first", source: "playlist-a", into: fixture))
+        #expect(enqueue("second", source: "playlist-a", into: fixture))
 
-        #expect(fixture.store.enqueueLast(episode("first"), modelContext: fixture.context))
-        #expect(fixture.store.enqueueNext(episode("second"), source: "playlist-b", modelContext: fixture.context))
+        #expect(enqueue("first", source: "playlist-b", into: fixture))
 
         #expect(fixture.store.items.map(\.episodeID) == ["second", "first"])
-        #expect(fixture.store.items.map(\.sourcePlaylistID) == ["playlist-b", nil])
+        #expect(fixture.store.items.map(\.sourcePlaylistID) == ["playlist-a", "playlist-b"])
         let records = try ModelContext(fixture.container).fetch(
             FetchDescriptor<UpNextQueueItemRecord>(sortBy: [SortDescriptor(\.sequence)])
         )
         #expect(records.map(\.episodeID) == ["second", "first"])
-        #expect(records.map(\.sourcePlaylistID) == ["playlist-b", nil])
+        #expect(records.map(\.sourcePlaylistID) == ["playlist-a", "playlist-b"])
     }
 
-    @Test("Reorder, remove, and pop keep each item's playlist tag")
-    func reorderRemoveAndPopPreserveTags() throws {
+    @Test("Remove and pop keep each item's playlist tag")
+    func removeAndPopPreserveTags() throws {
         let fixture = try makeFixture()
+        #expect(fixture.store.enqueueLast([episode("hand")], source: nil, modelContext: fixture.context))
         #expect(
             fixture.store.enqueueLast(
-                [episode("a"), episode("b"), episode("c")],
+                [episode("c"), episode("b"), episode("a")],
                 source: "playlist-a",
                 modelContext: fixture.context
             )
         )
-        #expect(fixture.store.enqueueLast(episode("hand"), modelContext: fixture.context))
-
-        #expect(
-            fixture.store.reorderVisibleEpisodeIDs(
-                ["hand", "c", "b", "a"],
-                modelContext: fixture.context
-            )
-        )
-        #expect(fixture.store.items.map(\.sourcePlaylistID) == [nil, "playlist-a", "playlist-a", "playlist-a"])
         #expect(
             reloadedItems(container: fixture.container).map(\.sourcePlaylistID)
                 == [nil, "playlist-a", "playlist-a", "playlist-a"]
@@ -399,7 +294,7 @@ struct UpNextQueueStoreTests {
 
         #expect(
             fixture.store.enqueueLast(
-                episode("other", podcastID: "other-show"),
+                [episode("other", podcastID: "other-show")],
                 source: "playlist-b",
                 modelContext: fixture.context
             )
@@ -431,59 +326,6 @@ struct UpNextQueueStoreTests {
         #expect(reloaded.map(\.sourcePlaylistID) == ["playlist-a"])
     }
 
-    @Test("Batch Play Next puts the whole array at the front in array order with one save and one notification")
-    func batchEnqueueNextKeepsArrayOrderAtFront() throws {
-        let container = try OpenCastModelContainerFactory.make(inMemory: true)
-        let context = ModelContext(container)
-        var saveCount = 0
-        let store = UpNextQueueStore { saveContext in
-            saveCount += 1
-            try saveContext.save()
-        }
-        #expect(store.enqueueLast(episode("hand-1"), modelContext: context))
-        #expect(store.enqueueLast(episode("hand-2"), modelContext: context))
-        var changeCount = 0
-        store.onQueueChanged = { changeCount += 1 }
-        saveCount = 0
-
-        #expect(
-            store.enqueueNext(
-                [episode("a"), episode("b"), episode("c")],
-                source: "playlist-a",
-                modelContext: context
-            )
-        )
-
-        #expect(store.items.map(\.episodeID) == ["a", "b", "c", "hand-1", "hand-2"])
-        #expect(store.items.map(\.sourcePlaylistID) == ["playlist-a", "playlist-a", "playlist-a", nil, nil])
-        #expect(isStrictlyIncreasing(store.items.map(\.sequence)))
-        #expect(saveCount == 1)
-        #expect(changeCount == 1)
-        #expect(store.lastErrorMessage == nil)
-        #expect(reloadedItems(container: container).map(\.episodeID) == ["a", "b", "c", "hand-1", "hand-2"])
-        #expect(popEpisodeID(from: store, modelContext: context) == "a")
-    }
-
-    @Test("Batch Play Next moves already-queued episodes into the batch and keeps a repeat's first occurrence")
-    func batchEnqueueNextDedupesAndMoves() throws {
-        let fixture = try loadedFixture(ids: ["x", "a", "y"])
-
-        #expect(
-            fixture.store.enqueueNext(
-                [episode("b"), episode("a"), episode("b")],
-                source: "playlist-a",
-                modelContext: fixture.context
-            )
-        )
-
-        #expect(fixture.store.items.map(\.episodeID) == ["b", "a", "x", "y"])
-        #expect(fixture.store.items.map(\.sourcePlaylistID) == ["playlist-a", "playlist-a", nil, nil])
-        #expect(isStrictlyIncreasing(fixture.store.items.map(\.sequence)))
-        let records = try ModelContext(fixture.container).fetch(FetchDescriptor<UpNextQueueItemRecord>())
-        #expect(records.count == 4)
-        #expect(reloadedItems(container: fixture.container).map(\.episodeID) == ["b", "a", "x", "y"])
-    }
-
     @Test("Batch Play Last appends the whole array in order behind the queue with one save")
     func batchEnqueueLastAppendsInOrder() throws {
         let container = try OpenCastModelContainerFactory.make(inMemory: true)
@@ -493,8 +335,7 @@ struct UpNextQueueStoreTests {
             saveCount += 1
             try saveContext.save()
         }
-        #expect(store.enqueueLast(episode("x"), modelContext: context))
-        #expect(store.enqueueLast(episode("y"), modelContext: context))
+        #expect(store.enqueueLast([episode("x"), episode("y")], source: nil, modelContext: context))
         var changeCount = 0
         store.onQueueChanged = { changeCount += 1 }
         saveCount = 0
@@ -528,15 +369,14 @@ struct UpNextQueueStoreTests {
             }
             try saveContext.save()
         }
-        #expect(store.enqueueLast(episode("x"), modelContext: context))
-        #expect(store.enqueueLast(episode("y"), modelContext: context))
+        #expect(store.enqueueLast([episode("x"), episode("y")], source: nil, modelContext: context))
         let itemsBefore = store.items
         var changeCount = 0
         store.onQueueChanged = { changeCount += 1 }
         failsSaves = true
 
         #expect(
-            !store.enqueueNext(
+            !store.enqueueLast(
                 [episode("a"), episode("y"), episode("b")],
                 source: "playlist-a",
                 modelContext: context
@@ -545,7 +385,7 @@ struct UpNextQueueStoreTests {
 
         #expect(store.items == itemsBefore)
         #expect(changeCount == 0)
-        #expect(store.lastErrorMessage?.contains("Unable to add episodes to Up Next") == true)
+        #expect(store.lastErrorMessage?.contains("Unable to save the rest of the playlist") == true)
         #expect(store.lastErrorMessage?.contains("Simulated queue save failure") == true)
         try expectPersistedOrder(["x", "y"], container: container)
         let contextRecords = try context.fetch(FetchDescriptor<UpNextQueueItemRecord>())
@@ -568,19 +408,25 @@ struct UpNextQueueStoreTests {
         let container = try OpenCastModelContainerFactory.make(inMemory: true)
         let context = ModelContext(container)
         var saveCount = 0
+        var failsSaves = false
         let store = UpNextQueueStore { saveContext in
             saveCount += 1
+            if failsSaves {
+                throw QueueSaveFailure()
+            }
             try saveContext.save()
         }
-        #expect(store.enqueueLast(episode("x"), modelContext: context))
+        #expect(store.enqueueLast([episode("x")], source: nil, modelContext: context))
+        failsSaves = true
+        #expect(!store.enqueueLast([episode("failed")], source: nil, modelContext: context))
+        failsSaves = false
         var changeCount = 0
         store.onQueueChanged = { changeCount += 1 }
         saveCount = 0
-        #expect(!store.reorderVisibleEpisodeIDs(["missing"], modelContext: context))
         let error = store.lastErrorMessage
         #expect(error != nil)
 
-        #expect(store.enqueueNext([], source: "playlist-a", modelContext: context))
+        #expect(store.enqueueLast([], source: "playlist-a", modelContext: context))
         #expect(store.enqueueLast([], source: nil, modelContext: context))
 
         #expect(store.items.map(\.episodeID) == ["x"])
@@ -604,10 +450,16 @@ struct UpNextQueueStoreTests {
         container: ModelContainer
     ) {
         let fixture = try makeFixture()
-        for id in ids {
-            #expect(fixture.store.enqueueLast(episode(id), modelContext: fixture.context))
-        }
+        #expect(fixture.store.enqueueLast(ids.map { episode($0) }, source: nil, modelContext: fixture.context))
         return fixture
+    }
+
+    private func enqueue(
+        _ episodeID: String,
+        source: String? = nil,
+        into fixture: (store: UpNextQueueStore, context: ModelContext, container: ModelContainer)
+    ) -> Bool {
+        fixture.store.enqueueLast([episode(episodeID)], source: source, modelContext: fixture.context)
     }
 
     private func popEpisodeID(

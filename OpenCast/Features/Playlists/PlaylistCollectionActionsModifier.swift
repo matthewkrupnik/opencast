@@ -1,15 +1,12 @@
 import SwiftData
 import SwiftUI
 
-/// Play, Play Next, Play Last, Rename and Delete for a playlist row in the
-/// collection, as swipes and a context menu. Play asks whether to replace
-/// Up Next when it already holds episodes.
+/// Play, Rename and Delete for a playlist row in the collection, as swipes
+/// and a context menu.
 struct PlaylistCollectionActionsModifier: ViewModifier {
     @Environment(OpenCastAppModel.self) private var appModel
     @Environment(\.modelContext) private var modelContext
     @State private var isConfirmingDelete = false
-    @State private var isConfirmingReplace = false
-    @State private var replaceQueuedCount = 0
 
     let summary: PlaylistSummary
     let onRename: (PlaylistSummary) -> Void
@@ -17,7 +14,7 @@ struct PlaylistCollectionActionsModifier: ViewModifier {
     func body(content: Content) -> some View {
         content
             .swipeActions(edge: .leading) {
-                Button("Play", systemImage: "play.fill", action: requestPlay)
+                Button("Play", systemImage: "play.fill", action: play)
                     .tint(.accentColor)
             }
             // A destructive role would animate the row away before the
@@ -28,27 +25,12 @@ struct PlaylistCollectionActionsModifier: ViewModifier {
                 Button("Rename", systemImage: "pencil", action: rename)
             }
             .contextMenu {
-                Button("Play", systemImage: "play.fill", action: requestPlay)
-                Button(
-                    "Play Next",
-                    systemImage: "text.line.first.and.arrowtriangle.forward",
-                    action: enqueueNext
-                )
-                Button(
-                    "Play Last",
-                    systemImage: "text.line.last.and.arrowtriangle.forward",
-                    action: enqueueLast
-                )
+                Button("Play", systemImage: "play.fill", action: play)
                 Divider()
                 Button("Rename", systemImage: "pencil", action: rename)
                 Divider()
                 Button("Delete", systemImage: "trash", role: .destructive, action: confirmDelete)
             }
-            .playlistReplaceConfirmation(
-                isPresented: $isConfirmingReplace,
-                queuedCount: replaceQueuedCount,
-                onChoose: play(mode:)
-            )
             .confirmationDialog(
                 "Delete “\(summary.name)”?",
                 isPresented: $isConfirmingDelete,
@@ -61,28 +43,8 @@ struct PlaylistCollectionActionsModifier: ViewModifier {
             }
     }
 
-    // The queue is read here rather than in `body` so rows do not
-    // re-render on every Up Next change.
-    private func requestPlay() {
-        let queuedCount = appModel.upNextQueue.items.count
-        guard queuedCount > 0 else {
-            play(mode: .replace)
-            return
-        }
-        replaceQueuedCount = queuedCount
-        isConfirmingReplace = true
-    }
-
-    private func play(mode: PlaylistPlayMode) {
-        appModel.playPlaylist(summary.playlistID, mode: mode, modelContext: modelContext)
-    }
-
-    private func enqueueNext() {
-        appModel.enqueuePlaylist(summary.playlistID, position: .next, modelContext: modelContext)
-    }
-
-    private func enqueueLast() {
-        appModel.enqueuePlaylist(summary.playlistID, position: .last, modelContext: modelContext)
+    private func play() {
+        appModel.playPlaylist(summary.playlistID, modelContext: modelContext)
     }
 
     private func rename() {

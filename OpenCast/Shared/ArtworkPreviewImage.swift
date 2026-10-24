@@ -2,10 +2,11 @@ import SwiftUI
 
 struct ArtworkPreviewImage: View {
     let preview: ArtworkPreview
+    var contentMode: ContentMode = .fill
 
     var body: some View {
         Canvas { context, size in
-            let fittedRect = aspectFitRect(in: size)
+            let fittedRect = scaledRect(in: size)
             let cellWidth = fittedRect.width / CGFloat(preview.pixelWidth)
             let cellHeight = fittedRect.height / CGFloat(preview.pixelHeight)
 
@@ -39,7 +40,7 @@ struct ArtworkPreviewImage: View {
         }
     }
 
-    private func aspectFitRect(in canvasSize: CGSize) -> CGRect {
+    private func scaledRect(in canvasSize: CGSize) -> CGRect {
         let imageSize = CGSize(width: CGFloat(preview.pixelWidth), height: CGFloat(preview.pixelHeight))
         guard imageSize.width > 0,
               imageSize.height > 0,
@@ -49,7 +50,9 @@ struct ArtworkPreviewImage: View {
             return CGRect(origin: .zero, size: canvasSize)
         }
 
-        let scale = min(canvasSize.width / imageSize.width, canvasSize.height / imageSize.height)
+        let widthScale = canvasSize.width / imageSize.width
+        let heightScale = canvasSize.height / imageSize.height
+        let scale = contentMode == .fit ? min(widthScale, heightScale) : max(widthScale, heightScale)
         let fittedSize = CGSize(width: imageSize.width * scale, height: imageSize.height * scale)
         return CGRect(
             x: (canvasSize.width - fittedSize.width) / 2,

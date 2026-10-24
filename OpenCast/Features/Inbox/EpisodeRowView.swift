@@ -6,6 +6,7 @@ struct EpisodeRowView: View {
     let episode: EpisodeListItemSnapshot
     var searchResult: EpisodeSearchResult?
     var showsLocalStatusBadges = false
+    var showsPodcastTitle = true
     var onPlay: (() -> Void)?
 
     static func accessibilityIdentifier(for episodeID: String) -> String {
@@ -39,22 +40,24 @@ struct EpisodeRowView: View {
                         .font(.headline)
                         .lineLimit(2)
                 }
-                if let searchResult {
-                    Text(searchResult.highlightedPodcastTitle)
-                        .font(.subheadline)
-                        .lineLimit(1)
-                } else {
-                    Text(episode.podcastTitle)
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
+                if showsPodcastTitle {
+                    if let searchResult {
+                        Text(searchResult.highlightedPodcastTitle)
+                            .font(.subheadline)
+                            .lineLimit(1)
+                    } else {
+                        Text(episode.podcastTitle)
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                    }
                 }
                 HStack(spacing: 8) {
                     if let publishedAt = episode.publishedAt {
                         Text(publishedAt, format: .dateTime.month(.abbreviated).day().year())
                     }
-                    if let duration = episode.duration {
-                        Text(duration.formattedPlaybackDuration)
+                    if let duration = episode.duration, duration > 0 {
+                        Text(PlaylistDurationFormat.short(duration))
                     }
                     if showsLocalStatusBadges {
                         EpisodeLocalStatusBadgesView(episodeID: episode.episodeID)

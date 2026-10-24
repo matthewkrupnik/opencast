@@ -3,7 +3,7 @@ import XCTest
 
 final class OpenCastIntentUITests: XCTestCase {
     @MainActor
-    func testSystemEpisodeQueryQueueAndSearch() async throws {
+    func testSystemEpisodeQueryAndSearch() async throws {
         let app = XCUIApplication()
         app.launchArguments = ["--opencast-ui-testing", "--opencast-seed-ui-library", "--opencast-seed-episode-progress"]
         app.launch()
@@ -11,8 +11,6 @@ final class OpenCastIntentUITests: XCTestCase {
         let definitions = IntentDefinitions(bundleIdentifier: "mk.lan.opencast")
         let episodes = try await definitions.entities["OpenCastEpisodeEntity"].suggestedEntities()
         XCTAssertFalse(episodes.isEmpty)
-        let episode = try XCTUnwrap(episodes.first)
-        try await definitions.intents["AddOpenCastEpisodeToUpNextIntent"].makeIntent(episode: episode).run()
         try await definitions.intents["SearchOpenCastIntent"].makeIntent(query: "OpenCast").run()
         XCTAssertTrue(app.searchFields.firstMatch.existsOrWait(timeout: 10))
         XCTAssertEqual(app.searchFields.firstMatch.value as? String, "OpenCast")

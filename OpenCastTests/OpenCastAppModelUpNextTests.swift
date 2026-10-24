@@ -6,17 +6,18 @@ import Testing
 @testable import OpenCast
 
 @MainActor
-@Suite("App model Up Next")
+@Suite("App model playlist continuation")
 struct OpenCastAppModelUpNextTests {
     private static let podcastID = "https://example.com/up-next.xml"
+    private static let playlistID = "continuation-playlist"
 
     @Test("Queue advance marks the finished episode before loading the queue head")
     func advanceFlushesFinishedProgressBeforeLoadingNext() async throws {
         let fixture = try await makeFixture()
         let first = try #require(fixture.appModel.episodeSnapshot(for: "first"))
         let second = try #require(fixture.appModel.episodeSnapshot(for: "second"))
-        try playWithoutAutoplay(first, fixture: fixture)
-        #expect(fixture.appModel.upNextQueue.enqueueLast(second, modelContext: fixture.context))
+        try playFromPlaylist(first, fixture: fixture)
+        #expect(queue([second], fixture: fixture))
         var flushCount = 0
         fixture.appModel.playbackProgressFlushObserver = { flushCount += 1 }
 
@@ -35,8 +36,9 @@ struct OpenCastAppModelUpNextTests {
         let fixture = try await makeFixture()
         let missing = episodeSnapshot(id: "missing", podcastID: Self.podcastID)
         let second = try #require(fixture.appModel.episodeSnapshot(for: "second"))
-        #expect(fixture.appModel.upNextQueue.enqueueLast(missing, modelContext: fixture.context))
-        #expect(fixture.appModel.upNextQueue.enqueueLast(second, modelContext: fixture.context))
+        try playFromPlaylist(try #require(fixture.appModel.episodeSnapshot(for: "first")), fixture: fixture)
+        #expect(queue([missing], fixture: fixture))
+        #expect(queue([second], fixture: fixture))
         var flushCount = 0
         fixture.appModel.playbackProgressFlushObserver = { flushCount += 1 }
 
@@ -45,7 +47,7 @@ struct OpenCastAppModelUpNextTests {
         #expect(fixture.appModel.playback.currentEpisode?.id.rawValue == "second")
         #expect(fixture.appModel.upNextQueue.items.isEmpty)
         #expect(fixture.appModel.lastPlaybackError == nil)
-        #expect(fixture.appModel.lastUpNextError == nil)
+        #expect(fixture.appModel.lastPlaylistError == nil)
         #expect(flushCount == 1)
     }
 
@@ -54,8 +56,9 @@ struct OpenCastAppModelUpNextTests {
         let fixture = try await makeFixture()
         let missingAudio = try #require(fixture.appModel.episodeSnapshot(for: "missing-audio"))
         let second = try #require(fixture.appModel.episodeSnapshot(for: "second"))
-        #expect(fixture.appModel.upNextQueue.enqueueLast(missingAudio, modelContext: fixture.context))
-        #expect(fixture.appModel.upNextQueue.enqueueLast(second, modelContext: fixture.context))
+        try playFromPlaylist(try #require(fixture.appModel.episodeSnapshot(for: "first")), fixture: fixture)
+        #expect(queue([missingAudio], fixture: fixture))
+        #expect(queue([second], fixture: fixture))
         var flushCount = 0
         fixture.appModel.playbackProgressFlushObserver = { flushCount += 1 }
 
@@ -64,7 +67,7 @@ struct OpenCastAppModelUpNextTests {
         #expect(fixture.appModel.playback.currentEpisode?.id.rawValue == "second")
         #expect(fixture.appModel.upNextQueue.items.isEmpty)
         #expect(fixture.appModel.lastPlaybackError == nil)
-        #expect(fixture.appModel.lastUpNextError == nil)
+        #expect(fixture.appModel.lastPlaylistError == nil)
         #expect(flushCount == 1)
     }
 
@@ -73,17 +76,18 @@ struct OpenCastAppModelUpNextTests {
         let fixture = try await makeFixture()
         let stale = episodeSnapshot(id: "stale", podcastID: Self.podcastID)
         let missingAudio = try #require(fixture.appModel.episodeSnapshot(for: "missing-audio"))
-        #expect(fixture.appModel.upNextQueue.enqueueLast(stale, modelContext: fixture.context))
-        #expect(fixture.appModel.upNextQueue.enqueueLast(missingAudio, modelContext: fixture.context))
+        try playFromPlaylist(try #require(fixture.appModel.episodeSnapshot(for: "first")), fixture: fixture)
+        #expect(queue([stale], fixture: fixture))
+        #expect(queue([missingAudio], fixture: fixture))
         var flushCount = 0
         fixture.appModel.playbackProgressFlushObserver = { flushCount += 1 }
 
         fixture.appModel.advanceToNextQueuedEpisode(modelContext: fixture.context)
 
-        #expect(fixture.appModel.playback.currentEpisode == nil)
+        #expect(fixture.appModel.playback.currentEpisode?.id.rawValue == "first")
         #expect(fixture.appModel.upNextQueue.items.isEmpty)
         #expect(fixture.appModel.lastPlaybackError == "This episode does not include an audio file.")
-        #expect(fixture.appModel.lastUpNextError == nil)
+        #expect(fixture.appModel.lastPlaylistError == nil)
         #expect(flushCount == 1)
     }
 
@@ -91,21 +95,22 @@ struct OpenCastAppModelUpNextTests {
     func dequeuePersistenceFailure() async throws {
         let fixture = try await makeFixture(
             upNextQueue: UpNextQueueStore { _ in throw AppModelQueueSaveFailure() },
-            queuedEpisodeID: "first"
+            queuedEpisodeID: "second"
         )
+        try playFromPlaylist(try #require(fixture.appModel.episodeSnapshot(for: "first")), fixture: fixture)
         var flushCount = 0
         fixture.appModel.playbackProgressFlushObserver = { flushCount += 1 }
 
         fixture.appModel.advanceToNextQueuedEpisode(modelContext: fixture.context)
 
-        #expect(fixture.appModel.playback.currentEpisode == nil)
-        #expect(fixture.appModel.upNextQueue.items.map(\.episodeID) == ["first"])
-        #expect(fixture.appModel.lastUpNextError?.contains("Unable to advance Up Next") == true)
+        #expect(fixture.appModel.playback.currentEpisode?.id.rawValue == "first")
+        #expect(fixture.appModel.upNextQueue.items.map(\.episodeID) == ["second"])
+        #expect(fixture.appModel.lastPlaylistError?.contains("Unable to play the next playlist episode") == true)
         #expect(fixture.appModel.lastPlaybackError == nil)
         #expect(flushCount == 1)
         #expect(
             try fixture.context.fetch(FetchDescriptor<UpNextQueueItemRecord>()).map(\.episodeID)
-                == ["first"]
+                == ["second"]
         )
     }
 
@@ -138,27 +143,78 @@ struct OpenCastAppModelUpNextTests {
         )
     }
 
-    @Test("Playing a queued episode now dequeues it")
-    func playNowDequeues() async throws {
+    @Test("Playing an episode from its playlist takes it out of the remainder")
+    func playFromPlaylistDequeues() async throws {
         let fixture = try await makeFixture()
         let first = try #require(fixture.appModel.episodeSnapshot(for: "first"))
-        #expect(fixture.appModel.upNextQueue.enqueueLast(first, modelContext: fixture.context))
+        let second = try #require(fixture.appModel.episodeSnapshot(for: "second"))
+        #expect(queue([first, second], fixture: fixture))
+
+        try playFromPlaylist(first, fixture: fixture)
+
+        #expect(fixture.appModel.upNextQueue.items.map(\.episodeID) == ["second"])
+        #expect(fixture.appModel.currentPlaylistRemainder.map(\.episodeID) == ["second"])
+        #expect(try fixture.context.fetch(FetchDescriptor<UpNextQueueItemRecord>()).map(\.episodeID) == ["second"])
+    }
+
+    @Test("Starting an episode outside a playlist ends the playlist")
+    func startOutsidePlaylistClearsRemainder() async throws {
+        let fixture = try await makeFixture()
+        let first = try #require(fixture.appModel.episodeSnapshot(for: "first"))
+        let second = try #require(fixture.appModel.episodeSnapshot(for: "second"))
+        let third = try #require(fixture.appModel.episodeSnapshot(for: "third"))
+        try playFromPlaylist(first, fixture: fixture)
+        #expect(queue([second], fixture: fixture))
+
+        try playWithoutAutoplay(third, fixture: fixture)
+
+        #expect(fixture.appModel.currentPlaylistSourceID == nil)
+        #expect(fixture.appModel.upNextQueue.items.isEmpty)
+        #expect(!fixture.appModel.advanceToNextQueuedEpisode(modelContext: fixture.context))
+        #expect(fixture.appModel.playback.currentEpisode?.id.rawValue == "third")
+    }
+
+    @Test("Reloading the playing episode outside a playlist keeps its playlist")
+    func reloadingCurrentEpisodeKeepsRemainder() async throws {
+        let fixture = try await makeFixture()
+        let first = try #require(fixture.appModel.episodeSnapshot(for: "first"))
+        let second = try #require(fixture.appModel.episodeSnapshot(for: "second"))
+        try playFromPlaylist(first, fixture: fixture)
+        #expect(queue([second], fixture: fixture))
 
         try playWithoutAutoplay(first, fixture: fixture)
 
-        #expect(!fixture.appModel.upNextQueue.contains(episodeID: "first"))
-        #expect(try fixture.context.fetch(FetchDescriptor<UpNextQueueItemRecord>()).isEmpty)
+        #expect(fixture.appModel.currentPlaylistRemainder.map(\.episodeID) == ["second"])
+        #expect(fixture.appModel.advanceToNextQueuedEpisode(modelContext: fixture.context))
+        #expect(fixture.appModel.playback.currentEpisode?.id.rawValue == "second")
+    }
+
+    @Test("Advance drops items queued from anywhere but the playing playlist")
+    func advanceSkipsOtherSources() async throws {
+        let fixture = try await makeFixture()
+        let first = try #require(fixture.appModel.episodeSnapshot(for: "first"))
+        let second = try #require(fixture.appModel.episodeSnapshot(for: "second"))
+        let third = try #require(fixture.appModel.episodeSnapshot(for: "third"))
+        try playFromPlaylist(first, fixture: fixture)
+        #expect(fixture.appModel.upNextQueue.enqueueLast([second], source: nil, modelContext: fixture.context))
+        #expect(queue([third], fixture: fixture))
+
+        #expect(fixture.appModel.currentPlaylistRemainder.map(\.episodeID) == ["third"])
+        #expect(fixture.appModel.advanceToNextQueuedEpisode(modelContext: fixture.context))
+
+        #expect(fixture.appModel.playback.currentEpisode?.id.rawValue == "third")
+        #expect(fixture.appModel.upNextQueue.items.isEmpty)
     }
 
     @Test("Mark Played dequeues the episode")
     func markPlayedDequeues() async throws {
         let fixture = try await makeFixture()
         let first = try #require(fixture.appModel.episodeSnapshot(for: "first"))
-        #expect(fixture.appModel.upNextQueue.enqueueLast(first, modelContext: fixture.context))
+        #expect(queue([first], fixture: fixture))
 
         #expect(fixture.appModel.markEpisodePlayed(first, modelContext: fixture.context))
 
-        #expect(!fixture.appModel.upNextQueue.contains(episodeID: "first"))
+        #expect(!fixture.appModel.upNextQueue.items.contains { $0.episodeID == "first" })
     }
 
     @Test("An empty queue leaves a naturally completed episode parked")
@@ -176,7 +232,7 @@ struct OpenCastAppModelUpNextTests {
         #expect(fixture.appModel.playback.state == .paused)
         #expect(fixture.appModel.playback.position == 60)
         #expect(fixture.appModel.lastPlaybackError == nil)
-        #expect(fixture.appModel.lastUpNextError == nil)
+        #expect(fixture.appModel.lastPlaylistError == nil)
         #expect(flushCount == 1)
     }
 
@@ -211,13 +267,13 @@ struct OpenCastAppModelUpNextTests {
         #expect(fixture.appModel.nowPlayingPresentationRequest == 0)
     }
 
-    @Test("Outro completion persists played progress and advances Up Next")
+    @Test("Outro completion persists played progress and advances the playlist")
     func outroCompletionAdvancesQueueAndPersistsPlayedProgress() async throws {
         let fixture = try await makeFixture(skipIntroSeconds: 5, skipOutroSeconds: 10)
         let first = try #require(fixture.appModel.episodeSnapshot(for: "first"))
         let second = try #require(fixture.appModel.episodeSnapshot(for: "second"))
-        try playWithoutAutoplay(first, fixture: fixture)
-        #expect(fixture.appModel.upNextQueue.enqueueLast(second, modelContext: fixture.context))
+        try playFromPlaylist(first, fixture: fixture)
+        #expect(queue([second], fixture: fixture))
         fixture.appModel.isNowPlayingPresented = true
 
         fixture.appModel.playback.handleObservedPlaybackPosition(5, duration: 60)
@@ -316,13 +372,13 @@ struct OpenCastAppModelUpNextTests {
         #expect(try lastPlaybackEpisodeIDs(in: fixture.context).isEmpty)
     }
 
-    @Test("Unplayable Up Next candidates preserve the error and show the expanded completion")
+    @Test("Unplayable playlist candidates preserve the error and show the expanded completion")
     func unplayableQueueClearsPlaybackAndPreservesError() async throws {
         let fixture = try await makeFixture()
         let first = try #require(fixture.appModel.episodeSnapshot(for: "first"))
         let missingAudio = try #require(fixture.appModel.episodeSnapshot(for: "missing-audio"))
-        try playWithoutAutoplay(first, fixture: fixture)
-        #expect(fixture.appModel.upNextQueue.enqueueLast(missingAudio, modelContext: fixture.context))
+        try playFromPlaylist(first, fixture: fixture)
+        #expect(queue([missingAudio], fixture: fixture))
         fixture.appModel.isNowPlayingPresented = true
         var flushCount = 0
         fixture.appModel.playbackProgressFlushObserver = { flushCount += 1 }
@@ -331,20 +387,20 @@ struct OpenCastAppModelUpNextTests {
 
         #expect(fixture.appModel.playback.currentEpisode == nil)
         #expect(fixture.appModel.lastPlaybackError == "This episode does not include an audio file.")
-        #expect(fixture.appModel.lastUpNextError == nil)
+        #expect(fixture.appModel.lastPlaylistError == nil)
         #expect(fixture.appModel.finishedPlaybackPresentation?.episode.episodeID == "first")
         #expect(fixture.appModel.isNowPlayingPresented)
         #expect(flushCount == 1)
     }
 
-    @Test("A dequeue persistence failure clears finished playback and preserves the Up Next error")
+    @Test("A dequeue persistence failure clears finished playback and preserves the playlist error")
     func completionDequeuePersistenceFailureClearsPlayback() async throws {
         let fixture = try await makeFixture(
             upNextQueue: UpNextQueueStore { _ in throw AppModelQueueSaveFailure() },
             queuedEpisodeID: "second"
         )
         let first = try #require(fixture.appModel.episodeSnapshot(for: "first"))
-        try playWithoutAutoplay(first, fixture: fixture)
+        try playFromPlaylist(first, fixture: fixture)
         var flushCount = 0
         fixture.appModel.playbackProgressFlushObserver = { flushCount += 1 }
 
@@ -352,7 +408,7 @@ struct OpenCastAppModelUpNextTests {
 
         #expect(fixture.appModel.playback.currentEpisode == nil)
         #expect(fixture.appModel.upNextQueue.items.map(\.episodeID) == ["second"])
-        #expect(fixture.appModel.lastUpNextError?.contains("Unable to advance Up Next") == true)
+        #expect(fixture.appModel.lastPlaylistError?.contains("Unable to play the next playlist episode") == true)
         #expect(fixture.appModel.lastPlaybackError == nil)
         #expect(fixture.appModel.finishedPlaybackPresentation == nil)
         #expect(flushCount == 1)
@@ -360,13 +416,13 @@ struct OpenCastAppModelUpNextTests {
         #expect(try lastPlaybackEpisodeIDs(in: fixture.context).isEmpty)
     }
 
-    @Test("End of Episode sleep timer stops without advancing Up Next")
+    @Test("End of Episode sleep timer stops without advancing the playlist")
     func endOfEpisodeSleepTimerStopsWithoutAdvancing() async throws {
         let fixture = try await makeFixture()
         let first = try #require(fixture.appModel.episodeSnapshot(for: "first"))
         let second = try #require(fixture.appModel.episodeSnapshot(for: "second"))
-        try playWithoutAutoplay(first, fixture: fixture)
-        #expect(fixture.appModel.upNextQueue.enqueueLast(second, modelContext: fixture.context))
+        try playFromPlaylist(first, fixture: fixture)
+        #expect(queue([second], fixture: fixture))
         fixture.appModel.playback.setSleepTimer(mode: .endOfEpisode)
 
         fixture.appModel.playback.handleCurrentItemDidPlayToEnd()
@@ -445,8 +501,8 @@ struct OpenCastAppModelUpNextTests {
         let fixture = try await makeFixture()
         let first = try #require(fixture.appModel.episodeSnapshot(for: "first"))
         let second = try #require(fixture.appModel.episodeSnapshot(for: "second"))
-        #expect(fixture.appModel.upNextQueue.enqueueLast(first, modelContext: fixture.context))
-        #expect(fixture.appModel.upNextQueue.enqueueLast(second, modelContext: fixture.context))
+        #expect(queue([first], fixture: fixture))
+        #expect(queue([second], fixture: fixture))
 
         let outcome = await fixture.appModel.unsubscribe(
             feedURL: Self.podcastID,
@@ -457,113 +513,11 @@ struct OpenCastAppModelUpNextTests {
         #expect(fixture.appModel.upNextQueue.items.isEmpty)
     }
 
-    @Test("The Up Next accessory shows only after restore with a queue and nothing loaded")
-    func upNextAccessoryShowsOnlyAfterRestoreWithAQueueAndNothingLoaded() async throws {
-        let fixture = try await makeFixture(queuedEpisodeID: "first")
-        defer { fixture.appModel.playback.pause() }
-        #expect(!fixture.appModel.hasRestoredPlaybackSurface)
-        #expect(!fixture.appModel.showsUpNextAccessory)
-
-        fixture.appModel.restorePlaybackSurfaceIfNeeded(modelContext: fixture.context)
-
-        #expect(fixture.appModel.hasRestoredPlaybackSurface)
-        #expect(fixture.appModel.playback.currentEpisode == nil)
-        #expect(fixture.appModel.showsUpNextAccessory)
-        #expect(fixture.appModel.upNextAccessoryEpisode?.episodeID == "first")
-
-        #expect(fixture.appModel.advanceToNextQueuedEpisode(modelContext: fixture.context))
-
-        #expect(fixture.appModel.playback.currentEpisode?.id.rawValue == "first")
-        #expect(fixture.appModel.upNextQueue.items.isEmpty)
-        #expect(!fixture.appModel.showsUpNextAccessory)
-        #expect(fixture.appModel.nowPlayingPresentationRequest == 0)
-
-        #expect(fixture.appModel.dismissCurrentPlayback(modelContext: fixture.context))
-
-        #expect(fixture.appModel.playback.currentEpisode == nil)
-        #expect(!fixture.appModel.showsUpNextAccessory)
-    }
-
-    @Test("The Up Next accessory follows enqueue and clear after restore")
-    func upNextAccessoryTracksQueueChangesAfterRestore() async throws {
-        let fixture = try await makeFixture()
-        let first = try #require(fixture.appModel.episodeSnapshot(for: "first"))
-        fixture.appModel.restorePlaybackSurfaceIfNeeded(modelContext: fixture.context)
-        #expect(!fixture.appModel.showsUpNextAccessory)
-
-        #expect(fixture.appModel.upNextQueue.enqueueLast(first, modelContext: fixture.context))
-        #expect(fixture.appModel.showsUpNextAccessory)
-        #expect(fixture.appModel.upNextAccessoryEpisode?.episodeID == "first")
-
-        #expect(fixture.appModel.upNextQueue.clear(modelContext: fixture.context))
-        #expect(!fixture.appModel.showsUpNextAccessory)
-    }
-
-    @Test("The Up Next accessory needs a resolvable queue item and skips a stale head")
-    func upNextAccessoryNeedsAResolvableQueueItem() async throws {
-        let fixture = try await makeFixture()
-        let stale = episodeSnapshot(id: "stale", podcastID: Self.podcastID)
-        let second = try #require(fixture.appModel.episodeSnapshot(for: "second"))
-        fixture.appModel.restorePlaybackSurfaceIfNeeded(modelContext: fixture.context)
-
-        #expect(fixture.appModel.upNextQueue.enqueueLast(stale, modelContext: fixture.context))
-        #expect(fixture.appModel.upNextQueue.items.map(\.episodeID) == ["stale"])
-        #expect(!fixture.appModel.showsUpNextAccessory)
-
-        #expect(fixture.appModel.upNextQueue.enqueueLast(second, modelContext: fixture.context))
-        #expect(fixture.appModel.showsUpNextAccessory)
-        #expect(fixture.appModel.upNextAccessoryEpisode?.episodeID == "second")
-    }
-
-    @Test("A restored episode wins over the queued accessory on cold launch")
-    func restoredEpisodeWinsOverTheQueuedAccessoryOnColdLaunch() async throws {
-        let fixture = try await makeFixture(queuedEpisodeID: "second", restorableEpisodeID: "first")
-        #expect(!fixture.appModel.showsUpNextAccessory)
-
-        fixture.appModel.restorePlaybackSurfaceIfNeeded(modelContext: fixture.context)
-
-        #expect(fixture.appModel.playback.currentEpisode?.id.rawValue == "first")
-        #expect(fixture.appModel.playback.state != .playing)
-        #expect(!fixture.appModel.showsUpNextAccessory)
-        #expect(fixture.appModel.upNextQueue.items.map(\.episodeID) == ["second"])
-        #expect(try lastPlaybackEpisodeIDs(in: fixture.context) == ["first"])
-    }
-
-    @Test("A retained Finished card hides the queued accessory until it is dismissed")
-    func finishedCardKeepsTheQueuedAccessoryHiddenUntilDismissed() async throws {
-        let fixture = try await makeFixture()
-        let first = try #require(fixture.appModel.episodeSnapshot(for: "first"))
-        let second = try #require(fixture.appModel.episodeSnapshot(for: "second"))
-        fixture.appModel.restorePlaybackSurfaceIfNeeded(modelContext: fixture.context)
-        try playWithoutAutoplay(first, fixture: fixture)
-        fixture.appModel.isNowPlayingPresented = true
-        fixture.appModel.playback.handleCurrentItemDidPlayToEnd()
-        #expect(fixture.appModel.playback.currentEpisode == nil)
-        #expect(fixture.appModel.finishedPlaybackPresentation != nil)
-
-        #expect(fixture.appModel.upNextQueue.enqueueLast(second, modelContext: fixture.context))
-        #expect(!fixture.appModel.showsUpNextAccessory)
-
-        fixture.appModel.dismissNowPlayingAndDiscardFinishedPlayback()
-
-        #expect(fixture.appModel.showsUpNextAccessory)
-        #expect(fixture.appModel.upNextAccessoryEpisode?.episodeID == "second")
-    }
-
-    @Test("Up Next accessory copy inflects the queued count")
-    func upNextAccessoryCopyInflects() {
-        #expect(UpNextAccessoryText.subtitle(queuedCount: 1) == "Up Next · 1 episode")
-        #expect(UpNextAccessoryText.subtitle(queuedCount: 3) == "Up Next · 3 episodes")
-        #expect(UpNextAccessoryText.queuedEpisodes(1) == "1 episode queued")
-        #expect(UpNextAccessoryText.queuedEpisodes(3) == "3 episodes queued")
-    }
-
     private func makeFixture(
         skipIntroSeconds: TimeInterval = 0,
         skipOutroSeconds: TimeInterval = 0,
         upNextQueue: UpNextQueueStore = UpNextQueueStore(),
-        queuedEpisodeID: String? = nil,
-        restorableEpisodeID: String? = nil
+        queuedEpisodeID: String? = nil
     ) async throws -> (
         appModel: OpenCastAppModel,
         context: ModelContext
@@ -585,23 +539,8 @@ struct OpenCastAppModelUpNextTests {
                 UpNextQueueItemRecord(
                     episodeID: queuedEpisodeID,
                     podcastID: Self.podcastID,
-                    sequence: 0
-                )
-            )
-        }
-        if let restorableEpisodeID {
-            context.insert(
-                EpisodeProgressRecord(
-                    episodeID: restorableEpisodeID,
-                    podcastID: Self.podcastID,
-                    position: 30,
-                    duration: 60
-                )
-            )
-            context.insert(
-                LocalPreferenceRecord(
-                    key: PlaybackRestorePreferenceStore.episodeIDKey,
-                    value: restorableEpisodeID
+                    sequence: 0,
+                    sourcePlaylistID: Self.playlistID
                 )
             )
         }
@@ -647,6 +586,26 @@ struct OpenCastAppModelUpNextTests {
                     guid: id
                 )
             }
+        )
+    }
+
+    /// Queues `episodes` as the rest of the test playlist.
+    private func queue(
+        _ episodes: [EpisodeListItemSnapshot],
+        fixture: (appModel: OpenCastAppModel, context: ModelContext)
+    ) -> Bool {
+        fixture.appModel.upNextQueue.enqueueLast(episodes, source: Self.playlistID, modelContext: fixture.context)
+    }
+
+    private func playFromPlaylist(
+        _ episode: EpisodeListItemSnapshot,
+        fixture: (appModel: OpenCastAppModel, context: ModelContext)
+    ) throws {
+        try fixture.appModel.playEpisode(
+            episode,
+            presentsNowPlaying: false,
+            sourcePlaylistID: Self.playlistID,
+            modelContext: fixture.context
         )
     }
 

@@ -690,7 +690,7 @@ struct PlaylistStoreTests {
         let fixture = try makeFixture()
         fixture.store.load(modelContext: fixture.context)
         #expect(fixture.store.playlists.map(\.playlistID) == [PlaylistStore.defaultAllPlaylistID])
-        #expect(fixture.store.playlists.map(\.name) == ["All"])
+        #expect(fixture.store.playlists.map(\.name) == ["All Episodes"])
 
         #expect(fixture.store.delete(PlaylistStore.defaultAllPlaylistID, modelContext: fixture.context))
         fixture.store.load(modelContext: fixture.context)
@@ -805,8 +805,8 @@ struct PlaylistStoreTests {
         #expect(change.removedPlaylistIDs.isEmpty)
         #expect(change.renamedPlaylistIDs.isEmpty)
         #expect(changeCount == 1)
-        // "All" is the smart playlist the store creates when it loads empty.
-        #expect(fixture.store.playlists.map(\.name) == ["All", "Winner Identity"])
+        // "All Episodes" is the smart playlist the store creates when it loads empty.
+        #expect(fixture.store.playlists.map(\.name) == ["All Episodes", "Winner Identity"])
         #expect(fixture.store.itemsByPlaylistID["twin"]?.map(\.itemID) == ["winner-item"])
         #expect(fixture.store.playlists.first { $0.playlistID == "twin" }?.itemCount == 1)
         #expect(try storedItems(in: ModelContext(fixture.container)).count == 2)

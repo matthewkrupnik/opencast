@@ -8,7 +8,6 @@ struct NowPlayingUtilityControls: View {
     let rate: Float
     let onShowSpeed: () -> Void
     let onShowSleepTimer: () -> Void
-    let onShowUpNext: () -> Void
 
     var body: some View {
         GlassEffectContainer(spacing: 12) {
@@ -20,7 +19,6 @@ struct NowPlayingUtilityControls: View {
                     }
                     GridRow {
                         sleepTimerButton
-                        upNextButton
                     }
                 }
             } else {
@@ -28,7 +26,6 @@ struct NowPlayingUtilityControls: View {
                     playbackSpeedButton
                     AirPlayRoutePickerButton()
                     sleepTimerButton
-                    upNextButton
                 }
             }
         }
@@ -65,17 +62,6 @@ struct NowPlayingUtilityControls: View {
         .accessibilityValue(value)
     }
 
-    private var upNextButton: some View {
-        let count = appModel.upNextQueue.items.count
-        return PlayerUtilityCircleButton(
-            title: "Up Next",
-            systemImage: "text.line.first.and.arrowtriangle.forward",
-            isActive: count > 0,
-            action: onShowUpNext
-        )
-        .accessibilityValue(queueAccessibilityValue(count: count))
-    }
-
     private func sleepTimerText(at date: Date) -> String {
         SleepTimerRemainingText.text(for: appModel.playback, at: date)
     }
@@ -88,17 +74,5 @@ struct NowPlayingUtilityControls: View {
         }
 
         return min(max(remaining / duration, 0), 1)
-    }
-
-    private func queueAccessibilityValue(count: Int) -> Text {
-        if let source = appModel.currentPlaylistSource {
-            let remaining = appModel.remainingQueuedCount(forPlaylist: source.playlistID)
-            if remaining >= 1 {
-                return Text(PlaylistPlaybackSourceText.utilityValue(name: source.name, remainingCount: remaining))
-            }
-        }
-        return count == 0
-            ? Text("Empty")
-            : Text("^[\(count) episode](inflect: true) queued")
     }
 }

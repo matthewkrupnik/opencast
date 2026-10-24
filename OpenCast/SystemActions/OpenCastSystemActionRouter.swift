@@ -21,18 +21,6 @@ final class OpenCastSystemActionRouter {
         switch action {
         case .search(let query):
             appModel.systemSearchRequest = OpenCastSearchRequest(query: String(query.prefix(256)))
-        case .enqueue(let id), .enqueueNext(let id):
-            let episode = try availableEpisode(id)
-            // A retried intent must not move an already queued episode.
-            guard !appModel.upNextQueue.items.contains(where: { $0.episodeID == id }) else { return }
-            let saved = if case .enqueueNext = action {
-                appModel.upNextQueue.enqueueNext(episode, modelContext: modelContext)
-            } else {
-                appModel.upNextQueue.enqueueLast(episode, modelContext: modelContext)
-            }
-            guard saved else {
-                throw OpenCastSystemActionError.queueFailed
-            }
         case .playEpisode(let id):
             try play(availableEpisode(id), modelContext: modelContext)
         case .playLatest(let id):
@@ -55,15 +43,15 @@ final class OpenCastSystemActionRouter {
                 throw OpenCastSystemActionError.playlistHasNoUnplayedEpisodes
             }
             let before = playbackIdentity()
-            let upNextErrorBefore = appModel.lastUpNextError
-            guard appModel.playPlaylist(playlistID, mode: .replace, presentsNowPlaying: false, modelContext: modelContext) else {
+            let playlistErrorBefore = appModel.lastPlaylistError
+            guard appModel.playPlaylist(playlistID, presentsNowPlaying: false, modelContext: modelContext) else {
                 // A false return after the first episode started means the queue
                 // clear or pour failed; the listener hears the episode either way.
                 // A start that happened moved the episode or the source, or, when
                 // it reloaded the episode already playing from this playlist,
-                // only the pour could have written the Up Next error.
+                // only the pour could have written the playlist error.
                 let after = playbackIdentity()
-                let pourFailed = after != before || appModel.lastUpNextError != upNextErrorBefore
+                let pourFailed = after != before || appModel.lastPlaylistError != playlistErrorBefore
                 if after.episodeID != nil, after.sourcePlaylistID == playlistID, pourFailed {
                     throw OpenCastSystemActionError.queueFailed
                 }
