@@ -86,6 +86,7 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
+		E5C0FF1C00000000000000A1 /* Config/OpenCast.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Config/OpenCast.xcconfig; sourceTree = "<group>"; };
 		0FA60CF4265491A26D59B58C /* Info.plist */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		192CD3FA3C8CE63DAC9FCE45 /* OpenCastWidgets.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = OpenCastWidgets.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		1B8D930945FAD5C4384C9167 /* ResumeWidgetView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = ResumeWidgetView.swift; sourceTree = "<group>"; };
