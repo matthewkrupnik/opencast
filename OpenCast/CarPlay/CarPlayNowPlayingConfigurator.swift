@@ -1,7 +1,7 @@
 import CarPlay
 
-/// Owns the shared Now Playing template: the custom button row, the Up Next and
-/// album-artist affordances, and the observer that delivers their taps. The
+/// Owns the shared Now Playing template: the custom button row, the
+/// album-artist affordance, and the observer that delivers their taps. The
 /// system can present the shared template on the app's behalf at any time, so
 /// this is configured when the car connects rather than when the app pushes it.
 final class CarPlayNowPlayingConfigurator: NSObject {
@@ -21,7 +21,9 @@ final class CarPlayNowPlayingConfigurator: NSObject {
 
     func start(with state: CarPlayNowPlayingButtonState) {
         template.add(self)
-        template.upNextTitle = "Up Next"
+        // Playback follows the playlist an episode started from, so the car has
+        // no queue to show.
+        template.isUpNextButtonEnabled = false
         apply(state)
     }
 
@@ -33,7 +35,6 @@ final class CarPlayNowPlayingConfigurator: NSObject {
         }
 
         appliedState = state
-        template.isUpNextButtonEnabled = state.isUpNextEnabled
         template.isAlbumArtistButtonEnabled = state.canShowCurrentShow
         template.updateNowPlayingButtons(makeButtons(for: state))
     }
@@ -79,10 +80,6 @@ final class CarPlayNowPlayingConfigurator: NSObject {
 }
 
 extension CarPlayNowPlayingConfigurator: CPNowPlayingTemplateObserver {
-    func nowPlayingTemplateUpNextButtonTapped(_ nowPlayingTemplate: CPNowPlayingTemplate) {
-        actions.showUpNext()
-    }
-
     func nowPlayingTemplateAlbumArtistButtonTapped(_ nowPlayingTemplate: CPNowPlayingTemplate) {
         actions.showCurrentShow()
     }

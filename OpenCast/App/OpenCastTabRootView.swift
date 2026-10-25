@@ -34,7 +34,15 @@ struct OpenCastTabRootView: View {
                 value: AppSection.downloads
             ) {
                 NavigationStack(path: $navigationPaths[.downloads]) {
-                    DownloadsView(onOpenEpisode: openEpisode(on: .downloads))
+                    DownloadsView(
+                        onOpenEpisode: openEpisode(on: .downloads),
+                        onOpenStorage: {
+                            navigationPaths[.downloads].append(.downloadStorage)
+                        },
+                        onOpenDownloadSettings: {
+                            navigationPaths[.downloads].append(.downloadSettings)
+                        }
+                    )
                     .withOpenCastDestinations(
                         onOpenEpisode: openEpisode(on: .downloads)
                     )

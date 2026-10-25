@@ -40,6 +40,17 @@ enum OnboardingPage: Int, CaseIterable, Identifiable {
         }
     }
 
+    /// Pages whose own card holds the main action (importing, downloading the
+    /// model) only offer a way past it here, which must not outweigh that card.
+    var isPrimaryActionSecondary: Bool {
+        switch self {
+        case .importOPML, .transcriptionModelSetup:
+            true
+        case .welcome, .podcastSetup, .notificationSetup:
+            false
+        }
+    }
+
     var primaryActionSystemImage: String {
         switch self {
         case .welcome:

@@ -178,7 +178,6 @@ final class CarPlayInterfaceCoordinator {
         CarPlayNowPlayingActions(
             cycleRate: { [weak self] in self?.cycleRate() },
             toggleVoiceBoost: { [weak self] in self?.toggleVoiceBoost() },
-            showUpNext: { [weak self] in self?.pushUpNext() },
             showCurrentShow: { [weak self] in self?.pushCurrentShow() }
         )
     }
@@ -199,8 +198,7 @@ final class CarPlayInterfaceCoordinator {
                 appModel.library.isActivelySubscribed(to: episode.podcastID.rawValue)
             } ?? false,
             isVoiceBoostEnabled: playbackSettings.isVoiceBoostEnabled,
-            canChangeVoiceBoost: playbackSettings.canChangeCurrentEpisodeVoiceBoost,
-            hasQueuedEpisodes: !appModel.currentPlaylistRemainder.isEmpty
+            canChangeVoiceBoost: playbackSettings.canChangeCurrentEpisodeVoiceBoost
         )
     }
 
@@ -416,26 +414,6 @@ final class CarPlayInterfaceCoordinator {
                 nowPlaying: Self.nowPlayingState(appModel: appModel),
                 limits: limits
             )
-        )
-    }
-
-    private func pushUpNext() {
-        // The button is disabled with nothing left in the playlist; a tap
-        // that races the last item leaving has nothing to show.
-        let remainder = appModel.currentPlaylistRemainder
-        guard !remainder.isEmpty else {
-            return
-        }
-
-        push(
-            CarPlayBrowseModelBuilder.upNext(
-                queueItems: remainder,
-                library: appModel.library,
-                downloadRecords: appModel.downloads.records,
-                nowPlaying: Self.nowPlayingState(appModel: appModel),
-                limits: limits.withoutContinuation
-            ),
-            returnsToNowPlaying: true
         )
     }
 

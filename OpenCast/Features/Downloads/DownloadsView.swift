@@ -21,6 +21,8 @@ struct DownloadsView: View {
     @State private var collapsedShowIDs: Set<String> = []
 
     let onOpenEpisode: (String) -> Void
+    let onOpenStorage: () -> Void
+    let onOpenDownloadSettings: () -> Void
 
     var body: some View {
         let allDownloads = DownloadsListModel.make(
@@ -173,24 +175,11 @@ struct DownloadsView: View {
                 DownloadsOptionsMenu(
                     showsUnplayedOnly: $showsUnplayedOnly,
                     playedDownloadCount: playedDownloadCount,
+                    canOpenStorage: !allDownloads.downloaded.isEmpty,
+                    onOpenStorage: onOpenStorage,
+                    onOpenDownloadSettings: onOpenDownloadSettings,
                     onRemovePlayed: removePlayedDownloads
                 )
-                .disabled(editMode == .active)
-            }
-            .visibilityPriority(.low)
-
-            ToolbarItem(placement: .topBarTrailing) {
-                NavigationLink(value: AppRoute.downloadStorage) {
-                    Label("Storage", systemImage: "internaldrive")
-                }
-                .disabled(editMode == .active || allDownloads.downloaded.isEmpty)
-            }
-            .visibilityPriority(.low)
-
-            ToolbarItem(placement: .topBarTrailing) {
-                NavigationLink(value: AppRoute.downloadSettings) {
-                    Label("Download Settings", systemImage: "gear")
-                }
                 .disabled(editMode == .active)
             }
             .visibilityPriority(.low)

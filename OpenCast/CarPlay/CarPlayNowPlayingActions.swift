@@ -4,6 +4,5 @@
 struct CarPlayNowPlayingActions {
     let cycleRate: () -> Void
     let toggleVoiceBoost: () -> Void
-    let showUpNext: () -> Void
     let showCurrentShow: () -> Void
 }

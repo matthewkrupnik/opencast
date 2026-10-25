@@ -30,7 +30,7 @@ struct NowPlayingMoreMenu: View {
             )
             Button("Show Description", systemImage: "info.circle", action: onShowDescription)
                 .disabled(!canShowDescription)
-            Button("Show Show", systemImage: "rectangle.stack", action: onShowShow)
+            Button("Go to Show", systemImage: "rectangle.stack", action: onShowShow)
                 .disabled(!canShowShow)
             if let playlistSourceName {
                 Button(

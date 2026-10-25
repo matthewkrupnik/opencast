@@ -56,7 +56,9 @@ struct EpisodeRowView: View {
                     if let publishedAt = episode.publishedAt {
                         Text(publishedAt, format: .dateTime.month(.abbreviated).day().year())
                     }
-                    if let duration = episode.duration, duration > 0 {
+                    // The progress summary prefers the played file's measured length over
+                    // the feed's, so the length and the time left agree.
+                    if let duration = progressSummary.duration, duration > 0 {
                         Text(PlaylistDurationFormat.short(duration))
                     }
                     if showsLocalStatusBadges {
@@ -110,12 +112,13 @@ struct EpisodeRowView: View {
             // 44-point square is the button's hit area, not just the glyph.
             Button(action: onPlay) {
                 Label(
-                    progressSummary.isCompleted ? "Play Again" : "Play",
+                    playButtonTitle(for: progressSummary),
                     systemImage: statusSystemImage(for: progressSummary)
                 )
                 .labelStyle(.iconOnly)
                 .font(.title2)
                 .foregroundStyle(statusStyle(for: progressSummary))
+                .symbolEffect(.variableColor.iterative, isActive: isNowPlaying)
                 .frame(width: 44, height: 44)
                 .contentShape(.rect)
                 .contentTransition(.symbolEffect(.replace))
@@ -126,17 +129,47 @@ struct EpisodeRowView: View {
             Image(systemName: statusSystemImage(for: progressSummary))
                 .font(.title2)
                 .foregroundStyle(statusStyle(for: progressSummary))
+                .symbolEffect(.variableColor.iterative, isActive: isNowPlaying)
                 .frame(width: 34, height: 34)
                 .contentTransition(.symbolEffect(.replace))
                 .accessibilityHidden(true)
         }
     }
 
+    /// True while this row's episode is the one playing (or about to), so
+    /// the row matches the mini player instead of still offering Play.
+    private var isNowPlaying: Bool {
+        guard appModel.playback.currentEpisode?.id.rawValue == episode.episodeID else {
+            return false
+        }
+
+        switch appModel.playback.state {
+        case .loading, .buffering, .playing:
+            return true
+        case .idle, .paused, .failed:
+            return false
+        }
+    }
+
+    private func playButtonTitle(for progressSummary: EpisodeProgressSummary) -> String {
+        // Not "Now Playing": that names the player overlay itself.
+        if isNowPlaying {
+            return "Playing"
+        }
+        return progressSummary.isCompleted ? "Play Again" : "Play"
+    }
+
     private func statusSystemImage(for progressSummary: EpisodeProgressSummary) -> String {
-        progressSummary.isCompleted ? "checkmark.circle.fill" : "play.circle"
+        if isNowPlaying {
+            return "waveform.circle"
+        }
+        return progressSummary.isCompleted ? "checkmark.circle.fill" : "play.circle"
     }
 
     private func statusStyle(for progressSummary: EpisodeProgressSummary) -> AnyShapeStyle {
-        progressSummary.isCompleted ? AnyShapeStyle(.green) : AnyShapeStyle(.tint)
+        if isNowPlaying {
+            return AnyShapeStyle(.tint)
+        }
+        return progressSummary.isCompleted ? AnyShapeStyle(.green) : AnyShapeStyle(.tint)
     }
 }

@@ -4,7 +4,7 @@ import Testing
 
 @MainActor
 struct CarPlayTemplateNavigatorTests {
-    @Test(arguments: ["More Playlists", "More Episodes", "More Shows"], ["Up Next", "Current Show"])
+    @Test(arguments: ["More Playlists", "More Episodes", "More Shows"], ["Current Show"])
     func fullBrowseStackStillOpensNowPlayingControls(page: String, destination: String) {
         let harness = CarPlayTemplateNavigationHarness(browseTitles: ["Playlists", page, "Episodes"])
         let originalStack = harness.stack
@@ -35,7 +35,7 @@ struct CarPlayTemplateNavigatorTests {
     func shallowStacksKeepTheirEntireBrowseHistory(browseDepth: Int) {
         let harness = CarPlayTemplateNavigationHarness(browseTitles: (0..<browseDepth).map(String.init))
         let originalStack = harness.stack
-        let list = CPListTemplate(title: "Up Next", sections: [])
+        let list = CPListTemplate(title: "Current Show", sections: [])
         var succeeded: Bool?
 
         harness.navigator.pushNowPlayingList(list) { success, _ in succeeded = success }
@@ -51,7 +51,7 @@ struct CarPlayTemplateNavigatorTests {
     @Test(arguments: 0...2)
     func failuresStopTheSequenceAndReportTheError(failedOperation: Int) {
         let harness = CarPlayTemplateNavigationHarness(browseTitles: ["Playlists", "More Playlists", "Episodes"])
-        let list = CPListTemplate(title: "Up Next", sections: [])
+        let list = CPListTemplate(title: "Current Show", sections: [])
         var results: [Bool] = []
         var reportedError: (any Error)?
         harness.navigator.pushNowPlayingList(list) { success, error in
@@ -71,7 +71,7 @@ struct CarPlayTemplateNavigatorTests {
     @Test(arguments: 0...2)
     func disconnectStopsPendingNavigation(completedOperations: Int) {
         let harness = CarPlayTemplateNavigationHarness(browseTitles: ["Playlists", "More Playlists", "Episodes"])
-        let list = CPListTemplate(title: "Up Next", sections: [])
+        let list = CPListTemplate(title: "Current Show", sections: [])
         var completionCount = 0
         harness.navigator.pushNowPlayingList(list) { _, _ in completionCount += 1 }
         for _ in 0..<completedOperations { harness.completeNext() }
@@ -87,7 +87,7 @@ struct CarPlayTemplateNavigatorTests {
 
     @Test func repeatedControlTapDoesNotStartOverlappingNavigation() {
         let harness = CarPlayTemplateNavigationHarness(browseTitles: ["Playlists", "More Playlists", "Episodes"])
-        let list = CPListTemplate(title: "Up Next", sections: [])
+        let list = CPListTemplate(title: "Current Show", sections: [])
         var completionCount = 0
         for _ in 0..<2 {
             harness.navigator.pushNowPlayingList(list) { _, _ in completionCount += 1 }

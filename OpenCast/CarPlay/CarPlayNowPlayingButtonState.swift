@@ -1,5 +1,5 @@
-/// Everything the Now Playing screen's custom row and its two navigation
-/// affordances render from. Equatable because the observation loop rebuilds the
+/// Everything the Now Playing screen's custom row and its album-artist
+/// affordance render from. Equatable because the observation loop rebuilds the
 /// whole row on change, and a row rebuilt for an unchanged value is churn the
 /// head unit sees.
 nonisolated struct CarPlayNowPlayingButtonState: Equatable, Sendable {
@@ -8,8 +8,7 @@ nonisolated struct CarPlayNowPlayingButtonState: Equatable, Sendable {
         hasLoadedEpisode: false,
         isVoiceBoostOn: false,
         canToggleVoiceBoost: false,
-        canShowCurrentShow: false,
-        isUpNextEnabled: false
+        canShowCurrentShow: false
     )
 
     let rate: Float
@@ -17,6 +16,4 @@ nonisolated struct CarPlayNowPlayingButtonState: Equatable, Sendable {
     let isVoiceBoostOn: Bool
     let canToggleVoiceBoost: Bool
     let canShowCurrentShow: Bool
-    /// Up Next opens the queue, so it is off while the queue is empty.
-    let isUpNextEnabled: Bool
 }

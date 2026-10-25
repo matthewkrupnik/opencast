@@ -3052,8 +3052,11 @@ final class OpenCastUITests: XCTestCase {
 
         assertExists(app.navigationBars["Downloads"], named: "Downloads navigation bar")
         assertExists(app.staticTexts["Downloaded"], named: "Downloaded section")
-        let storageButton = app.navigationBars["Downloads"].buttons["Storage"]
-        assertHittable(storageButton, named: "Downloads Storage button")
+        let options = app.navigationBars["Downloads"].buttons["Download Options"]
+        assertHittable(options, named: "Download Options menu")
+        options.tap()
+        let storageButton = app.buttons["Storage"].firstMatch
+        assertHittable(storageButton, named: "Downloads Storage menu item")
         storageButton.tap()
         assertExists(app.navigationBars["Storage"], named: "Downloads Storage screen")
         assertExists(
@@ -3134,8 +3137,11 @@ final class OpenCastUITests: XCTestCase {
         openSection("Downloads", in: app)
         let downloadsBar = app.navigationBars["Downloads"]
         assertExists(downloadsBar, named: "Downloads navigation bar")
-        let settingsButton = downloadsBar.buttons["Download Settings"]
-        assertHittable(settingsButton, named: "Download Settings toolbar button")
+        let options = downloadsBar.buttons["Download Options"]
+        assertHittable(options, named: "Download Options menu")
+        options.tap()
+        let settingsButton = app.buttons["Download Settings"].firstMatch
+        assertHittable(settingsButton, named: "Download Settings menu item")
         settingsButton.tap()
 
         assertExists(app.navigationBars["Download Settings"], named: "Download Settings screen")
@@ -5271,9 +5277,12 @@ final class OpenCastUITests: XCTestCase {
         scrollUntilExists(completedRow, in: app)
         attachSmokeScreenshot(named: "playlists_download_all_downloads_tab")
 
-        // The storage summary lives on the Storage screen off the Downloads toolbar.
-        let storageButton = app.navigationBars["Downloads"].buttons["Storage"]
-        assertHittable(storageButton, named: "Downloads Storage button")
+        // The storage summary lives on the Storage screen off the Downloads options menu.
+        let options = app.navigationBars["Downloads"].buttons["Download Options"]
+        assertHittable(options, named: "Download Options menu")
+        options.tap()
+        let storageButton = app.buttons["Storage"].firstMatch
+        assertHittable(storageButton, named: "Downloads Storage menu item")
         storageButton.tap()
         assertExists(app.navigationBars["Storage"], named: "Downloads Storage screen")
         assertExists(

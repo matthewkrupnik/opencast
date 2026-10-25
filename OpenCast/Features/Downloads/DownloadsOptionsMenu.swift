@@ -2,7 +2,8 @@ import SwiftData
 import SwiftUI
 
 /// The Downloads tab's options: the Unplayed Only filter, Group by Show
-/// (kept on this device) and Remove Played behind a confirmation.
+/// (kept on this device), the Storage and Download Settings screens, and
+/// Remove Played behind a confirmation.
 struct DownloadsOptionsMenu: View {
     @Environment(OpenCastAppModel.self) private var appModel
     @Environment(\.modelContext) private var modelContext
@@ -11,6 +12,9 @@ struct DownloadsOptionsMenu: View {
 
     @Binding var showsUnplayedOnly: Bool
     let playedDownloadCount: Int
+    let canOpenStorage: Bool
+    let onOpenStorage: () -> Void
+    let onOpenDownloadSettings: () -> Void
     let onRemovePlayed: () -> Void
 
     var body: some View {
@@ -23,6 +27,13 @@ struct DownloadsOptionsMenu: View {
                 Toggle(isOn: groupsByShowBinding) {
                     Label("Group by Show", systemImage: "square.stack")
                 }
+            }
+
+            Section {
+                Button("Storage", systemImage: "internaldrive", action: onOpenStorage)
+                    .disabled(!canOpenStorage)
+
+                Button("Download Settings", systemImage: "gear", action: onOpenDownloadSettings)
             }
 
             Button(

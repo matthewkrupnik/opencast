@@ -17,11 +17,20 @@ struct OnboardingControlsView: View {
 
                 Spacer()
 
-                Button(page.primaryActionTitle, systemImage: page.primaryActionSystemImage, action: onPrimary)
-                    .buttonStyle(.glassProminent)
-                    .disabled(isPrimaryDisabled)
+                if page.isPrimaryActionSecondary {
+                    primaryButton
+                        .buttonStyle(.glass)
+                } else {
+                    primaryButton
+                        .buttonStyle(.glassProminent)
+                }
             }
         }
         .accessibilityIdentifier("Onboarding Controls")
+    }
+
+    private var primaryButton: some View {
+        Button(page.primaryActionTitle, systemImage: page.primaryActionSystemImage, action: onPrimary)
+            .disabled(isPrimaryDisabled)
     }
 }

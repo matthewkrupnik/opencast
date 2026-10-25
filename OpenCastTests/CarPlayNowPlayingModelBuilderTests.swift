@@ -42,12 +42,6 @@ struct CarPlayNowPlayingModelBuilderTests {
         #expect(!orphaned.canShowCurrentShow)
     }
 
-    @Test("Up Next is enabled only while the queue has episodes")
-    func upNextEnabledMapping() {
-        #expect(makeState(hasQueuedEpisodes: true).isUpNextEnabled)
-        #expect(!makeState(hasQueuedEpisodes: false).isUpNextEnabled)
-    }
-
     @Test("Identical inputs build equal states so the row is not rebuilt")
     func equalityGating() {
         #expect(makeState() == makeState())
@@ -63,16 +57,14 @@ struct CarPlayNowPlayingModelBuilderTests {
         hasLoadedEpisode: Bool = true,
         isCurrentShowSubscribed: Bool = true,
         isVoiceBoostEnabled: Bool = false,
-        canChangeVoiceBoost: Bool = true,
-        hasQueuedEpisodes: Bool = false
+        canChangeVoiceBoost: Bool = true
     ) -> CarPlayNowPlayingButtonState {
         CarPlayNowPlayingModelBuilder.buttonState(
             rate: rate,
             hasLoadedEpisode: hasLoadedEpisode,
             isCurrentShowSubscribed: isCurrentShowSubscribed,
             isVoiceBoostEnabled: isVoiceBoostEnabled,
-            canChangeVoiceBoost: canChangeVoiceBoost,
-            hasQueuedEpisodes: hasQueuedEpisodes
+            canChangeVoiceBoost: canChangeVoiceBoost
         )
     }
 }

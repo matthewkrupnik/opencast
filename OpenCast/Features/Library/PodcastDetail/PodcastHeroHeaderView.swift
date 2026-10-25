@@ -14,6 +14,7 @@ struct PodcastHeroHeaderView: View {
     let primaryAction: PodcastPrimaryAction?
     let onPlay: (EpisodeListItemSnapshot) -> Void
     let onPreviewResolved: (ArtworkPreview) -> Void
+    var onTitleMaxYChange: (CGFloat) -> Void = { _ in }
 
     @State private var artworkLength: CGFloat = 220
 
@@ -43,6 +44,11 @@ struct PodcastHeroHeaderView: View {
                 }
             }
             .accessibilityElement(children: .combine)
+            .onGeometryChange(for: CGFloat.self) { proxy in
+                proxy.frame(in: .global).maxY
+            } action: { maxY in
+                onTitleMaxYChange(maxY)
+            }
 
             PodcastHeaderMetadataView(
                 episodeCount: episodeCount,

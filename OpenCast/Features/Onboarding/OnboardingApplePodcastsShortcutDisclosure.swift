@@ -16,7 +16,15 @@ struct OnboardingApplePodcastsShortcutDisclosure: View {
             }
             .padding(.top, 8)
         } label: {
-            Label {
+            // Matches OnboardingPitchRow's icon column so the text lines up
+            // with the rows around it.
+            HStack(alignment: .top, spacing: 12) {
+                Image(systemName: "link")
+                    .font(.headline)
+                    .foregroundStyle(.red)
+                    .frame(width: 28, alignment: .center)
+                    .padding(.top, 2)
+
                 VStack(alignment: .leading, spacing: 2) {
                     Text("Apple Podcasts Export Shortcut")
                         .font(.headline)
@@ -26,12 +34,9 @@ struct OnboardingApplePodcastsShortcutDisclosure: View {
                         .font(.body)
                         .foregroundStyle(.secondary)
                 }
-            } icon: {
-                Image(systemName: "link")
-                    .font(.headline)
-                    .foregroundStyle(.red)
-                    .frame(width: 28, alignment: .center)
+                .multilineTextAlignment(.leading)
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
             .accessibilityElement(children: .combine)
             .accessibilityIdentifier("Apple Podcasts Export Shortcut")
         }

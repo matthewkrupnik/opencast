@@ -1,7 +1,7 @@
 import CarPlay
 
 /// Makes room for a list above Now Playing without changing ordinary browse
-/// history until the driver actually opens Up Next or the current show.
+/// history until the driver actually opens the current show.
 final class CarPlayTemplateNavigator {
     typealias Completion = @MainActor (Bool, (any Error)?) -> Void
 

@@ -176,7 +176,7 @@ struct EpisodeDetailView: View {
         )
         let chips = EpisodeMetadataChips.make(
             publishedAt: episode.publishedAt,
-            duration: episode.duration,
+            duration: progressSummary?.duration ?? episode.duration,
             progress: progressSummary,
             isDownloaded: downloadRecord?.state == .completed,
             downloadedByteCount: downloadRecord?.bytesReceived

@@ -6,8 +6,8 @@ struct NowPlayingProgressView: View {
     let displayedPosition: TimeInterval
     let zones: [PlaybackSkipZone]
     var displayOnlyZones: [PlaybackSkipZone] = []
-    /// Chapter start times marked on the rail under the slider. They stay
-    /// off the slider itself: the stock tick initializer turns the control
+    /// Chapter start times marked on the rail laid over the slider. They stay
+    /// out of the slider itself: the stock tick initializer turns the control
     /// into a discrete slider that snaps to its ticks, which breaks scrubbing.
     var chapterBoundaries: [TimeInterval] = []
     @Binding var scrubPosition: TimeInterval
@@ -23,14 +23,16 @@ struct NowPlayingProgressView: View {
             .accessibilityLabel("Playback Progress")
             .accessibilityIdentifier("Playback Progress")
             .accessibilityValue(progressAccessibilityValue)
-
-            if !zones.isEmpty || !displayOnlyZones.isEmpty || !chapterMarkers.isEmpty {
-                NowPlayingSkipZoneRail(
-                    duration: sliderUpperBound,
-                    zones: zones,
-                    displayOnlyZones: displayOnlyZones,
-                    chapterMarkers: chapterMarkers
-                )
+            .overlay {
+                if !zones.isEmpty || !displayOnlyZones.isEmpty || !chapterMarkers.isEmpty {
+                    NowPlayingSkipZoneRail(
+                        duration: sliderUpperBound,
+                        zones: zones,
+                        displayOnlyZones: displayOnlyZones,
+                        chapterMarkers: chapterMarkers,
+                        thumbFraction: scrubPosition / sliderUpperBound
+                    )
+                }
             }
 
             HStack {

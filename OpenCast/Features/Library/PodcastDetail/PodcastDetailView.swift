@@ -23,6 +23,8 @@ struct PodcastDetailView: View {
     @State private var searchMode: EpisodeSearchMode = .episodes
     @State private var searchSession = EpisodeSearchSession()
     @State private var sheetDestination: SheetDestination?
+    @State private var heroTitleMaxY: CGFloat?
+    @State private var listContentTopY: CGFloat = 0
 
     let feedURL: String
     let onOpenEpisode: (String) -> Void
@@ -49,6 +51,14 @@ struct PodcastDetailView: View {
 
     private var podcastArtworkPreview: ArtworkPreview? {
         podcastCache.flatMap { appModel.library.artworkPreview(for: $0) }
+    }
+
+    /// True once the hero's show name has scrolled up under the toolbar.
+    private var showsCompactTitle: Bool {
+        guard !isSearchVisible, let heroTitleMaxY else {
+            return false
+        }
+        return heroTitleMaxY < listContentTopY
     }
 
     private var hasSearchQuery: Bool {
@@ -118,7 +128,8 @@ struct PodcastDetailView: View {
                                     notificationHealth: appModel.library.notificationFeedHealthByFeedURL[feedURL],
                                     primaryAction: model.primaryAction,
                                     onPlay: playPrimaryAction,
-                                    onPreviewResolved: updatePodcastArtworkPreview
+                                    onPreviewResolved: updatePodcastArtworkPreview,
+                                    onTitleMaxYChange: { heroTitleMaxY = $0 }
                                 )
                                 if let reason = appModel.library.incompleteFeeds[feedURL] {
                                     IncompleteFeedNotice(reason: reason, isRefreshing: isRefreshing) {
@@ -207,6 +218,12 @@ struct PodcastDetailView: View {
                 }
                 .scrollDismissesKeyboard(.immediately)
                 .scrollContentBackground(.hidden)
+                .scrollEdgeEffectStyle(.soft, for: .top)
+                .onGeometryChange(for: CGFloat.self) { proxy in
+                    proxy.frame(in: .global).minY + proxy.safeAreaInsets.top
+                } action: { contentTopY in
+                    listContentTopY = contentTopY
+                }
                 .background(alignment: .top) {
                     EpisodeArtworkGlowBackground(preview: podcastArtworkPreview)
                 }
@@ -230,11 +247,11 @@ struct PodcastDetailView: View {
                 }
             }
         }
-        // The hero already shows the name, so the bar drops it; the title
-        // still names this screen for back navigation and accessibility.
+        // The hero already shows the name, so the bar's principal item stays
+        // hidden until the hero's name scrolls under the bar; the title still
+        // names this screen for back navigation and accessibility.
         .navigationTitle(subscription?.title ?? "Podcast")
         .navigationBarTitleDisplayMode(.inline)
-        .toolbar(removing: .title)
         .modifier(
             EpisodeSearchPresentationModifier(
                 isSearchVisible: isSearchVisible,
@@ -277,6 +294,14 @@ struct PodcastDetailView: View {
         }
         .toolbar {
             if let subscription {
+                ToolbarItem(placement: .principal) {
+                    Text(subscription.title)
+                        .font(.headline)
+                        .lineLimit(1)
+                        .opacity(showsCompactTitle ? 1 : 0)
+                        .animation(.easeOut(duration: 0.2), value: showsCompactTitle)
+                        .accessibilityHidden(!showsCompactTitle)
+                }
                 ToolbarItem(placement: .primaryAction) {
                     PodcastActionsMenu(
                         subscription: subscription,
