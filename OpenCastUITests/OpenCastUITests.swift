@@ -3286,6 +3286,9 @@ final class OpenCastUITests: XCTestCase {
             seedsCompletedTranscript: true,
             seedsCompletedAdAnalysis: true
         )
+        // The transcript menu checks below expect no ad-analysis token, which a
+        // build with Config/Secrets.xcconfig would otherwise carry.
+        app.launchEnvironment[Self.geminiAPIKeyEnvironmentKey] = ""
         app.launch()
 
         openSettingsScreen("Transcription", in: app)
@@ -7445,11 +7448,19 @@ final class OpenCastUITests: XCTestCase {
         XCTAssertGreaterThan(moving.frame.midY, target.frame.midY, "Picked shows should list in pick order", file: file, line: line)
         attachSmokeScreenshot(named: "playlists_shows_play_order")
 
-        // The drag handle sits at the trailing edge of the row.
-        moving.coordinate(withNormalizedOffset: CGVector(dx: 0.95, dy: 0.5))
+        // Grab the row's own reorder handle: a press that misses it drags the
+        // sheet instead. A slow drag with a hold at the end gives the list
+        // time to pick the row up and settle it, which a slower runner needs.
+        let handle = moving.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Reorder")).firstMatch
+        let targetHandle = target.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Reorder")).firstMatch
+        assertHittable(handle, named: "moving show's reorder handle", file: file, line: line)
+        assertExists(targetHandle, named: "target show's reorder handle", file: file, line: line)
+        handle.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
             .press(
-                forDuration: 0.6,
-                thenDragTo: target.coordinate(withNormalizedOffset: CGVector(dx: 0.95, dy: 0.1))
+                forDuration: 0.8,
+                thenDragTo: targetHandle.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: -0.2)),
+                withVelocity: .slow,
+                thenHoldForDuration: 0.5
             )
         XCTAssertTrue(
             waitUntil { moving.frame.midY < target.frame.midY },
