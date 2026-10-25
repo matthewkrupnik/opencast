@@ -21,7 +21,6 @@ struct OpenCastTabRootView: View {
                             navigationPaths[.library].append(.adDetectionQueue)
                         }
                     )
-                    .sectionShortcutsToolbar(selectedTab: $selectedTab)
                     .withOpenCastDestinations(
                         onOpenEpisode: openEpisode(on: .library),
                         onOpenPlaylist: openPlaylist(on: .library)

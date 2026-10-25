@@ -86,7 +86,6 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
-		E5C0FF1C00000000000000A1 /* Config/OpenCast.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Config/OpenCast.xcconfig; sourceTree = "<group>"; };
 		0FA60CF4265491A26D59B58C /* Info.plist */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		192CD3FA3C8CE63DAC9FCE45 /* OpenCastWidgets.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = OpenCastWidgets.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		1B8D930945FAD5C4384C9167 /* ResumeWidgetView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = ResumeWidgetView.swift; sourceTree = "<group>"; };
@@ -100,6 +99,7 @@
 		B20000000000000000000001 /* OpenCastNotificationServiceTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = OpenCastNotificationServiceTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		C30000000000000000000004 /* OpenCastNotificationContent.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = OpenCastNotificationContent.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		C3000000000000000000001E /* UserNotificationsUI.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = UserNotificationsUI.framework; path = System/Library/Frameworks/UserNotificationsUI.framework; sourceTree = SDKROOT; };
+		E5C0FF1C00000000000000A1 /* Config/OpenCast.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Config/OpenCast.xcconfig; sourceTree = "<group>"; };
 		EEEC57972BE60B1502C491A0 /* Foundation.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Foundation.framework; path = System/Library/Frameworks/Foundation.framework; sourceTree = SDKROOT; };
 		F2D8080B3436C189323BFF97 /* OpenCastResumeWidget.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = OpenCastResumeWidget.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */

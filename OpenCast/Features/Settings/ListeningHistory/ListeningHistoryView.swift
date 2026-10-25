@@ -1,3 +1,4 @@
+import SwiftData
 import SwiftUI
 
 /// The last week of listening on this device, newest first, each row able to
