@@ -8,16 +8,18 @@ struct LibrarySubscriptionGridView<Header: View>: View {
 
     let subscriptions: [SubscriptionRecord]
     let showsNewEpisodeCount: Bool
-    private let header: Header
+    /// Built with the grid's metrics so anything tiled above the shows uses
+    /// the same columns.
+    private let header: (LibraryGridMetrics) -> Header
 
     init(
         subscriptions: [SubscriptionRecord],
         showsNewEpisodeCount: Bool,
-        @ViewBuilder header: () -> Header
+        @ViewBuilder header: @escaping (LibraryGridMetrics) -> Header
     ) {
         self.subscriptions = subscriptions
         self.showsNewEpisodeCount = showsNewEpisodeCount
-        self.header = header()
+        self.header = header
     }
 
     var body: some View {
@@ -32,7 +34,7 @@ struct LibrarySubscriptionGridView<Header: View>: View {
 
             ScrollView {
                 VStack(alignment: .leading, spacing: 0) {
-                    header
+                    header(metrics)
 
                     LazyVGrid(columns: metrics.columns, spacing: metrics.rowSpacing) {
                         ForEach(subscriptions) { subscription in

@@ -1,8 +1,8 @@
 import SwiftData
 import SwiftUI
 
-/// The Library: every playlist, then the shows, as a list or with
-/// the shows as a grid. New playlists open through `onOpenPlaylist` once
+/// The Library: every playlist, then the shows, as a list or as a grid
+/// of tiles. New playlists open through `onOpenPlaylist` once
 /// their name prompt has dismissed, so their rules can be set.
 struct LibraryView: View {
     @Environment(OpenCastAppModel.self) private var appModel
@@ -127,11 +127,11 @@ struct LibraryView: View {
                 LibrarySubscriptionGridView(
                     subscriptions: subscriptions,
                     showsNewEpisodeCount: displaySettings.showsNewEpisodeBadges
-                ) {
+                ) { metrics in
                     if appModel.library.lastRefreshWasOffline {
                         LibraryOfflineNotice()
                     }
-                    playlistsGridHeader
+                    playlistsGridHeader(metrics: metrics)
                     if !appModel.playlists.playlists.isEmpty {
                         sectionTitle("Shows")
                     }
@@ -189,23 +189,21 @@ struct LibraryView: View {
     }
 
     /// The grid has no list sections, so the playlists sit above the shows
-    /// as plain rows under the same titles.
+    /// as tiles in the same columns, under the same titles.
     @ViewBuilder
-    private var playlistsGridHeader: some View {
+    private func playlistsGridHeader(metrics: LibraryGridMetrics) -> some View {
         let playlists = appModel.playlists.playlists
         if !playlists.isEmpty {
             VStack(alignment: .leading, spacing: 0) {
                 sectionTitle("Playlists")
-                ForEach(playlists) { summary in
-                    PlaylistRowView(summary: summary)
-                        .buttonStyle(.plain)
-                        .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
-                        .contentShape(.rect)
-                        .modifier(PlaylistCollectionActionsModifier(summary: summary, onRename: requestRename))
-                    Divider()
+                LazyVGrid(columns: metrics.columns, spacing: metrics.rowSpacing) {
+                    ForEach(playlists) { summary in
+                        LibraryPlaylistTileView(summary: summary, metrics: metrics)
+                            .modifier(PlaylistCollectionActionsModifier(summary: summary, onRename: requestRename))
+                    }
                 }
+                .padding(.vertical, 8)
             }
-            .padding(.bottom, 8)
         }
     }
 
