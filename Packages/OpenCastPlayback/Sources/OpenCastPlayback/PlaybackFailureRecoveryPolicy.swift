@@ -3,6 +3,8 @@ import Foundation
 
 struct PlaybackFailureRecoveryPolicy {
     static let automaticTransientFailureRetryLimit = 1
+    /// `AVError.Code.mediaServicesWereReset`, which the macOS SDK lacks.
+    static let mediaServicesWereResetErrorCode = -11819
 
     private(set) var automaticTransientFailureRetryCount = 0
 
@@ -22,6 +24,23 @@ struct PlaybackFailureRecoveryPolicy {
 
         automaticTransientFailureRetryCount += 1
         return true
+    }
+
+    /// The media server restarted under the item. Every AVPlayer created
+    /// before the restart stays unusable, so retrying on it never recovers.
+    static func isMediaServicesReset(_ error: (any Error)?) -> Bool {
+        guard let error else {
+            return false
+        }
+
+        let nsError = error as NSError
+        if nsError.domain == AVFoundationErrorDomain,
+           nsError.code == mediaServicesWereResetErrorCode
+        {
+            return true
+        }
+
+        return isMediaServicesReset(nsError.userInfo[NSUnderlyingErrorKey] as? any Error)
     }
 
     static func errorLogFieldsIndicateTimedOut(

@@ -1,3 +1,4 @@
+import AVFoundation
 import Foundation
 @preconcurrency import MediaPlayer
 import OpenCastCore
@@ -254,6 +255,85 @@ struct AVFoundationPlaybackControllerTests {
         }
         #expect(recoveredState == .playing)
         #expect(controller.snapshot.position >= 2)
+    }
+
+    @Test("A media services reset replaces the player so the paused episode plays again")
+    func mediaServicesResetReplacesPlayer() async throws {
+        try await AVFoundationPlaybackTestGate.acquire()
+        defer { AVFoundationPlaybackTestGate.release() }
+        let localURL = try VoiceBoostAudioFixture.writeSine(
+            fileExtension: "m4a", settings: VoiceBoostAudioFixture.aacSettings(), duration: 8
+        )
+        defer { try? FileManager.default.removeItem(at: localURL) }
+        let controller = AVFoundationPlaybackController()
+        defer { controller.unload() }
+        var current = episode(duration: 8)
+        current.audioURL = localURL
+        try controller.load(current, startPosition: 2)
+        let clock = controller.mediaClockSamples()
+        defer { withExtendedLifetime(clock) {} }
+        let originalPlayer = controller.playerIdentityForTesting
+
+        controller.handleAudioSessionMediaServicesWereReset()
+
+        #expect(controller.playerIdentityForTesting != originalPlayer)
+        #expect(controller.mediaClockClientCount == 1)
+        #expect(controller.position == 2)
+        controller.play()
+        let state = try await waitForPlaybackState(in: controller) { $0 == .playing }
+        #expect(state == .playing)
+        #expect(controller.position >= 2)
+    }
+
+    @Test("An item failed by a media services reset recovers on a new player", arguments: [false, true])
+    func mediaServicesResetItemFailureRecovers(wasPlaying: Bool) async throws {
+        try await AVFoundationPlaybackTestGate.acquire()
+        defer { AVFoundationPlaybackTestGate.release() }
+        let localURL = try VoiceBoostAudioFixture.writeSine(
+            fileExtension: "m4a", settings: VoiceBoostAudioFixture.aacSettings(), duration: 8
+        )
+        defer { try? FileManager.default.removeItem(at: localURL) }
+        let controller = AVFoundationPlaybackController()
+        defer { controller.unload() }
+        var current = episode(duration: 8)
+        current.audioURL = localURL
+        try controller.load(current, startPosition: 2)
+        if wasPlaying {
+            controller.play()
+            _ = try await waitForPlaybackState(in: controller) { $0 == .playing }
+        }
+        let originalPlayer = controller.playerIdentityForTesting
+
+        controller.handleCurrentItemFailed(error: mediaServicesResetError)
+
+        #expect(controller.playerIdentityForTesting != originalPlayer)
+        let expected: PlaybackState = wasPlaying ? .playing : .paused
+        let state = try await waitForPlaybackState(in: controller) { $0 == expected }
+        #expect(state == expected)
+        if !wasPlaying {
+            controller.play()
+            let resumed = try await waitForPlaybackState(in: controller) { $0 == .playing }
+            #expect(resumed == .playing)
+        }
+    }
+
+    @Test("A repeated media services reset failure before the new item is ready fails playback")
+    func repeatedMediaServicesResetItemFailureFails() throws {
+        let controller = AVFoundationPlaybackController()
+        defer { controller.unload() }
+        try controller.load(episode(duration: 240), startPosition: 30)
+
+        controller.handleCurrentItemFailed(error: mediaServicesResetError)
+        controller.handleCurrentItemFailed(error: mediaServicesResetError)
+
+        guard case .failed = controller.state else {
+            Issue.record("Expected failed playback state, got \(controller.state).")
+            return
+        }
+    }
+
+    private var mediaServicesResetError: NSError {
+        NSError(domain: AVFoundationErrorDomain, code: PlaybackFailureRecoveryPolicy.mediaServicesWereResetErrorCode)
     }
 
     @Test

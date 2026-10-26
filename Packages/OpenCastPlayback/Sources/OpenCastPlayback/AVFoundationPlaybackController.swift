@@ -45,7 +45,8 @@ public final class AVFoundationPlaybackController {
     public private(set) var skipForwardInterval: TimeInterval = PlaybackSkipInterval.forward
     public private(set) var playbackDiagnosticsText = ""
 
-    @ObservationIgnored private let player = AVPlayer()
+    /// Replaced after a media services reset; see `replacePlayer()`.
+    @ObservationIgnored private var player = AVPlayer()
     @ObservationIgnored private let mediaSession: SystemPlaybackMediaSession
     @ObservationIgnored private var timeObserver: PlayerTimeObserver?
     @ObservationIgnored private var outroBoundaryObserver: PlayerTimeObserver?
@@ -54,6 +55,7 @@ public final class AVFoundationPlaybackController {
     @ObservationIgnored private var currentItemObservationGeneration = 0
     @ObservationIgnored private var mediaClockObservers: [UUID: PlayerTimeObserver] = [:]
     @ObservationIgnored private var mediaClockContinuations: [UUID: AsyncStream<PlaybackMediaClockSample>.Continuation] = [:]
+    @ObservationIgnored private var mediaClockIntervals: [UUID: TimeInterval] = [:]
     @ObservationIgnored private var currentItemEndObserver: NSObjectProtocol?
     @ObservationIgnored private var currentItemPlaybackStalledObserver: NSObjectProtocol?
     @ObservationIgnored private var currentItemDurationObservation: NSKeyValueObservation?
@@ -89,6 +91,10 @@ public final class AVFoundationPlaybackController {
     @ObservationIgnored private var playbackPositionProtection = PlaybackPositionProtection()
     @ObservationIgnored private var playbackAdSkipPolicy = PlaybackAdSkipPolicy()
     @ObservationIgnored private var playbackFailureRecoveryPolicy = PlaybackFailureRecoveryPolicy()
+    /// Set when a media-services-reset item failure replaced the player, and
+    /// cleared once an item is ready, so a server that keeps failing ends in
+    /// a failure rather than a replacement loop.
+    @ObservationIgnored private var hasReplacedPlayerForFailedItem = false
     @ObservationIgnored private var autoSkipEventSequence = 0
     @ObservationIgnored private var pendingAutoSkipTarget: TimeInterval?
     @ObservationIgnored private var episodeBoundaries = PlaybackEpisodeBoundaries.disabled
@@ -152,11 +158,7 @@ public final class AVFoundationPlaybackController {
         self.voiceBoostAudioTapFactory = voiceBoostAudioTapFactory
         self.audioSessionActivation = audioSessionActivation
         self.audioSessionDeactivation = audioSessionDeactivation
-        // Audio-only app: external playback hands the stream to a video-capable
-        // AirPlay receiver (Mac, Apple TV), which opens a video surface and
-        // bypasses the Voice Boost tap. Keep AirPlay on the audio route instead.
-        player.allowsExternalPlayback = false
-        observePlayerTimeControlStatus()
+        configurePlayer()
         installAudioSessionObservers()
         installRemoteCommands()
     }
@@ -205,6 +207,7 @@ public final class AVFoundationPlaybackController {
         isPlaybackRequested = false
         clearExpiredSleepTimerRearm()
         playbackFailureRecoveryPolicy.reset()
+        hasReplacedPlayerForFailedItem = false
         playbackAdSkipPolicy.setZones([])
         autoSkipEventSequence = 0
         lastAutoSkipEvent = nil
@@ -943,6 +946,28 @@ public final class AVFoundationPlaybackController {
             bufferingPolicy: .bufferingNewest(1)
         )
         mediaClockContinuations[id] = continuation
+        mediaClockIntervals[id] = interval
+        addMediaClockObserver(id)
+        continuation.onTermination = { [weak self] _ in
+            Task { @MainActor [weak self] in
+                self?.removeMediaClockClient(id)
+            }
+        }
+        // Prime so a consumer that subscribes while paused renders immediately
+        // instead of waiting for playback to produce the first callback.
+        if let sample = currentMediaClockSample() {
+            continuation.yield(sample)
+        }
+        return stream
+    }
+
+    private func addMediaClockObserver(_ id: UUID) {
+        guard let interval = mediaClockIntervals[id],
+              let continuation = mediaClockContinuations[id]
+        else {
+            return
+        }
+
         mediaClockObservers[id] = PlayerTimeObserver(token: player.addPeriodicTimeObserver(
             forInterval: CMTime(seconds: interval, preferredTimescale: 600),
             queue: .main
@@ -956,17 +981,6 @@ public final class AVFoundationPlaybackController {
                 continuation.yield(sample)
             }
         })
-        continuation.onTermination = { [weak self] _ in
-            Task { @MainActor [weak self] in
-                self?.removeMediaClockClient(id)
-            }
-        }
-        // Prime so a consumer that subscribes while paused renders immediately
-        // instead of waiting for playback to produce the first callback.
-        if let sample = currentMediaClockSample() {
-            continuation.yield(sample)
-        }
-        return stream
     }
 
     var mediaClockClientCount: Int {
@@ -1007,7 +1021,42 @@ public final class AVFoundationPlaybackController {
         if let observer = mediaClockObservers.removeValue(forKey: id) {
             player.removeTimeObserver(observer.token)
         }
+        mediaClockIntervals.removeValue(forKey: id)
         mediaClockContinuations.removeValue(forKey: id)?.finish()
+    }
+
+    private func configurePlayer() {
+        // Audio-only app: external playback hands the stream to a video-capable
+        // AirPlay receiver (Mac, Apple TV), which opens a video surface and
+        // bypasses the Voice Boost tap. Keep AirPlay on the audio route instead.
+        player.allowsExternalPlayback = false
+        observePlayerTimeControlStatus()
+    }
+
+    /// After a media services reset the old AVPlayer never plays again, and
+    /// Apple requires recreating AVFoundation objects. Callers rebuild the
+    /// current item on the new player.
+    private func replacePlayer() {
+        removeCurrentItemObservations()
+        for observer in mediaClockObservers.values {
+            player.removeTimeObserver(observer.token)
+        }
+        mediaClockObservers.removeAll()
+        playerTimeControlStatusObservation?.invalidate()
+        playerTimeControlStatusObservation = nil
+        player.pause()
+        player.replaceCurrentItem(with: nil)
+
+        player = AVPlayer()
+        configurePlayer()
+        for id in mediaClockContinuations.keys {
+            addMediaClockObserver(id)
+        }
+        recordDiagnosticsEvent("replaced player")
+    }
+
+    var playerIdentityForTesting: ObjectIdentifier {
+        ObjectIdentifier(player)
     }
 
     private func observePlayerTimeControlStatus() {
@@ -1169,16 +1218,17 @@ public final class AVFoundationPlaybackController {
         #endif
     }
 
-    private func handleAudioSessionMediaServicesWereReset() {
+    func handleAudioSessionMediaServicesWereReset() {
         invalidateAudioSessionActivation()
         isAudioSessionActive = false
         recordDiagnosticsEvent("audio session media services reset")
+        replacePlayer()
 
-        guard isPlaybackRequested, snapshot.currentEpisode != nil else {
+        guard snapshot.currentEpisode != nil, rebuildCurrentItem() else {
             return
         }
 
-        play(source: "audio session media services reset")
+        continueOnRebuiltItem()
     }
 
     func handleAudioSessionInterruptionBegan() {
@@ -1573,6 +1623,7 @@ public final class AVFoundationPlaybackController {
                 transitionToBuffering(reason: "item status unknown")
             }
         case .readyToPlay:
+            hasReplacedPlayerForFailedItem = false
             if updateDuration(from: episodeTime(fromPlayer: playerItem.duration.seconds)) {
                 publishPlaybackState()
             }
@@ -1732,10 +1783,47 @@ public final class AVFoundationPlaybackController {
     }
 
     private func handleFailedCurrentItem(_ playerItem: AVPlayerItem) {
+        handleFailedCurrentItem(playerItem, error: playerItem.error)
+    }
+
+    func handleCurrentItemFailed(error: (any Error)?) {
+        guard let playerItem = player.currentItem else {
+            return
+        }
+
+        handleFailedCurrentItem(playerItem, error: error)
+    }
+
+    private func handleFailedCurrentItem(_ playerItem: AVPlayerItem, error: (any Error)?) {
         if recoverFromFailedCurrentItemIfNeeded(playerItem) {
             return
         }
-        failPlayback(error: playerItem.error, failedItem: playerItem)
+        if recoverFromMediaServicesResetIfNeeded(error: error) {
+            return
+        }
+        failPlayback(error: error, failedItem: playerItem)
+    }
+
+    /// The media server can die under a paused item (seen during a phone
+    /// call), and the reset notification may arrive minutes later. Replacing
+    /// the player here keeps the episode resumable instead of failed.
+    private func recoverFromMediaServicesResetIfNeeded(error: (any Error)?) -> Bool {
+        guard PlaybackFailureRecoveryPolicy.isMediaServicesReset(error),
+              snapshot.currentEpisode != nil,
+              !hasReplacedPlayerForFailedItem
+        else {
+            return false
+        }
+
+        hasReplacedPlayerForFailedItem = true
+        recordDiagnosticsEvent("media services reset failed the item at \(diagnosticsTime(snapshot.position))")
+        replacePlayer()
+        guard rebuildCurrentItem() else {
+            return true
+        }
+
+        continueOnRebuiltItem()
+        return true
     }
 
     private func transitionToBuffering(reason: String) {

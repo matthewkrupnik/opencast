@@ -1,3 +1,4 @@
+import AVFoundation
 import Foundation
 import Testing
 @testable import OpenCastPlayback
@@ -84,5 +85,21 @@ struct PlaybackFailureRecoveryPolicyTests {
         let attempt = policy.shouldAttemptAutomaticRetry(error: offline, errorLog: nil)
         #expect(!attempt)
         #expect(policy.automaticTransientFailureRetryCount == 0)
+    }
+
+    @Test
+    func mediaServicesResetErrorIsRecognized() {
+        let reset = NSError(domain: AVFoundationErrorDomain, code: PlaybackFailureRecoveryPolicy.mediaServicesWereResetErrorCode)
+        let wrapper = NSError(
+            domain: AVFoundationErrorDomain,
+            code: -11800,
+            userInfo: [NSUnderlyingErrorKey: reset]
+        )
+        let unrelated = NSError(domain: AVFoundationErrorDomain, code: -11800)
+
+        #expect(PlaybackFailureRecoveryPolicy.isMediaServicesReset(reset))
+        #expect(PlaybackFailureRecoveryPolicy.isMediaServicesReset(wrapper))
+        #expect(!PlaybackFailureRecoveryPolicy.isMediaServicesReset(unrelated))
+        #expect(!PlaybackFailureRecoveryPolicy.isMediaServicesReset(nil))
     }
 }
