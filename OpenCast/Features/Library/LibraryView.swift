@@ -3,7 +3,7 @@ import SwiftUI
 
 /// The Library: every playlist, then the shows, as a list or as a grid
 /// of tiles. New playlists open through `onOpenPlaylist` once
-/// their name prompt has dismissed, so their rules can be set.
+/// their New Playlist sheet has dismissed, so their rules can be set.
 struct LibraryView: View {
     @Environment(OpenCastAppModel.self) private var appModel
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -13,6 +13,7 @@ struct LibraryView: View {
     @State private var sampleSubscriptionErrorMessage: String?
     @State private var isSubscribingSample = false
     @State private var namePromptRequest: PlaylistNamePromptRequest?
+    @State private var isShowingNewPlaylist = false
     @State private var pendingOpenPlaylistID: String?
     /// Bumped each time the Library reappears, so a drain that finished
     /// while something was pushed still shows its brief finished state.
@@ -76,11 +77,14 @@ struct LibraryView: View {
                 }
             }
             .playlistNamePrompt($namePromptRequest, onCommit: commitPlaylistName)
-            .onChange(of: namePromptRequest) {
-                openPendingPlaylistAfterPrompt()
+            .sheet(isPresented: $isShowingNewPlaylist) {
+                NewPlaylistSheet(initialTint: appModel.playlists.nextTint, onCreate: createPlaylist)
+            }
+            .onChange(of: isShowingNewPlaylist) {
+                openPendingPlaylistAfterSheet()
             }
             .onChange(of: pendingOpenPlaylistID) {
-                openPendingPlaylistAfterPrompt()
+                openPendingPlaylistAfterSheet()
             }
             .onAppear {
                 appModel.library.advanceNewEpisodeReferenceDate()
@@ -216,7 +220,7 @@ struct LibraryView: View {
     }
 
     private func promptNewPlaylist() {
-        namePromptRequest = .create()
+        isShowingNewPlaylist = true
     }
 
     private func requestRename(_ summary: PlaylistSummary) {
@@ -224,22 +228,21 @@ struct LibraryView: View {
     }
 
     private func commitPlaylistName(_ request: PlaylistNamePromptRequest, name: String) {
-        switch request.kind {
-        case .create:
-            let summary = appModel.performPlaylistMutation {
-                appModel.playlists.create(name: name, modelContext: modelContext)
-            }
-            pendingOpenPlaylistID = summary?.playlistID
-        case .rename(let playlistID):
-            appModel.renamePlaylist(playlistID, to: name, modelContext: modelContext)
-        }
+        appModel.renamePlaylist(request.playlistID, to: name, modelContext: modelContext)
     }
 
-    /// Pushing from the alert's own action would race its dismissal, so the
-    /// new playlist opens once the prompt's request has cleared. Both orders
-    /// of the two state changes end here.
-    private func openPendingPlaylistAfterPrompt() {
-        guard namePromptRequest == nil, let playlistID = pendingOpenPlaylistID else {
+    private func createPlaylist(name: String, tint: PlaylistTint) {
+        let summary = appModel.performPlaylistMutation {
+            appModel.playlists.create(name: name, tint: tint, modelContext: modelContext)
+        }
+        pendingOpenPlaylistID = summary?.playlistID
+    }
+
+    /// Pushing from the sheet's own action would race its dismissal, so the
+    /// new playlist opens once the sheet has closed. Both orders of the two
+    /// state changes end here.
+    private func openPendingPlaylistAfterSheet() {
+        guard !isShowingNewPlaylist, let playlistID = pendingOpenPlaylistID else {
             return
         }
         pendingOpenPlaylistID = nil

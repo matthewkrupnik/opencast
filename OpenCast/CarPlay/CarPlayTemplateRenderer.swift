@@ -1,5 +1,6 @@
 import CarPlay
 import Foundation
+import SwiftUI
 
 /// Turns browse value models into CarPlay templates. Stateless: it paints from
 /// the warm artwork cache and reports which rows still need a real image.
@@ -116,23 +117,33 @@ struct CarPlayTemplateRenderer {
         row: CarPlayListRow,
         onSelect: @escaping (CarPlayListRow) -> Void
     ) -> (item: CPListItem, artworkTarget: CarPlayArtworkTarget?) {
-        let artwork = artwork(for: playlistRow.artworkURL, cacheKind: .show)
-        // A symbol row has no URL to patch; an unknown stored symbol falls back
-        // to the playlist glyph so the slot is never empty.
-        let image = playlistRow.artworkURL == nil
-            ? UIImage(systemName: playlistRow.symbolName ?? "music.note.list") ?? UIImage(systemName: "music.note.list")
-            : artwork.image
         let item = CPListItem(
             text: playlistRow.title,
             detailText: playlistRow.detailText,
-            image: image,
+            image: playlistCover(for: playlistRow.tint),
             accessoryImage: nil,
             accessoryType: .disclosureIndicator
         )
         item.handler = handler(for: row, onSelect: onSelect)
-        return (item, artwork.pendingURL.map { url in
-            CarPlayArtworkTarget(item: item, artworkURL: url, cacheKind: .show)
-        })
+        // Drawn locally, so there is no artwork to patch in later.
+        return (item, nil)
+    }
+
+    private static var playlistCovers: [String: UIImage] = [:]
+
+    /// The phone's playlist cover at the car's row size, drawn once per color
+    /// and size.
+    private func playlistCover(for tint: PlaylistTint) -> UIImage? {
+        let key = "\(tint.rawValue)-\(artworkSizing.pixelSize.width)x\(artworkSizing.pixelSize.height)"
+        if let cached = Self.playlistCovers[key] {
+            return cached
+        }
+        let side = artworkSizing.pointSize.width
+        let renderer = ImageRenderer(content: PlaylistCoverView(tint: tint, size: side, cornerRadius: side * 0.14))
+        renderer.scale = artworkSizing.displayScale
+        let image = renderer.uiImage
+        Self.playlistCovers[key] = image
+        return image
     }
 
     private func makeItem(

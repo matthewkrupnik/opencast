@@ -1,15 +1,48 @@
 import SwiftUI
 
-/// A smart playlist's rule as a settings form: which episodes and shows it
-/// draws from, then the filters that narrow them and the order they play
-/// in. The form only reports a changed rule through `onChange`; the caller
-/// saves it.
+/// A playlist's settings: its color, then its rule — which episodes and
+/// shows it draws from, the filters that narrow them and the order they
+/// play in. A playlist without a readable rule shows only its color. The
+/// form only reports changes through `onTintChange` and `onChange`; the
+/// caller saves them.
 struct PlaylistSettingsForm: View {
-    let rule: PlaylistRule
+    let tint: PlaylistTint
+    let rule: PlaylistRule?
+    let onTintChange: (PlaylistTint) -> Void
     let onChange: (PlaylistRule) -> Void
 
     var body: some View {
         Form {
+            Section {
+                PlaylistTintPicker(selection: tintBinding)
+            } header: {
+                Text("Color")
+            }
+
+            if let rule {
+                PlaylistRuleSections(rule: rule, onChange: onChange)
+            }
+        }
+    }
+
+    private var tintBinding: Binding<PlaylistTint> {
+        Binding {
+            tint
+        } set: { tint in
+            guard tint != self.tint else {
+                return
+            }
+            onTintChange(tint)
+        }
+    }
+}
+
+private struct PlaylistRuleSections: View {
+    let rule: PlaylistRule
+    let onChange: (PlaylistRule) -> Void
+
+    var body: some View {
+        Group {
             Section {
                 PlaylistShowsRuleRow(rule: rule, onChange: commit)
 
@@ -151,14 +184,17 @@ struct PlaylistSettingsForm: View {
 #Preview {
     NavigationStack {
         PlaylistSettingsForm(
+            tint: .teal,
             rule: PlaylistRule(
                 status: .inProgress,
                 downloadedOnly: true,
                 maximumMinutes: 45,
                 maximumAgeDays: 30,
                 sortOrder: .newestFirst
-            )
-        ) { _ in }
+            ),
+            onTintChange: { _ in },
+            onChange: { _ in }
+        )
         .navigationTitle("Playlist Settings")
         .navigationBarTitleDisplayMode(.inline)
     }

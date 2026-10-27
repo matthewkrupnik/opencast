@@ -5131,8 +5131,8 @@ final class OpenCastUITests: XCTestCase {
         attachSmokeScreenshot(named: "playlists_library_add_menu")
         newPlaylistItem.tap()
 
-        submitPlaylistNamePrompt("New Playlist", confirming: "Create", name: "UI Test Playlist", in: app)
-        // Creating from Library opens the new playlist once the prompt has closed.
+        submitNewPlaylistSheet(name: "UI Test Playlist", color: nil, in: app)
+        // Creating from Library opens the new playlist once the sheet has closed.
         assertExists(
             app.navigationBars["UI Test Playlist"],
             named: "new playlist detail after creating from Library",
@@ -5424,12 +5424,21 @@ final class OpenCastUITests: XCTestCase {
         ).firstMatch
         assertHittable(newPlaylist, named: "Library Add menu New Playlist item")
         newPlaylist.tap()
-        submitPlaylistNamePrompt("New Playlist", confirming: "Create", name: "UI Test Smart", in: app)
+        submitNewPlaylistSheet(name: "UI Test Smart", color: "Teal", in: app)
 
         // A new playlist opens at once, so its rules can be set.
         assertExists(app.navigationBars["UI Test Smart"], named: "UI Test Smart detail", timeout: 10)
         openPlaylistSettings(in: app)
         assertSmartRuleSettings(Self.defaultSmartRuleSettings, in: app)
+        // The color picked at creation is the one Settings shows chosen.
+        let tealSwatch = app.buttons["Playlist Color Teal"]
+        assertExists(tealSwatch, named: "Playlist Settings Teal color")
+        XCTAssertTrue(tealSwatch.isSelected, "The color picked at creation should be selected in Playlist Settings")
+        app.buttons["Playlist Color Purple"].tap()
+        XCTAssertTrue(
+            waitUntil { app.buttons["Playlist Color Purple"].isSelected },
+            "Picking a color in Playlist Settings should select it"
+        )
         closePlaylistSettings(in: app)
         // Without the queue items the library holds one unplayed episode.
         assertExists(smartPlaylistRow("ui-test-episode-1", in: app), named: "Deterministic UI Episode row")
@@ -7620,59 +7629,45 @@ final class OpenCastUITests: XCTestCase {
             .firstMatch
     }
 
-    /// Fills the New Playlist or Rename Playlist alert and confirms it. The
-    /// confirm button must stay disabled until the field holds a name.
+    /// Names a playlist in the New Playlist sheet, optionally picks a color by
+    /// its title, and creates it.
     @MainActor
-    private func submitPlaylistNamePrompt(
-        _ title: String,
-        confirming confirmTitle: String,
+    private func submitNewPlaylistSheet(
         name: String,
+        color: String?,
         in app: XCUIApplication,
         file: StaticString = #filePath,
         line: UInt = #line
     ) {
-        let alert = app.alerts[title]
-        assertExists(alert, named: "\(title) alert", file: file, line: line)
-        let field = alert.textFields.firstMatch
-        let confirmButton = alert.buttons[confirmTitle]
-        assertExists(confirmButton, named: "\(title) \(confirmTitle) button", file: file, line: line)
+        let sheet = app.navigationBars["New Playlist"]
+        assertExists(sheet, named: "New Playlist sheet", file: file, line: line)
+        let field = app.textFields["New Playlist Name"]
+        let createButton = sheet.buttons["Create"]
+        assertExists(createButton, named: "New Playlist Create button", file: file, line: line)
+        XCTAssertFalse(createButton.isEnabled, "Create should stay disabled without a name", file: file, line: line)
 
-        // The alert focuses its field, so keys go straight to it. A tap at the
-        // field's trailing edge opens the edit callout and bounces the
-        // keyboard, which moves the alert under the Create tap.
-        _ = waitUntil { app.keyboards.firstMatch.exists }
+        if let color {
+            let swatch = app.buttons["Playlist Color \(color)"]
+            assertHittable(swatch, named: "New Playlist \(color) color", file: file, line: line)
+            swatch.tap()
+            XCTAssertTrue(waitUntil { swatch.isSelected }, "\(color) should be selected", file: file, line: line)
+        }
+
         if (field.value(forKey: "hasKeyboardFocus") as? Bool) != true {
             field.tap()
         }
-        // An empty field reports its placeholder as the value; deleting that
-        // many characters from an empty field is a no-op.
-        let existingValue = (field.value as? String) ?? ""
-        field.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: existingValue.count))
         field.typeText(" ")
-        XCTAssertFalse(confirmButton.isEnabled, "\(confirmTitle) should stay disabled for a blank name", file: file, line: line)
+        XCTAssertFalse(createButton.isEnabled, "Create should stay disabled for a blank name", file: file, line: line)
         field.typeText(XCUIKeyboardKey.delete.rawValue)
         field.typeText(name)
         XCTAssertTrue(
-            waitUntil { confirmButton.isEnabled },
-            "\(confirmTitle) should enable once the name has a character",
+            waitUntil { createButton.isEnabled },
+            "Create should enable once the name has a character",
             file: file,
             line: line
         )
-        // Enabling the button re-focuses the field, which slides the keyboard
-        // back and shifts the alert up; a tap during that slide misses.
-        _ = waitUntil(timeout: 2) { app.keyboards.firstMatch.exists }
-        usleep(800_000)
-        XCTAssertTrue(
-            waitForStableFrame(of: confirmButton),
-            "\(confirmTitle) should stop moving before it is tapped",
-            file: file,
-            line: line
-        )
-        confirmButton.tap()
-        if !alert.absentOrWait(timeout: 3), confirmButton.exists {
-            confirmButton.tap()
-        }
-        XCTAssertTrue(alert.absentOrWait(timeout: 5), "\(title) alert should close", file: file, line: line)
+        createButton.tap()
+        XCTAssertTrue(sheet.absentOrWait(timeout: 5), "New Playlist sheet should close", file: file, line: line)
     }
 
     /// True once two frame reads 300 ms apart agree, so a tap is not aimed

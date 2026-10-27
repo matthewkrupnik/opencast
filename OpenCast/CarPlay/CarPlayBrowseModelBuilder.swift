@@ -108,15 +108,13 @@ enum CarPlayBrowseModelBuilder {
 
     /// The car's first tab, as on the phone: the playlists in the store's
     /// order, which is the collection preference the phone shows, led by the
-    /// loaded episode when there is one. A row carries one image, so a
-    /// playlist shows its most dominant show's artwork (its card stack's
-    /// front card) and keeps its symbol only without one. A nil count leaves
+    /// loaded episode when there is one. Each row shows the playlist's
+    /// cover in its chosen color, as on the phone. A nil count leaves
     /// the detail line empty rather than claiming "No episodes" before the
     /// library it counts over has loaded.
     static func playlists(
         _ summaries: [PlaylistSummary],
         episodeCount: (PlaylistSummary) -> Int?,
-        artworkURL: (PlaylistSummary) -> String?,
         currentEpisode: Episode?,
         downloadRecords: [EpisodeDownloadRecord],
         nowPlaying: CarPlayNowPlayingState,
@@ -143,16 +141,14 @@ enum CarPlayBrowseModelBuilder {
         }
 
         let playlistRows = summaries.prefix(limits.maximumItemCount * 2).map { summary -> CarPlayListRow in
-            let url = artworkURL(summary)
-            return .playlist(
+            .playlist(
                 CarPlayPlaylistRow(
                     playlistID: summary.playlistID,
                     title: summary.name,
                     detailText: episodeCount(summary).map {
                         PlaylistSummaryText.line(itemCount: $0, totalDuration: 0)
                     },
-                    artworkURL: url,
-                    symbolName: url == nil ? PlaylistRowView.symbolName : nil
+                    tint: summary.tint
                 )
             )
         }

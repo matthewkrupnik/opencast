@@ -14,8 +14,8 @@ final class PlaylistRecord {
     /// The smart playlist's saved rule; nil for manual playlists.
     var ruleJSON: String?
     var hidesPlayed: Bool = false
-    /// A `PlaylistTint` key assigned when a smart playlist is created; nil
-    /// for manual playlists.
+    /// A `PlaylistTint` key, chosen at creation and changeable in Playlist
+    /// Settings; nil reads as blue.
     var tintKey: String?
     var originRawValue: String = "user"
     var createdAt: Date = Date()

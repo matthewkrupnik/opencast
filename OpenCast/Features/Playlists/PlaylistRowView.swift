@@ -1,6 +1,7 @@
 import SwiftUI
 
-/// A playlist in the collection: the playlist symbol and its name.
+/// A playlist in the collection: the playlist symbol in its color, and its
+/// name.
 struct PlaylistRowView: View {
     static let symbolName = "music.note.list"
 
@@ -12,7 +13,12 @@ struct PlaylistRowView: View {
 
     var body: some View {
         NavigationLink(value: AppRoute.playlistDetail(id: summary.playlistID)) {
-            Label(summary.name, systemImage: Self.symbolName)
+            Label {
+                Text(summary.name)
+            } icon: {
+                Image(systemName: Self.symbolName)
+                    .foregroundStyle(summary.tint.color)
+            }
         }
         .accessibilityIdentifier(Self.accessibilityIdentifier(for: summary.playlistID))
     }

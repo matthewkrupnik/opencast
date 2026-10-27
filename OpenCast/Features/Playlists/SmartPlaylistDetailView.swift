@@ -75,18 +75,14 @@ struct SmartPlaylistDetailView: View {
 
     private var settingsSheet: some View {
         NavigationStack {
-            Group {
-                if let rule = summary.rule {
-                    PlaylistSettingsForm(rule: rule, onChange: setRule)
+            PlaylistSettingsForm(tint: summary.tint, rule: summary.rule, onTintChange: setTint, onChange: setRule)
+                .navigationTitle("Playlist Settings")
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    ToolbarItem(placement: .confirmationAction) {
+                        Button("Done") { isShowingSettings = false }
+                    }
                 }
-            }
-            .navigationTitle("Playlist Settings")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Done") { isShowingSettings = false }
-                }
-            }
         }
     }
 
@@ -96,6 +92,12 @@ struct SmartPlaylistDetailView: View {
 
     private func showSettings() {
         isShowingSettings = true
+    }
+
+    private func setTint(_ tint: PlaylistTint) {
+        appModel.performPlaylistMutation {
+            appModel.playlists.setTint(tint, for: summary.playlistID, modelContext: modelContext)
+        }
     }
 
     private func setRule(_ rule: PlaylistRule) {

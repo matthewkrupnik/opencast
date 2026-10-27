@@ -333,44 +333,31 @@ struct CarPlayBrowseModelBuilderTests {
         #expect(continuation.snapshot.continuation == nil)
     }
 
-    @Test("Playlist rows carry the cover show's artwork, else their symbol, with an inflected count or none")
-    func playlistRowsCarryShowArtworkOrSymbol() throws {
+    @Test("Playlist rows carry their own color, never show artwork, with an inflected count or none")
+    func playlistRowsCarryTheirColor() throws {
         let summaries = [
-            makePlaylistSummary(playlistID: "cover", name: "Commute"),
-            makePlaylistSummary(playlistID: "bare", name: "Bare"),
+            makePlaylistSummary(playlistID: "cover", name: "Commute", tint: .teal),
+            makePlaylistSummary(playlistID: "bare", name: "Bare", tint: .purple),
             makePlaylistSummary(playlistID: "fresh", name: "Fresh"),
-            makePlaylistSummary(playlistID: "starred", name: "Starred")
+            makePlaylistSummary(playlistID: "starred", name: "Starred", tint: .orange)
         ]
         let counts = ["cover": 3, "bare": 0, "fresh": 1, "starred": 12]
 
         let uncounted = makePlaylistsSnapshot(summaries, episodeCount: { _ in nil }, limits: Self.roomyLimits)
         #expect(uncounted.sections.flatMap(\.rows).compactMap(playlistRow).allSatisfy { $0.detailText == nil })
 
-        // The closure offers a cover to two of them, so the other two prove
-        // they fall back to the symbol.
-        let bare: Set = ["bare", "starred"]
         let snapshot = makePlaylistsSnapshot(
             summaries,
             episodeCount: { counts[$0.playlistID] ?? -1 },
-            artworkURL: { bare.contains($0.playlistID) ? nil : "https://example.com/cover.jpg" },
             limits: Self.roomyLimits
         )
 
         let rows = snapshot.sections.flatMap(\.rows).compactMap(playlistRow)
         try #require(rows.map(\.playlistID) == summaries.map(\.playlistID))
         #expect(rows.map(\.title) == ["Commute", "Bare", "Fresh", "Starred"])
-        #expect(rows[0].artworkURL == "https://example.com/cover.jpg")
-        #expect(rows[0].symbolName == nil)
-        #expect(rows[0].detailText == "3 episodes")
-        #expect(rows[1].artworkURL == nil)
-        #expect(rows[1].symbolName == PlaylistRowView.symbolName)
-        #expect(rows[1].detailText == "No episodes")
-        #expect(rows[2].artworkURL == "https://example.com/cover.jpg")
-        #expect(rows[2].symbolName == nil)
-        #expect(rows[2].detailText == "1 episode")
-        #expect(rows[3].artworkURL == nil)
-        #expect(rows[3].symbolName == PlaylistRowView.symbolName)
-        #expect(rows[3].detailText == "12 episodes")
+        // A playlist without a stored color reads blue, as on the phone.
+        #expect(rows.map(\.tint) == [.teal, .purple, .blue, .orange])
+        #expect(rows.map(\.detailText) == ["3 episodes", "No episodes", "1 episode", "12 episodes"])
     }
 
     @Test("A playlist's episodes keep input order, carry the playlist and show title, and page like any list")
@@ -421,7 +408,6 @@ struct CarPlayBrowseModelBuilderTests {
     private func makePlaylistsSnapshot(
         _ summaries: [PlaylistSummary],
         episodeCount: (PlaylistSummary) -> Int? = { _ in 2 },
-        artworkURL: (PlaylistSummary) -> String? = { _ in nil },
         currentEpisode: Episode? = nil,
         nowPlaying: CarPlayNowPlayingState = .idle,
         limits: CarPlayListLimits
@@ -429,7 +415,6 @@ struct CarPlayBrowseModelBuilderTests {
         CarPlayBrowseModelBuilder.playlists(
             summaries,
             episodeCount: episodeCount,
-            artworkURL: artworkURL,
             currentEpisode: currentEpisode,
             downloadRecords: [],
             nowPlaying: nowPlaying,
@@ -558,7 +543,8 @@ struct CarPlayBrowseModelBuilderTests {
 
     private func makePlaylistSummary(
         playlistID: String,
-        name: String
+        name: String,
+        tint: PlaylistTint? = nil
     ) -> PlaylistSummary {
         PlaylistSummary(
             playlistID: playlistID,
@@ -566,6 +552,7 @@ struct CarPlayBrowseModelBuilderTests {
             kind: .smart,
             rule: PlaylistRule.default,
             hidesPlayed: false,
+            tintKey: tint?.rawValue,
             origin: .user,
             itemCount: 0,
             totalDuration: 0,

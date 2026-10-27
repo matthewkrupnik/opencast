@@ -25,7 +25,6 @@ struct PlaylistActionsMenu: View {
             Divider()
 
             Button("Playlist Settings", systemImage: "slider.horizontal.3", action: onShowSettings)
-                .disabled(summary.rule == nil)
 
             Button("Rename", systemImage: "pencil", action: promptRename)
 
@@ -94,10 +93,7 @@ struct PlaylistActionsMenu: View {
     }
 
     private func commitName(_ request: PlaylistNamePromptRequest, name: String) {
-        guard case .rename(let playlistID) = request.kind else {
-            return
-        }
-        appModel.renamePlaylist(playlistID, to: name, modelContext: modelContext)
+        appModel.renamePlaylist(request.playlistID, to: name, modelContext: modelContext)
     }
 
     private func confirmDelete() {

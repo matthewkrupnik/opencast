@@ -133,11 +133,18 @@ final class PlaylistStore {
         return change
     }
 
-    /// Stores `rule`, or the default rule without one.
+    /// The color a new playlist starts with: the least-used one.
+    var nextTint: PlaylistTint {
+        PlaylistTint.next(after: playlists.compactMap(\.tintKey))
+    }
+
+    /// Stores `rule`, or the default rule without one, and `tint`, or the
+    /// least-used color without one.
     @discardableResult
     func create(
         name: String,
         rule: PlaylistRule? = nil,
+        tint: PlaylistTint? = nil,
         origin: PlaylistOrigin = .user,
         modelContext: ModelContext
     ) -> PlaylistSummary? {
@@ -148,7 +155,7 @@ final class PlaylistStore {
         }
 
         let timestamp = now()
-        let tintKey = PlaylistTint.next(after: playlists.compactMap(\.tintKey)).rawValue
+        let tintKey = (tint ?? nextTint).rawValue
         let record = PlaylistRecord(
             name: trimmedName,
             kind: .smart,
@@ -189,6 +196,17 @@ final class PlaylistStore {
             modelContext: modelContext
         ) { summary in
             summary.name = trimmedName
+        }
+    }
+
+    @discardableResult
+    func setTint(_ tint: PlaylistTint, for playlistID: String, modelContext: ModelContext) -> Bool {
+        updatePlaylist(
+            playlistID,
+            failure: "Unable to change the playlist color",
+            modelContext: modelContext
+        ) { summary in
+            summary.tintKey = tint.rawValue
         }
     }
 
@@ -315,6 +333,7 @@ final class PlaylistStore {
                 record.name = updatedSummary.name
                 record.ruleJSON = updatedSummary.ruleJSON
                 record.hidesPlayed = updatedSummary.hidesPlayed
+                record.tintKey = updatedSummary.tintKey
                 record.updatedAt = updatedSummary.updatedAt
             }
             playlists[index] = updatedSummary

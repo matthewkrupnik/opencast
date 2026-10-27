@@ -268,7 +268,6 @@ final class CarPlayInterfaceCoordinator {
                 appModel.playlists.playlists,
                 // Playlists publish before the library they count over.
                 episodeCount: { appModel.coreStoresHydrated ? appModel.playlistEpisodeCount(for: $0) : nil },
-                artworkURL: { playlistArtworkURL(for: $0, appModel: appModel) },
                 currentEpisode: currentEpisode,
                 downloadRecords: downloadRecords,
                 nowPlaying: nowPlaying,
@@ -385,19 +384,6 @@ final class CarPlayInterfaceCoordinator {
                 limits: limits
             )
         )
-    }
-
-    /// The one image a playlist row carries: its most dominant matched show.
-    /// The evaluation is the memo the row's episode count already read.
-    private static func playlistArtworkURL(for summary: PlaylistSummary, appModel: OpenCastAppModel) -> String? {
-        let podcastArtworkURL: (String) -> URL? = { podcastID in
-            appModel.library.podcastCache(for: podcastID)?.artworkURL.flatMap(URL.init(string:))
-        }
-        let url = SmartPlaylistCoverSources.make(
-            episodes: appModel.smartPlaylistEvaluation(for: summary).episodes,
-            podcastArtworkURL: podcastArtworkURL
-        ).artworkURLs.first
-        return url?.absoluteString
     }
 
     private func pushPlaylistEpisodes(for row: CarPlayPlaylistRow) {

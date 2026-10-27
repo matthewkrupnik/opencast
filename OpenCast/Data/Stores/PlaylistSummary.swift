@@ -29,7 +29,7 @@ nonisolated struct PlaylistSummary: Identifiable, Equatable, Sendable {
         kind == .smart && rule == nil
     }
 
-    var tint: PlaylistTint? {
-        kind == .smart ? PlaylistTint.resolved(tintKey) : nil
+    var tint: PlaylistTint {
+        PlaylistTint.resolved(tintKey)
     }
 }

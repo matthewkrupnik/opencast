@@ -1,8 +1,7 @@
 import SwiftUI
 
-/// The palette a smart playlist draws its cover, glyph and glow tint from.
-/// The raw value is stored in `PlaylistRecord.tintKey` at creation, so case
-/// names are durable storage keys.
+/// The palette a playlist draws its cover from. The raw value is stored in
+/// `PlaylistRecord.tintKey`, so case names are durable storage keys.
 nonisolated enum PlaylistTint: String, CaseIterable, Codable, Sendable {
     case red
     case orange
@@ -12,6 +11,10 @@ nonisolated enum PlaylistTint: String, CaseIterable, Codable, Sendable {
     case blue
     case indigo
     case purple
+
+    var title: String {
+        rawValue.capitalized
+    }
 
     var color: Color {
         switch self {
@@ -51,8 +54,9 @@ nonisolated enum PlaylistTint: String, CaseIterable, Codable, Sendable {
         key.flatMap(PlaylistTint.init(rawValue:)) ?? .blue
     }
 
-    /// Picks the tint the fewest existing playlists use so new smart
-    /// playlists stay visually distinct; ties go to declaration order.
+    /// Picks the tint the fewest existing playlists use, so a new
+    /// playlist's preselected color stays visually distinct; ties go to
+    /// declaration order.
     /// Unknown keys in `used` are ignored.
     static func next(after used: [String]) -> PlaylistTint {
         allCases.min { lhs, rhs in

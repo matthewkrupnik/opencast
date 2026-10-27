@@ -274,6 +274,26 @@ struct PlaylistStoreTests {
         #expect(storedFourth.tintKey == PlaylistTint.orange.rawValue)
     }
 
+    @Test("A chosen color overrides the least-used one, and changing it persists for any playlist")
+    func chosenAndChangedTintPersist() throws {
+        let fixture = try makeFixture()
+        #expect(fixture.store.nextTint == .red)
+        let created = try #require(
+            fixture.store.create(name: "Walks", tint: .teal, modelContext: fixture.context)
+        )
+        #expect(created.tint == .teal)
+        #expect(fixture.store.nextTint == .red)
+
+        #expect(fixture.store.setTint(.purple, for: created.playlistID, modelContext: fixture.context))
+        #expect(fixture.store.playlists.first?.tint == .purple)
+        let stored = try #require(
+            try storedPlaylists(in: ModelContext(fixture.container)).first { $0.playlistID == created.playlistID }
+        )
+        #expect(stored.tintKey == PlaylistTint.purple.rawValue)
+
+        #expect(!fixture.store.setTint(.green, for: "missing", modelContext: fixture.context))
+    }
+
     @Test("A smart create stores the default rule and the first eight take distinct tints in case order")
     func smartCreateStoresDefaultRuleAndDistinctTints() throws {
         let fixture = try makeFixture()
@@ -287,7 +307,7 @@ struct PlaylistStoreTests {
         let ninth = try #require(fixture.store.create(name: "Smart 9", modelContext: fixture.context))
 
         #expect(created.map(\.tintKey) == PlaylistTint.allCases.map(\.rawValue))
-        #expect(created.compactMap(\.tint) == PlaylistTint.allCases)
+        #expect(created.map(\.tint) == PlaylistTint.allCases)
         #expect(ninth.tint == .red)
         #expect(created.allSatisfy { $0.ruleJSON == PlaylistRule.default.encodedJSON() })
         #expect(created.allSatisfy { $0.rule == .default && !$0.hasUnreadableRule })
@@ -525,7 +545,7 @@ struct PlaylistStoreTests {
         let manual = try #require(summaries["manual"])
         #expect(manual.rule == nil)
         #expect(!manual.hasUnreadableRule)
-        #expect(manual.tint == nil)
+        #expect(manual.tint == .red)
         #expect(PlaylistTint.resolved(nil) == .blue)
         #expect(PlaylistTint.resolved("sparkly") == .blue)
         #expect(PlaylistTint.allCases.allSatisfy { PlaylistTint.resolved($0.rawValue) == $0 })
