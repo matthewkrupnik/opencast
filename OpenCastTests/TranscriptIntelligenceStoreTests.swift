@@ -50,6 +50,24 @@ struct TranscriptIntelligenceStoreTests {
         #expect(store.isVisible)
     }
 
+    @Test("A build without the entitlement hides the entry points")
+    func notEntitledHides() {
+        let store = makeStore()
+        client.modelAvailability = .notEntitled
+        store.refreshAvailability()
+        #expect(store.availability == .notEntitled)
+        #expect(!store.isVisible)
+    }
+
+    @Test("The production client never asks the model without the entitlement")
+    func productionClientSkipsModelWithoutEntitlement() {
+        // The test host ships with OpenCastPrivateCloudCompute false.
+        #expect(!PrivateCloudComputeTranscriptIntelligenceClient.isEntitled)
+        let client = PrivateCloudComputeTranscriptIntelligenceClient()
+        #expect(client.modelAvailability == .notEntitled)
+        #expect(client.quota == TranscriptIntelligenceQuotaSnapshot())
+    }
+
     @Test("The feature flag hides the entry points even when available")
     func featureFlagHides() {
         let store = makeStore(isFeatureEnabled: false)

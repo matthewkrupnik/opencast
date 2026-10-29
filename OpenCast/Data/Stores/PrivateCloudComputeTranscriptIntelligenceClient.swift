@@ -23,6 +23,9 @@ nonisolated final class PrivateCloudComputeTranscriptIntelligenceClient: Transcr
     }
 
     var modelAvailability: TranscriptIntelligenceModelAvailability {
+        guard Self.isEntitled else {
+            return .notEntitled
+        }
         if case .unavailable(.deviceNotEligible) = model.availability {
             return .deviceNotEligible
         }
@@ -40,6 +43,9 @@ nonisolated final class PrivateCloudComputeTranscriptIntelligenceClient: Transcr
     }
 
     var quota: TranscriptIntelligenceQuotaSnapshot {
+        guard Self.isEntitled else {
+            return TranscriptIntelligenceQuotaSnapshot()
+        }
         let usage = model.quotaUsage
         var snapshot = TranscriptIntelligenceQuotaSnapshot(
             isLimitReached: usage.isLimitReached,

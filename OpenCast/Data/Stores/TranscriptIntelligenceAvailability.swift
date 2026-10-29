@@ -29,6 +29,8 @@ nonisolated enum TranscriptIntelligenceAvailability: Equatable, Sendable {
             return .appleIntelligenceOff
         case .systemNotReady:
             return .modelNotReady
+        case .notEntitled:
+            return .notEntitled
         case .available:
             break
         }

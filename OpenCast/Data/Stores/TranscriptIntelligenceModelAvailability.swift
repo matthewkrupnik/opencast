@@ -7,4 +7,7 @@ nonisolated enum TranscriptIntelligenceModelAvailability: Equatable, Sendable {
     case deviceNotEligible
     case appleIntelligenceNotEnabled
     case systemNotReady
+    /// The build lacks the Private Cloud Compute entitlement, so the model is
+    /// never asked: even an availability read logs an unentitled request.
+    case notEntitled
 }

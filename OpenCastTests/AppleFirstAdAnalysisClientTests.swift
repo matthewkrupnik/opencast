@@ -102,6 +102,21 @@ struct AppleFirstAdAnalysisClientTests {
         }
     }
 
+    @Test("A build without the entitlement never opens an Apple session")
+    func notEntitledSkipsAppleSession() async throws {
+        let (client, scripted, _) = makeClient(turns: [], apiKey: "")
+        scripted.modelAvailability = .notEntitled
+
+        do {
+            _ = try await client.analyze(GeminiAdAnalysisClientTests.request())
+            Issue.record("Expected an unavailable error")
+        } catch let error as EpisodeAdAnalysisHTTPError {
+            #expect(error.code == "apple_intelligence_unavailable")
+            #expect(error.errorDescription == "Apple Intelligence isn’t available in this build.")
+        }
+        #expect(scripted.sessions.isEmpty)
+    }
+
     @Test("Detect Ads stays available without a Gemini key while Apple can run")
     func storeAvailabilityFollowsEngines() {
         let noKey = GeminiConfiguration(apiKey: "")

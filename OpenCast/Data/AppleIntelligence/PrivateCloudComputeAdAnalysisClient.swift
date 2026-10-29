@@ -43,6 +43,8 @@ nonisolated struct PrivateCloudComputeAdAnalysisClient: Sendable {
             "Turn on Apple Intelligence in Settings to detect ads."
         case .systemNotReady:
             "Apple Intelligence isn’t ready yet. Try again later."
+        case .notEntitled:
+            "Apple Intelligence isn’t available in this build."
         }
         if let reason {
             return EpisodeAdAnalysisHTTPError(statusCode: 503, code: "apple_intelligence_unavailable", detail: reason)
