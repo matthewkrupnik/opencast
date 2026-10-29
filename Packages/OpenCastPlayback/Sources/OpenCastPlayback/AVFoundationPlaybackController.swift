@@ -2322,6 +2322,13 @@ public final class AVFoundationPlaybackController {
 
     private func syncObservableState() {
         setIfChanged(\.currentEpisode, to: snapshot.currentEpisode)
+        // Every change is logged here, so a wait that resolves on its own
+        // (buffering to playing) shows in the log like any requested one.
+        if state != snapshot.state {
+            recordDiagnosticsEvent(
+                "state \(AVFoundationPlaybackDiagnosticsFormatter.description(for: state)) -> \(AVFoundationPlaybackDiagnosticsFormatter.description(for: snapshot.state))"
+            )
+        }
         setIfChanged(\.state, to: snapshot.state)
         setIfChanged(\.position, to: snapshot.position)
         setIfChanged(\.duration, to: snapshot.duration)

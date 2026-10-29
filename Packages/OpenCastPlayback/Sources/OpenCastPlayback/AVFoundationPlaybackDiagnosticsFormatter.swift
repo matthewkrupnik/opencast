@@ -201,7 +201,7 @@ enum AVFoundationPlaybackDiagnosticsFormatter {
         return asset.url.isFileURL ? "local file" : "network stream"
     }
 
-    private static func description(for state: PlaybackState) -> String {
+    static func description(for state: PlaybackState) -> String {
         switch state {
         case .idle:
             return "idle"

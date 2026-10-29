@@ -1,5 +1,6 @@
 import Foundation
 import Testing
+import OpenCastPlayback
 @testable import OpenCast
 
 @Suite("Local performance diagnostics")
@@ -12,6 +13,13 @@ struct PerformanceDiagnosticsTests {
         reporter.transition(.playback, to: "paused")
         #expect(states.map(\.label) == ["playing", "paused"])
         #expect(reporter.transitionCount == 2)
+    }
+
+    @Test func playbackStatesMapToReportedLabels() {
+        let labels = [PlaybackState.idle, .loading, .buffering, .paused, .playing, .failed("x")]
+            .map(PerformanceStateReporter.playbackLabel(for:))
+        #expect(labels == ["absent", "buffering", "buffering", "paused", "playing", "paused"])
+        #expect(labels.allSatisfy { PerformanceState(domain: .playback, label: $0) != nil })
     }
 
     @Test func retentionAndAtomicReplacement() async throws {

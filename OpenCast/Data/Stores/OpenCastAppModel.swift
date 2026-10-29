@@ -147,6 +147,7 @@ final class OpenCastAppModel {
     @ObservationIgnored private var progressPersistenceTask: Task<Void, Never>?
     @ObservationIgnored private var progressBoundaryPersistenceTask: Task<Void, Never>?
     @ObservationIgnored private var listeningHistoryTask: Task<Void, Never>?
+    @ObservationIgnored private var playbackPerformanceStateTask: Task<Void, Never>?
     @ObservationIgnored private let playbackRestorePreference = PlaybackRestorePreferenceStore()
     /// Pending restore-key clear from the last playback teardown; tests
     /// await it before inspecting the store.
@@ -617,8 +618,29 @@ final class OpenCastAppModel {
         playbackSurfaceRestorationCount += 1
         playbackSurfaceRestorationObserver?(playback.rate)
         startPlaybackProgressPersistence(modelContext: modelContext)
+        startPlaybackPerformanceStateReporting()
         restorePreviousPlaybackIfAvailable(modelContext: modelContext)
         restoreAdFreePassQueue(modelContext: modelContext)
+    }
+
+    /// The playback state the system attributes metrics to. Reported here
+    /// rather than from a view: views stop updating while the app plays in the
+    /// background, and a CarPlay-only launch builds none, which left the
+    /// reported state hours stale.
+    private func startPlaybackPerformanceStateReporting() {
+        guard playbackPerformanceStateTask == nil else {
+            return
+        }
+
+        playbackPerformanceStateTask = Task { [weak self] in
+            for await state in Observations({ self?.playback.state ?? .idle }) {
+                guard !Task.isCancelled else {
+                    return
+                }
+
+                PerformanceStateReporter.shared.transition(.playback, to: PerformanceStateReporter.playbackLabel(for: state))
+            }
+        }
     }
 
     /// Progress persistence has to outlive any one scene: a CarPlay-only launch

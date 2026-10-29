@@ -10,15 +10,6 @@ struct PerformanceDiagnosticsModifier: ViewModifier {
             .onChange(of: scenePhase, initial: true) { _, phase in
                 PerformanceStateReporter.shared.transition(.scene, to: phase == .background ? "background" : "foreground")
             }
-            .onChange(of: appModel.playback.state, initial: true) { _, state in
-                let label = switch state {
-                case .idle: "absent"
-                case .paused, .failed: "paused"
-                case .loading, .buffering: "buffering"
-                case .playing: "playing"
-                }
-                PerformanceStateReporter.shared.transition(.playback, to: label)
-            }
             .onChange(of: appModel.isNowPlayingPresented, initial: true) { _, presented in
                 if !presented { PerformanceStateReporter.shared.transition(.nowPlaying, to: "hidden") }
             }

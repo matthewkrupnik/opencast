@@ -25,6 +25,29 @@ struct AVFoundationPlaybackControllerTests {
         #expect(controller.playbackDiagnosticsText.isEmpty)
     }
 
+    @Test("Every playback state change is logged once, old state to new")
+    func eventLogRecordsStateChanges() throws {
+        let controller = AVFoundationPlaybackController()
+        var events: [String] = []
+        controller.setEventLogHandler { events.append($0) }
+        try controller.load(episode(duration: 240), startPosition: 30)
+        let loadedState = controller.state
+        #expect(loadedState != .idle)
+        controller.unload()
+
+        let transitions = events.compactMap { event -> String? in
+            guard let range = event.range(of: " state ") else {
+                return nil
+            }
+            return String(event[range.upperBound...])
+        }
+        #expect(transitions.first?.hasPrefix("idle -> ") == true)
+        #expect(transitions.last?.hasSuffix(" -> idle") == true)
+        #expect(zip(transitions, transitions.dropFirst()).allSatisfy { previous, next in
+            previous.components(separatedBy: " -> ").last == next.components(separatedBy: " -> ").first
+        })
+    }
+
     @Test("Download handoff preserves pause, speed, position, and sleep timer", arguments: [
         PlaybackSleepTimerMode.endOfEpisode, .duration(600)
     ])

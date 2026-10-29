@@ -1,3 +1,4 @@
+import OpenCastPlayback
 import StateReporting
 
 final class PerformanceStateReporter {
@@ -17,6 +18,15 @@ final class PerformanceStateReporter {
         labels[domain] = label
         transitionCount += 1
         publish(state)
+    }
+
+    nonisolated static func playbackLabel(for state: PlaybackState) -> String {
+        switch state {
+        case .idle: "absent"
+        case .paused, .failed: "paused"
+        case .loading, .buffering: "buffering"
+        case .playing: "playing"
+        }
     }
 
     func nowPlayingMarker(_ marker: String) {
