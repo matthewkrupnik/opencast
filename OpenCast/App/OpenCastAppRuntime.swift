@@ -23,6 +23,11 @@ final class OpenCastAppRuntime {
             // Read before the container opens, so the copy never depends on
             // what that open does to the playlist tables it no longer maps.
             let legacyLocalPlaylists = Self.legacyLocalPlaylists(launchConfiguration: launchConfiguration)
+            #if DEBUG
+            if CloudKitSchemaInitializer.isRequested {
+                CloudKitSchemaInitializer.run()
+            }
+            #endif
             modelContainer = try OpenCastModelContainerFactory.make(
                 inMemory: launchConfiguration.usesInMemoryStore
             )

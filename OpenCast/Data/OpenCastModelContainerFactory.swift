@@ -6,15 +6,18 @@ enum OpenCastModelContainerFactory {
     static let syncedConfigurationName = "SyncedUserData"
     static let localConfigurationName = "LocalDeviceData"
 
+    /// The models mirrored to iCloud; each is a `CD_`-prefixed record type.
+    static let syncedModelTypes: [any PersistentModel.Type] = [
+        SubscriptionRecord.self,
+        EpisodeProgressRecord.self,
+        SyncTombstoneRecord.self,
+        PlaylistRecord.self,
+        PlaylistItemRecord.self,
+        PlaylistTombstoneRecord.self
+    ]
+
     static var syncedSchema: Schema {
-        Schema([
-            SubscriptionRecord.self,
-            EpisodeProgressRecord.self,
-            SyncTombstoneRecord.self,
-            PlaylistRecord.self,
-            PlaylistItemRecord.self,
-            PlaylistTombstoneRecord.self
-        ])
+        Schema(syncedModelTypes)
     }
 
     static var localSchema: Schema {
