@@ -203,7 +203,14 @@ struct LibraryView: View {
                 LazyVGrid(columns: metrics.columns, spacing: metrics.rowSpacing) {
                     ForEach(playlists) { summary in
                         LibraryPlaylistTileView(summary: summary, metrics: metrics)
-                            .modifier(PlaylistCollectionActionsModifier(summary: summary, onRename: requestRename))
+                            .modifier(
+                                PlaylistCollectionActionsModifier(
+                                    summary: summary,
+                                    onRename: requestRename,
+                                    // Compact tiles are too narrow for swipe actions.
+                                    supportsSwipeActions: !metrics.isCompact
+                                )
+                            )
                     }
                 }
                 .padding(.vertical, 8)

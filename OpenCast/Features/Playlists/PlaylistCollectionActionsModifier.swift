@@ -1,7 +1,7 @@
 import SwiftData
 import SwiftUI
 
-/// Play, Rename and Delete for a playlist row in the collection, as swipes
+/// Play, Rename and Delete for a playlist in the collection, as swipes
 /// and a context menu.
 struct PlaylistCollectionActionsModifier: ViewModifier {
     @Environment(OpenCastAppModel.self) private var appModel
@@ -10,20 +10,10 @@ struct PlaylistCollectionActionsModifier: ViewModifier {
 
     let summary: PlaylistSummary
     let onRename: (PlaylistSummary) -> Void
+    var supportsSwipeActions = true
 
     func body(content: Content) -> some View {
-        content
-            .swipeActions(edge: .leading) {
-                Button("Play", systemImage: "play.fill", action: play)
-                    .tint(.accentColor)
-            }
-            // A destructive role would animate the row away before the
-            // confirmation answers, so Delete is only tinted red.
-            .swipeActions(edge: .trailing) {
-                Button("Delete", systemImage: "trash", action: confirmDelete)
-                    .tint(.red)
-                Button("Rename", systemImage: "pencil", action: rename)
-            }
+        swipeDecoratedContent(content)
             .contextMenu {
                 Button("Play", systemImage: "play.fill", action: play)
                 Divider()
@@ -41,6 +31,26 @@ struct PlaylistCollectionActionsModifier: ViewModifier {
             } message: {
                 Text("Its episodes stay in your library.")
             }
+    }
+
+    @ViewBuilder
+    private func swipeDecoratedContent(_ content: Content) -> some View {
+        if supportsSwipeActions {
+            content
+                .swipeActions(edge: .leading) {
+                    Button("Play", systemImage: "play.fill", action: play)
+                        .tint(.accentColor)
+                }
+                // A destructive role would animate the row away before the
+                // confirmation answers, so Delete is only tinted red.
+                .swipeActions(edge: .trailing) {
+                    Button("Delete", systemImage: "trash", action: confirmDelete)
+                        .tint(.red)
+                    Button("Rename", systemImage: "pencil", action: rename)
+                }
+        } else {
+            content
+        }
     }
 
     private func play() {
