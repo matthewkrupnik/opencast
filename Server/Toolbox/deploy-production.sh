@@ -38,8 +38,14 @@ if grep -q "$placeholder" "$notifications_dir/$notifications_config"; then
     echo "Put apns-cert.pem and apns-key.pem in Server/Toolbox/apns/ first." >&2
     exit 1
   fi
+  # APNs rejects the handshake unless the Apple WWDR G4 intermediate follows
+  # the leaf, and Cloudflare then answers every send with an empty 500.
+  chain="$(mktemp)"
+  openssl x509 -in "$apns_dir/apns-cert.pem" >"$chain"
+  curl -fsS https://www.apple.com/certificateauthority/AppleWWDRCAG4.cer | openssl x509 -inform der >>"$chain"
   output="$(wrangler mtls-certificate upload \
-    --cert "$apns_dir/apns-cert.pem" --key "$apns_dir/apns-key.pem" --name opencast-apns-production 2>&1)"
+    --cert "$chain" --key "$apns_dir/apns-key.pem" --name opencast-apns-production 2>&1)"
+  rm -f "$chain"
   echo "$output"
   certificate_id="$(sed -n 's/^ID: *//p' <<<"$output" | head -1)"
   if [[ -z "$certificate_id" ]]; then
