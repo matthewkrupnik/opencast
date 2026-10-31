@@ -9,10 +9,13 @@ struct EpisodeRowContextMenuModifier: ViewModifier {
     let showsGoToShow: Bool
     let onViewDetails: (EpisodeListItemSnapshot) -> Void
 
+    @State private var noticeGate = AnalysisKeyNoticeGate()
+
     func body(content: Content) -> some View {
         let isPlayed = appModel.library.progressRecord(for: episode.episodeID)?.isPlayed == true
 
         content
+            .analysisKeyNotice(gate: noticeGate)
             .contextMenu {
             Section {
                 EpisodeShareMenu(episode: episode)
@@ -66,6 +69,8 @@ struct EpisodeRowContextMenuModifier: ViewModifier {
     }
 
     private func detectAds() {
-        appModel.startAdFreePass(for: episode, modelContext: modelContext)
+        noticeGate.run(appModel: appModel) {
+            appModel.startAdFreePass(for: episode, modelContext: modelContext)
+        }
     }
 }

@@ -7,7 +7,9 @@ enum EpisodeAdFreePassStage: Equatable {
     case installingModel(OpenCastWhisperModelInstallProgress)
     case installingSpeechAssets(fractionCompleted: Double)
     case transcribing(EpisodeTranscriptionProgress)
-    case analyzing
+    /// Ad detection runs on this device. `nil` steps until the run's route
+    /// is known.
+    case analyzing(steps: EpisodeAdFreePassAnalysisSteps?)
     case completed(zoneCount: Int)
     case interrupted
     case failed(message: String)

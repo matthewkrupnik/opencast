@@ -27,7 +27,10 @@ struct AdAutoDetectPlayPolicy {
             return true
         case .completed:
             return isTranscriptStaleForDownload
-        case .queued, .running, .capDeferred:
+        case .queued, .running:
+            return false
+        case .keyRequired:
+            // Playing it again would only ask for the same key again.
             return false
         }
     }

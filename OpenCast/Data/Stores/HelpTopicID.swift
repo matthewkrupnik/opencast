@@ -5,6 +5,7 @@ import Foundation
 nonisolated enum HelpTopicID {
     static let voiceBoost = "voice-boost"
     static let adDetection = "ad-detection"
+    static let aiKeys = "ai-keys"
     static let transcriptionEngines = "transcription-engines"
     static let iCloudSync = "icloud-sync"
     static let storage = "storage"
@@ -14,6 +15,7 @@ nonisolated enum HelpTopicID {
     static let all = [
         voiceBoost,
         adDetection,
+        aiKeys,
         transcriptionEngines,
         iCloudSync,
         storage,

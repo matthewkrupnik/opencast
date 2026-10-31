@@ -1,6 +1,7 @@
 // Build settings for the OpenCast app target.
 //
-// GEMINI_API_KEY powers ad detection and Chapters & Summary. It stays blank
+// GEMINI_API_KEY is the built-in key ad detection and Chapters & Summary use
+// when the listener has saved no key of their own in AI Services. It stays blank
 // in git; put the real key in Config/Secrets.xcconfig (git-ignored, copied
 // from Config/Secrets.xcconfig.example). The key is embedded in the built app.
 GEMINI_API_KEY =

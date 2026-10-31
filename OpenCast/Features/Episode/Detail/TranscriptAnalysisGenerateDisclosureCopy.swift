@@ -1,21 +1,21 @@
-/// Disclosure copy for the first-ever Generate Chapters & Summary tap. With
-/// the per-show opt-in retired, this one-time dialog is the only place the
-/// transcript-upload disclosure appears, so it must run before the first
-/// generation. One of its sentences describes a flag-gated feature, so the
-/// body is composed — that sentence appears only while its feature is live.
+/// Disclosure copy for the first-ever Generate Chapters & Summary tap. This
+/// one-time dialog is the only place the transcript disclosure appears, so it
+/// must run before the first generation. One sentence describes a
+/// flag-gated surface, so the body is composed — it appears only while that
+/// surface is live.
 enum TranscriptAnalysisGenerateDisclosureCopy {
     nonisolated static let title = "Generate Chapters & Summary?"
     nonisolated static let confirmButtonTitle = "Generate"
 
     nonisolated static func confirmationBody(
-        isSharingEnabled: Bool = TranscriptAnalysisFeatureFlags.isSharingEnabled
+        chargesTranscriptionMinutes: Bool = TranscriptAnalysisFeatureFlags.chargesTranscriptionMinutes
     ) -> String {
         var lines = [
-            "This episode’s transcript is sent from this device to Google Gemini to generate chapters and a summary. Your audio is never sent.",
+            "This episode’s transcript text is sent to the AI provider you chose, using your key, to generate chapters and a summary. Without a key, it goes to Google Gemini with this app’s built-in key. Your audio is never sent.",
             "Results are saved on this device."
         ]
-        if isSharingEnabled {
-            lines.append("Chapters may be shared with other listeners of the same episode.")
+        if chargesTranscriptionMinutes {
+            lines.append("Uses transcription minutes.")
         }
         return lines.joined(separator: "\n")
     }

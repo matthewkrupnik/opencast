@@ -81,15 +81,15 @@ struct EpisodeAdFreePassPresentation: Equatable {
     }
 
     static let analyzing = EpisodeAdFreePassPresentation(
-        stage: .analyzing,
+        stage: .analyzing(steps: nil),
         phase: .running,
-        statusText: "Analyzing promos and ads...",
+        statusText: "Detecting ads",
         primaryActionTitle: "Working...",
         isPrimaryActionEnabled: false
     )
 
     static let checkingAnalysis = EpisodeAdFreePassPresentation(
-        stage: .analyzing,
+        stage: .analyzing(steps: nil),
         phase: .checking,
         statusText: "Checking promo and ad markers...",
         primaryActionTitle: "Working...",
@@ -116,14 +116,6 @@ struct EpisodeAdFreePassPresentation: Equatable {
             isPrimaryActionEnabled: false
         )
     }
-
-    static let capDeferred = EpisodeAdFreePassPresentation(
-        stage: .idle,
-        phase: .deferred,
-        statusText: "Daily detection limit reached — continues tomorrow",
-        primaryActionTitle: "Retry",
-        isPrimaryActionEnabled: true
-    )
 
     static let outdated = EpisodeAdFreePassPresentation(
         stage: .idle,

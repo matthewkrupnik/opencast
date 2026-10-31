@@ -48,9 +48,6 @@ struct OpenCastRootLifecycleModifier: ViewModifier {
                     appModel.lastPlaybackError = message
                 }
             }
-            .onChange(of: appModel.library.refreshCompletedToken) { _, _ in
-                appModel.adFreePass.probeCapDeferredQueueIfAllowed(trigger: .refreshCompleted)
-            }
             .onChange(of: appModel.library.contentRefreshToken) { _, _ in
                 if scenePhase == .active {
                     appModel.scheduleAutoDownloadPass(modelContext: modelContext)
@@ -80,7 +77,6 @@ struct OpenCastRootLifecycleModifier: ViewModifier {
             if transcriptionInterruptionDecision == .interruptNow {
                 interruptActiveTranscriptionForLifecycleExit()
             }
-            appModel.resetTranscriptAnalysisForegroundProbe()
             flushProgressForLifecycleExitIfNeeded()
         case .active:
             deferredTranscriptionInterruptionTask?.cancel()
@@ -88,9 +84,12 @@ struct OpenCastRootLifecycleModifier: ViewModifier {
             hasFlushedProgressForLifecycleExit = false
             appModel.setAutoDownloadsScene(autoDownloadSceneID, isActive: true)
             appModel.resumeEnvironmentalAdFreePassIfNeeded(modelContext: modelContext)
-            appModel.retryDeferredTranscriptAnalyses(modelContext: modelContext, trigger: .sceneActivated)
+            appModel.resumeInterruptedTranscriptAnalyses(modelContext: modelContext)
             appModel.transcriptIntelligence.refreshAvailability()
+            appModel.analysisUsage.refreshCurrentMonth()
             startForegroundSyncedDataRefresh()
+            // Ahead of the maintenance, which waits while Now Playing is open.
+            appModel.refreshCurrentPlaybackSettingsFromStore(modelContext: modelContext)
             runOrDeferForegroundMaintenance()
             startConnectivityRecovery()
         @unknown default:
@@ -169,7 +168,7 @@ struct OpenCastRootLifecycleModifier: ViewModifier {
         hasPendingConnectivityRefresh = false
         foregroundMaintenanceTask?.cancel()
         appModel.library.refreshProgressRecords(modelContext: modelContext)
-        appModel.refreshCurrentVoiceBoostSetting(modelContext: modelContext)
+        appModel.refreshCurrentPlaybackSettings(modelContext: modelContext)
         appModel.sweepPlayedDownloadsIfEnabled(modelContext: modelContext)
         appModel.trimDownloadsToKeepLimits(modelContext: modelContext)
         foregroundMaintenanceTask = Task {
@@ -180,6 +179,10 @@ struct OpenCastRootLifecycleModifier: ViewModifier {
                 guard !Task.isCancelled else {
                     return
                 }
+            }
+            await appModel.analysisKeys.refreshPresences()
+            guard !Task.isCancelled else {
+                return
             }
             await appModel.refreshLibraryIfStale(modelContext: modelContext)
             guard !Task.isCancelled else {
@@ -202,6 +205,10 @@ struct OpenCastRootLifecycleModifier: ViewModifier {
                 activePodcastIDs: appModel.library.activePodcastIDs,
                 modelContext: modelContext
             )
+            guard !Task.isCancelled else {
+                return
+            }
+            await appModel.refreshAnalysisPolicyIfDue()
             guard !Task.isCancelled else {
                 return
             }

@@ -40,9 +40,6 @@ struct AdDetectionQueueRowView: View {
         case .queued, .awaitingConsent:
             Image(systemName: "clock")
                 .foregroundStyle(.secondary)
-        case .capDeferred:
-            Image(systemName: "hourglass")
-                .foregroundStyle(.secondary)
         case .interrupted:
             Image(systemName: "pause.circle")
                 .foregroundStyle(.secondary)

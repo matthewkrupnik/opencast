@@ -16,15 +16,19 @@ final class EpisodeAdFreePassBackgroundSession {
     private static let logger = Logger(subsystem: "mk.lan.opencast", category: "AdFreePassBackground")
     private static let title = "Skip Promos & Ads"
     private static let consentSubtitle = "Needs your OK to download the speech model - open OpenCast."
-    private static let capDeferredSubtitle = "Daily detection limit reached — continues tomorrow"
     private static let creepInterval: Duration = .seconds(2)
+    /// The card's `Progress` counts this many units per point of the
+    /// 0...1000 scale, so a slow analyzing step moves on every creep tick
+    /// even when its slice is a few points wide or the queue is long.
+    static let progressSubunitsPerUnit: Int64 = 1_000_000
 
     @ObservationIgnored private let scheduler: any AdFreePassContinuedTaskScheduling
     @ObservationIgnored private let forceForegroundOnly: @MainActor () -> Bool
+    @ObservationIgnored private let now: () -> Date
     private var state: State = .idle
     private var hasRegisteredLaunchHandler = false
     private var handle: (any AdFreePassContinuedTaskHandle)?
-    private var mapper = AdFreePassQueueProgressMapper()
+    private var mapper = AdFreePassQueueProgressMapper(subunitsPerUnit: EpisodeAdFreePassBackgroundSession.progressSubunitsPerUnit)
     private var stage: EpisodeAdFreePassStage = .idle
     private var queueContext = AdFreePassQueueContext()
     private var stageBeganAt = Date.now
@@ -45,10 +49,12 @@ final class EpisodeAdFreePassBackgroundSession {
 
     init(
         scheduler: any AdFreePassContinuedTaskScheduling = BGTaskSchedulerAdFreePassScheduler(),
-        forceForegroundOnly: @escaping @MainActor () -> Bool = EpisodeAdFreePassBackgroundSession.environmentForcesForegroundOnly
+        forceForegroundOnly: @escaping @MainActor () -> Bool = EpisodeAdFreePassBackgroundSession.environmentForcesForegroundOnly,
+        now: @escaping () -> Date = { .now }
     ) {
         self.scheduler = scheduler
         self.forceForegroundOnly = forceForegroundOnly
+        self.now = now
     }
 
     deinit {
@@ -147,7 +153,7 @@ final class EpisodeAdFreePassBackgroundSession {
         recordEnvironmentIfNeeded(for: newStage)
         stage = newStage
         self.queueContext = queueContext
-        stageBeganAt = .now
+        stageBeganAt = now()
         AdFreePassBackgroundRunLog.record(
             "stage noted \(newStage.backgroundRunLogDescription) finished=\(queueContext.finishedItemCount) total=\(queueContext.totalItemCount)"
         )
@@ -241,7 +247,7 @@ final class EpisodeAdFreePassBackgroundSession {
 
         handle = launchedHandle
         state = .running
-        launchedHandle.progress.totalUnitCount = AdFreePassQueueProgressMapper.totalUnitCount
+        launchedHandle.progress.totalUnitCount = mapper.totalUnitCount
         launchedHandle.progress.completedUnitCount = mapper.completedUnitCount
         let launchRunSequence = runSequence
         let cancellationSource = cancellationSource
@@ -294,7 +300,11 @@ final class EpisodeAdFreePassBackgroundSession {
             return
         }
 
-        let units = mapper.update(for: stage, queueContext: queueContext, stageElapsed: 0)
+        let units = mapper.update(
+            for: stage,
+            queueContext: queueContext,
+            stageElapsed: now().timeIntervalSince(stageBeganAt)
+        )
         handle.progress.completedUnitCount = units
         handle.updateTitle(title(for: queueContext), subtitle: subtitle(for: stage))
         recordAppliedStage(stage, completedUnits: units)
@@ -314,9 +324,6 @@ final class EpisodeAdFreePassBackgroundSession {
             complete(handle, success: success)
         case .awaitingConsent:
             handle.updateTitle(title(for: queueContext), subtitle: Self.consentSubtitle)
-            complete(handle, success: false)
-        case .capDeferred:
-            handle.updateTitle(title(for: queueContext), subtitle: Self.capDeferredSubtitle)
             complete(handle, success: false)
         case .interrupted:
             complete(handle, success: false)
@@ -353,10 +360,10 @@ final class EpisodeAdFreePassBackgroundSession {
             return
         }
 
-        let units = mapper.update(
+        let units = mapper.tick(
             for: stage,
             queueContext: queueContext,
-            stageElapsed: Date.now.timeIntervalSince(stageBeganAt)
+            stageElapsed: now().timeIntervalSince(stageBeganAt)
         )
         handle.progress.completedUnitCount = units
         recordAppliedStage(stage, completedUnits: units)
@@ -380,7 +387,9 @@ final class EpisodeAdFreePassBackgroundSession {
         AdFreePassBackgroundRunLog.record("submit cancelled reason=\(reason) identifier=\(Self.identifier)")
     }
 
-    private func recordAppliedStage(_ stage: EpisodeAdFreePassStage, completedUnits: Int64) {
+    private func recordAppliedStage(_ stage: EpisodeAdFreePassStage, completedUnits fineUnits: Int64) {
+        // Logged on the 0...1000 scale.
+        let completedUnits = fineUnits / Self.progressSubunitsPerUnit
         let summary = stage.backgroundRunLogDescription
         let previousUnits = lastLoggedCompletedUnits
         let shouldLog = summary != lastLoggedStageSummary
@@ -393,7 +402,7 @@ final class EpisodeAdFreePassBackgroundSession {
 
         lastLoggedStageSummary = summary
         lastLoggedCompletedUnits = completedUnits
-        AdFreePassBackgroundRunLog.record("stage applied units=\(completedUnits)/\(AdFreePassQueueProgressMapper.totalUnitCount) \(summary)")
+        AdFreePassBackgroundRunLog.record("stage applied units=\(completedUnits)/\(EpisodeAdFreePassProgressMapper.totalUnitCount) \(summary)")
     }
 
     private func title(for context: AdFreePassQueueContext) -> String {
@@ -419,7 +428,7 @@ final class EpisodeAdFreePassBackgroundSession {
         mapper.reset()
         stage = .idle
         queueContext = AdFreePassQueueContext()
-        stageBeganAt = .now
+        stageBeganAt = now()
         terminalOutcomeNotedBeforeLaunch = nil
         hasCompletedTask = false
         completionGate = AdFreePassOnceGate()

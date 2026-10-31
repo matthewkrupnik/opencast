@@ -28,7 +28,11 @@ final class OpenCastUITests: XCTestCase {
     private static let nowPlayingSourceIdentifier = "Now Playing Source"
     private static let soundLabTranscriptActionIdentifier = "Now Playing Sound Lab Transcript Action"
     private static let seedVoiceBoostModeEnvironmentKey = "OPENCAST_SEED_VOICE_BOOST_MODE"
-    private static let geminiAPIKeyEnvironmentKey = "OPENCAST_GEMINI_API_KEY"
+    private static let seedAdDetectionModeEnvironmentKey = "OPENCAST_SEED_AD_DETECTION_MODE"
+    private static let cloudAdDetectionModeValue = "cloud"
+    private static let onDeviceAdDetectionModeValue = "onDevice"
+    private static let analysisTransportHoldArgument = "--opencast-ui-test-analysis-transport-hold"
+    private static let keyRequiredQueueNotice = "Add a key in Settings › AI Services to keep detecting ads"
     private static let liveAdAnalysisTranscriptPathEnvironmentKey = "OPENCAST_SEED_LIVE_AD_ANALYSIS_TRANSCRIPT_PATH"
     private static let liveAdAnalysisResponsePathEnvironmentKey = "OPENCAST_SEED_LIVE_AD_ANALYSIS_RESPONSE_PATH"
     private static let adFreePassPresentationOverrideEnvironmentKey = "OPENCAST_UI_TEST_AD_FREE_PASS_STAGE"
@@ -1860,7 +1864,7 @@ final class OpenCastUITests: XCTestCase {
         libraryPodcast.tap()
 
         openPodcastPlaybackSettings(in: app)
-        let navigationBar = app.navigationBars["Skip Intro & Outro"]
+        let navigationBar = app.navigationBars["Playback Settings"]
         let introField = app.textFields["Skip Intro Duration"]
         let outroField = app.textFields["Skip Outro Duration"]
         assertExists(navigationBar.buttons["Cancel"], named: "playback settings cancel action")
@@ -1904,7 +1908,7 @@ final class OpenCastUITests: XCTestCase {
         assertDoesNotExist(navigationBar, named: "playback settings after save")
 
         openPodcastPlaybackSettings(in: app)
-        let reopenedNavigationBar = app.navigationBars["Skip Intro & Outro"]
+        let reopenedNavigationBar = app.navigationBars["Playback Settings"]
         let reopenedIntroField = app.textFields["Skip Intro Duration"]
         let reopenedOutroField = app.textFields["Skip Outro Duration"]
         assertExists(reopenedIntroField, named: "reopened skip intro duration field")
@@ -1922,6 +1926,67 @@ final class OpenCastUITests: XCTestCase {
         openPodcastPlaybackSettings(in: app)
         XCTAssertEqual(app.textFields["Skip Intro Duration"].value as? String, "0:00")
         XCTAssertEqual(app.textFields["Skip Outro Duration"].value as? String, "0:00")
+    }
+
+    /// The seeded show has its own 1.5x. Custom for This Show in the speed
+    /// sheet returns it to the global speed and takes it back; the steps then
+    /// edit the show, and the show sheet's Save applies to the playing
+    /// episode without a replay.
+    @MainActor
+    func testSeededPodcastCustomSpeedAppliesAndTogglesFromNowPlaying() throws {
+        let app = makeSeededApp(audioDurationSeconds: 600, podcastPlaybackRate: 1.5)
+        app.launch()
+
+        openSeededNowPlaying(in: app)
+        let speedButton = app.buttons["Playback Speed"]
+        assertHittable(speedButton, named: "Playback Speed control")
+        assertValue(of: speedButton, becomes: "1.5x", named: "Playback Speed at the show's own speed")
+
+        speedButton.tap()
+        let customForShow = app.switches["playback-speed-custom-for-show-toggle"]
+        assertHittable(customForShow, named: "Custom for This Show toggle")
+        assertToggle(customForShow, isOn: true)
+        tapToggle(customForShow, to: false)
+        assertValue(of: speedButton, becomes: "1x", named: "Playback Speed back at the global speed")
+
+        tapToggle(customForShow, to: true)
+        assertValue(of: speedButton, becomes: "1x", named: "Playback Speed after the show takes the current speed")
+        assertExists(
+            app.staticTexts.matching(NSPredicate(format: "label ==[c] %@", "Speed for UI Test Show")).firstMatch,
+            named: "Speed for UI Test Show header"
+        )
+        // The sheet opens at its medium detent; the last step sits below it.
+        app.navigationBars["Speed"].swipeUp()
+        let twoX = app.buttons["2.0x"]
+        assertHittable(twoX, named: "2.0x speed step")
+        twoX.tap()
+        assertValue(of: speedButton, becomes: "2.0x", named: "Playback Speed after picking 2.0x for the show")
+
+        dismissNowPlayingOverlay(in: app)
+        openLibrary(in: app)
+        let libraryPodcast = seededSubscriptionRow(in: app)
+        assertExists(libraryPodcast, named: "seeded library podcast")
+        libraryPodcast.tap()
+        openPodcastPlaybackSettings(in: app)
+        let customSpeed = app.switches["podcast-playback-settings-custom-speed-toggle"]
+        assertExists(customSpeed, named: "Custom Speed toggle")
+        assertToggle(customSpeed, isOn: true)
+        let speedPicker = app.buttons["podcast-playback-settings-speed-picker"]
+        assertHittable(speedPicker, named: "show speed picker")
+        assertExists(elementContaining(label: "2.0x", in: app), named: "show speed picker at 2.0x")
+        speedPicker.tap()
+        let oneTwentyFive = app.buttons["1.25x"].firstMatch
+        assertHittable(oneTwentyFive, named: "1.25x speed choice")
+        oneTwentyFive.tap()
+        let navigationBar = app.navigationBars["Playback Settings"]
+        navigationBar.buttons["Save"].tap()
+        assertDoesNotExist(navigationBar, named: "playback settings after save")
+
+        let miniPlayer = app.buttons["Open Now Playing"]
+        assertHittable(miniPlayer, named: "mini-player after saving the show's speed")
+        miniPlayer.tap()
+        assertNowPlayingOverlay(in: app)
+        assertValue(of: speedButton, becomes: "1.25x", named: "Playback Speed after saving 1.25x for the show")
     }
 
     @MainActor
@@ -2026,45 +2091,6 @@ final class OpenCastUITests: XCTestCase {
         openSection("Library", in: app)
         let indicator = app.buttons["Ad Detection Queue Indicator"]
         assertExists(indicator, named: "indicator after first tap", timeout: 10)
-    }
-
-    @MainActor
-    func testSeededAdDetectionQueueCapDeferredShowsBannerAndRetry() throws {
-        let app = makeSeededApp(seedsCompletedTranscript: true)
-        app.launchEnvironment["OPENCAST_ADANALYSIS_FORCE_CAP"] = "1"
-        // A placeholder key makes analysis available; no network happens —
-        // the force hook throws first.
-        app.launchEnvironment[Self.geminiAPIKeyEnvironmentKey] = "ui-test-forced-cap"
-        app.launch()
-
-        openAllPlaylist(in: app)
-        let episodeRow = seededEpisodeRow(in: app)
-        assertExists(episodeRow, named: "seeded inbox episode row")
-        episodeRow.press(forDuration: 1.2)
-        let detectAction = app.buttons["Detect Ads"].firstMatch
-        assertExists(detectAction, named: "Detect Ads context action")
-        detectAction.tap()
-
-        // Transcript reuse goes straight to analysis; the forced 429 cap
-        // rejection pauses the queue in capDeferred.
-        // The indicator sits on the Library root, not inside All.
-        openSection("Library", in: app)
-        let indicator = app.buttons["Ad Detection Queue Indicator"]
-        assertExists(indicator, named: "indicator after cap deferral", timeout: 10)
-        indicator.tap()
-
-        assertExists(app.navigationBars["Ad Detection"], named: "queue screen title")
-        assertExists(
-            elementContaining(label: "Daily detection limit reached", in: app),
-            named: "cap deferral banner",
-            timeout: 10
-        )
-        assertExists(app.buttons["Retry"], named: "cap deferral Retry affordance")
-        assertDoesNotExist(
-            app.buttons["Continue in Background"],
-            named: "Continue in Background while cap-deferred"
-        )
-        attachSmokeScreenshot(named: "adqueue_screen_cap_deferred")
     }
 
     @MainActor
@@ -2396,7 +2422,6 @@ final class OpenCastUITests: XCTestCase {
         let app = makeSeededApp(seedsCompletedTranscript: true)
         app.launchEnvironment[Self.soundLabLaunchHoldEnvironmentKey] =
             optionalEnvironmentValue(Self.soundLabLaunchHoldEnvironmentKey) ?? "5000"
-        app.launchEnvironment[Self.geminiAPIKeyEnvironmentKey] = "ui-test-held-preparation"
         app.launch()
 
         openSeededNowPlayingSoundLab(in: app)
@@ -2519,11 +2544,11 @@ final class OpenCastUITests: XCTestCase {
             ("checking", "Skip Promos & Ads", "Checking speech model"),
             ("model-busy", "Skip Promos & Ads", "Speech model is not ready"),
             ("transcribing", "Skip Promos & Ads", "Transcribing"),
-            ("analyzing", "Skip Promos & Ads", "Analyzing promos"),
+            ("analyzing", "Skip Promos & Ads", "Detecting ads"),
             ("completed", "Reanalyze", "2 zones marked"),
             ("outdated", "Skip Promos & Ads", "Outdated — run again"),
             ("interrupted", "Resume", "Transcript interrupted"),
-            ("failed", "Retry", "Daily promo/ad analysis limit reached"),
+            ("failed", "Retry", "Your provider is busy or at its limit"),
             ("unavailable", "Skip Promos & Ads", "No episode playing")
         ]
 
@@ -2550,7 +2575,7 @@ final class OpenCastUITests: XCTestCase {
             ("consent", "Download Model", "Speech model needed"),
             ("installing", "Skip Promos & Ads", "Downloading speech model"),
             ("transcribing", "Skip Promos & Ads", "Transcribing"),
-            ("failed", "Retry", "Daily promo/ad analysis limit reached")
+            ("failed", "Retry", "Your provider is busy or at its limit")
         ]
 
         for variant in variants {
@@ -2673,7 +2698,6 @@ final class OpenCastUITests: XCTestCase {
             seedsCompletedTranscript: true,
             seedsStaleAdAnalysis: true
         )
-        app.launchEnvironment[Self.geminiAPIKeyEnvironmentKey] = ""
         app.launch()
 
         openSeededNowPlaying(in: app)
@@ -2726,7 +2750,6 @@ final class OpenCastUITests: XCTestCase {
             seedsCompletedTranscript: true,
             seedsOutdatedPolicyAdAnalysis: true
         )
-        app.launchEnvironment[Self.geminiAPIKeyEnvironmentKey] = ""
         app.launch()
 
         openSeededNowPlaying(in: app)
@@ -3288,7 +3311,6 @@ final class OpenCastUITests: XCTestCase {
         )
         // The transcript menu checks below expect no ad-analysis token, which a
         // build with Config/Secrets.xcconfig would otherwise carry.
-        app.launchEnvironment[Self.geminiAPIKeyEnvironmentKey] = ""
         app.launch()
 
         openSettingsScreen("Transcription", in: app)
@@ -3343,10 +3365,14 @@ final class OpenCastUITests: XCTestCase {
         app.buttons["Close Search"].tap()
         assertDoesNotExist(searchField, named: "transcript search field after close", timeout: 2)
 
+        // Analysis runs on the device whatever the route, so a current
+        // analysis offers a rerun beside Delete.
         openTranscriptOptionsMenu(in: app)
-        assertDoesNotExist(app.buttons["Analyze Promos & Ads"], named: "Analyze action without ad-analysis token", timeout: 1)
-        assertDoesNotExist(app.buttons["Reanalyze Promos & Ads"], named: "Reanalyze action without ad-analysis token", timeout: 1)
-        assertDoesNotExist(app.buttons["Retry Promo/Ad Analysis"], named: "Retry action without ad-analysis token", timeout: 1)
+        let reanalyzeButton = app.buttons["Reanalyze Promos & Ads"]
+        assertExists(reanalyzeButton, named: "Reanalyze action for a current analysis")
+        XCTAssertTrue(reanalyzeButton.isEnabled, "Reanalyze should be offered without a key")
+        assertDoesNotExist(app.buttons["Analyze Promos & Ads"], named: "Analyze action for a current analysis", timeout: 1)
+        assertDoesNotExist(app.buttons["Retry Promo/Ad Analysis"], named: "Retry action for a current analysis", timeout: 1)
         assertExists(app.buttons["Delete Promo/Ad Analysis"], named: "Delete saved promo/ad analysis")
         dismissTranscriptOptionsMenu(in: app)
     }
@@ -3455,8 +3481,6 @@ final class OpenCastUITests: XCTestCase {
 
         assertExists(app.staticTexts["Transcript"], named: "Transcript route title")
         openTranscriptOptionsMenu(in: app)
-        assertDoesNotExist(app.buttons["Analyze Promos & Ads"], named: "Analyze action without ad-analysis token", timeout: 1)
-        assertDoesNotExist(app.buttons["Reanalyze Promos & Ads"], named: "Reanalyze action without ad-analysis token", timeout: 1)
         assertExists(app.buttons["Delete Promo/Ad Analysis"], named: "Delete saved live Worker promo/ad analysis")
         dismissTranscriptOptionsMenu(in: app)
 
@@ -3559,7 +3583,6 @@ final class OpenCastUITests: XCTestCase {
             seedsCompletedTranscript: true,
             seedsStaleAdAnalysis: true
         )
-        app.launchEnvironment[Self.geminiAPIKeyEnvironmentKey] = ""
         app.launch()
 
         openAllPlaylist(in: app)
@@ -3600,25 +3623,21 @@ final class OpenCastUITests: XCTestCase {
             "The stale banner should clear after deleting the analysis."
         )
         openTranscriptOptionsMenu(in: app)
-        let unavailableAnalyzeItem = app.buttons["Analyze Promos & Ads"]
-        assertExists(unavailableAnalyzeItem, named: "Analyze action after deleting stale analysis")
-        XCTAssertFalse(
-            unavailableAnalyzeItem.isEnabled,
-            "Analyze must stay disabled without App Attest support"
-        )
+        let analyzeItem = app.buttons["Analyze Promos & Ads"]
+        assertExists(analyzeItem, named: "Analyze action after deleting stale analysis")
+        XCTAssertTrue(analyzeItem.isEnabled, "Analyze should be offered after deleting the analysis")
         assertDoesNotExist(app.buttons["Delete Promo/Ad Analysis"], named: "Delete action after deleting stale analysis", timeout: 1)
         dismissTranscriptOptionsMenu(in: app)
         assertExists(app.buttons["This row is brought to you by Seed Sponsor."], named: "transcript line after deleting stale promo/ad analysis")
     }
 
     @MainActor
-    func testSeededTranscriptWithoutAdAnalysisTokenHidesAnalyzeControls() throws {
+    func testSeededTranscriptOffersAnalyzeWithoutAKey() throws {
         let app = makeSeededApp(
             seedsCompletedDownload: true,
             seedsTranscriptionModel: true,
             seedsCompletedTranscript: true
         )
-        app.launchEnvironment[Self.geminiAPIKeyEnvironmentKey] = ""
         app.launch()
 
         openAllPlaylist(in: app)
@@ -3632,15 +3651,14 @@ final class OpenCastUITests: XCTestCase {
         scrollUntilHittable(viewTranscriptButton, in: app)
         viewTranscriptButton.tap()
 
+        // The route (a key, the free analyses, or the key screen) is decided
+        // when the run starts, so Analyze is always offered.
         assertExists(app.staticTexts["Transcript"], named: "Transcript route title")
         openTranscriptOptionsMenu(in: app)
         let analyzeItem = app.buttons["Analyze Promos & Ads"]
         assertExists(analyzeItem, named: "Analyze action in transcript menu")
-        XCTAssertFalse(
-            analyzeItem.isEnabled,
-            "Analyze must be disabled without an ad-analysis token"
-        )
-        assertDoesNotExist(app.buttons["Reanalyze Promos & Ads"], named: "Reanalyze action without ad-analysis token", timeout: 1)
+        XCTAssertTrue(analyzeItem.isEnabled, "Analyze should be offered without a key")
+        assertDoesNotExist(app.buttons["Reanalyze Promos & Ads"], named: "Reanalyze action before any analysis", timeout: 1)
         dismissTranscriptOptionsMenu(in: app)
     }
 
@@ -5610,6 +5628,7 @@ final class OpenCastUITests: XCTestCase {
         seededLibraryLayout: String? = nil,
         audioDurationSeconds: Int? = nil,
         skipIntroSeconds: Double? = nil,
+        podcastPlaybackRate: Double? = nil,
         extraFeedCount: Int = 0,
         artworkVariant: String? = nil,
         preferredContentSizeCategoryName: String? = nil
@@ -5717,6 +5736,9 @@ final class OpenCastUITests: XCTestCase {
         }
         if let skipIntroSeconds {
             app.launchEnvironment["OPENCAST_SEED_SKIP_INTRO_SECONDS"] = String(skipIntroSeconds)
+        }
+        if let podcastPlaybackRate {
+            app.launchEnvironment["OPENCAST_SEED_PODCAST_PLAYBACK_RATE"] = String(podcastPlaybackRate)
         }
         if extraFeedCount > 0 {
             app.launchEnvironment["OPENCAST_SEED_EXTRA_FEED_COUNT"] = String(extraFeedCount)
@@ -6231,25 +6253,15 @@ final class OpenCastUITests: XCTestCase {
         return path
     }
 
-    private func requireEnvironmentValue(_ environmentKey: String, skipMessage: String) throws -> String {
-        guard let value = optionalEnvironmentValue(environmentKey) else {
-            throw XCTSkip(skipMessage)
-        }
-        return value
-    }
-
     private func optionalEnvironmentValue(_ environmentKey: String) -> String? {
         let environment = ProcessInfo.processInfo.environment
         let environmentValues = [
             environment[environmentKey],
             environment["TEST_RUNNER_\(environmentKey)"]
         ]
-        if let value = environmentValues
+        return environmentValues
             .compactMap({ $0?.trimmingCharacters(in: .whitespacesAndNewlines) })
-            .first(where: { !$0.isEmpty }) {
-            return value
-        }
-        return nil
+            .first(where: { !$0.isEmpty })
     }
 
     @MainActor
@@ -6335,11 +6347,11 @@ final class OpenCastUITests: XCTestCase {
         let actionsButton = app.buttons["Podcast Actions"]
         assertHittable(actionsButton, named: "podcast actions menu")
         actionsButton.tap()
-        let playbackSettings = app.buttons["Skip Intro & Outro…"]
-        assertHittable(playbackSettings, named: "Skip Intro & Outro menu action")
+        let playbackSettings = app.buttons["Playback Settings…"]
+        assertHittable(playbackSettings, named: "Playback Settings menu action")
         playbackSettings.tap()
         assertExists(
-            app.navigationBars["Skip Intro & Outro"],
+            app.navigationBars["Playback Settings"],
             named: "podcast playback settings sheet"
         )
     }

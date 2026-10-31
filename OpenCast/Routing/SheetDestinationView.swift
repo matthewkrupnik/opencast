@@ -13,6 +13,10 @@ struct SheetDestinationView: View {
                 directoryService: appModel.podcastDirectoryService,
                 directoryResolver: appModel.podcastDirectoryResolver
             )
+        case .analysisKeyRequired(let request):
+            AnalysisKeyRequiredView(request: request)
+                .presentationDetents([.medium, .large])
+                .presentationDragIndicator(.visible)
         case .episodeDiagnostics(let episodeID):
             EpisodeDiagnosticsSheet(episodeID: episodeID)
         case .helpTopic(let id):

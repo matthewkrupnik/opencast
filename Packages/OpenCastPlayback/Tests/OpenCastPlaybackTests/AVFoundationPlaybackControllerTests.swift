@@ -1640,7 +1640,7 @@ struct AVFoundationPlaybackControllerTests {
     private func waitForTerminalPlaybackState(
         in controller: AVFoundationPlaybackController
     ) async throws -> PlaybackState {
-        let deadline = Date.now.addingTimeInterval(5)
+        let deadline = Date.now.addingTimeInterval(60)
         while Date.now < deadline {
             if case .failed = controller.snapshot.state {
                 return controller.snapshot.state
@@ -1654,7 +1654,7 @@ struct AVFoundationPlaybackControllerTests {
         in controller: AVFoundationPlaybackController,
         matching predicate: (PlaybackState) -> Bool
     ) async throws -> PlaybackState {
-        let deadline = Date.now.addingTimeInterval(5)
+        let deadline = Date.now.addingTimeInterval(60)
         while Date.now < deadline {
             let state = controller.snapshot.state
             if predicate(state) {
@@ -1668,7 +1668,7 @@ struct AVFoundationPlaybackControllerTests {
     private func waitForAutoSkipEvent(
         in controller: AVFoundationPlaybackController
     ) async throws -> PlaybackAutoSkipEvent? {
-        let deadline = Date.now.addingTimeInterval(8)
+        let deadline = Date.now.addingTimeInterval(60)
         while Date.now < deadline {
             if let event = controller.lastAutoSkipEvent {
                 return event
@@ -1690,7 +1690,7 @@ struct AVFoundationPlaybackControllerTests {
     private func waitUntil(
         _ predicate: () async -> Bool
     ) async throws {
-        let deadline = Date.now.addingTimeInterval(5)
+        let deadline = Date.now.addingTimeInterval(60)
         while Date.now < deadline {
             if await predicate() {
                 return

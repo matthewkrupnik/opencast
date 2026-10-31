@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "updatedAt": "2026-10-21T00:00:00Z",
+  "updatedAt": "2026-10-29T03:01:55Z",
   "topics": [
     {
       "id": "voice-boost",
@@ -33,9 +33,10 @@
       "title": "Ad detection",
       "symbol": "forward.end",
       "summary": "Find promo and ad breaks in an episode.",
-      "updatedAt": "2026-10-12T00:00:00Z",
+      "updatedAt": "2026-10-31T00:00:00Z",
       "related": [
-        "transcription-engines"
+        "transcription-engines",
+        "ai-keys"
       ],
       "blocks": [
         {
@@ -44,11 +45,98 @@
         },
         {
           "type": "paragraph",
-          "text": "Detect Ads transcribes the episode with the speech model on your device. The transcript text is then sent to Apple's Private Cloud Compute to find the breaks, which needs Apple Intelligence turned on and counts toward its daily usage limit. If Apple's model is unavailable or at its limit, the transcript goes directly from your device to Google's Gemini API instead, when this build has a Gemini key. The audio itself never leaves your device."
+          "text": "Detect Ads transcribes the episode with the speech model on your device. Your device then sends the transcript text to Google Gemini or OpenAI with the API key you add in Settings › AI Services. Without a key of your own, it goes to Google Gemini with this build's built-in key. The audio itself never leaves your device."
         },
         {
           "type": "paragraph",
           "text": "Automatic skips apply only when the downloaded audio matches the analyzed transcript, so a re-edited episode never skips at the wrong spot."
+        }
+      ]
+    },
+    {
+      "id": "ai-keys",
+      "title": "Using your own API key",
+      "symbol": "key",
+      "summary": "Ad detection and Chapters & Summary on your own Google or OpenAI account.",
+      "updatedAt": "2026-10-31T00:00:00Z",
+      "related": [
+        "ad-detection"
+      ],
+      "blocks": [
+        {
+          "type": "paragraph",
+          "text": "Ad detection and Chapters & Summary run on your device and call the AI provider whose key you add in **Settings › AI Services**: Google Gemini or OpenAI. Your device sends the transcript text straight to that provider, sometimes with the episode and show titles, never the audio. Recap and Ask use Apple's Private Cloud Compute and need no key."
+        },
+        {
+          "type": "heading",
+          "text": "Getting a key"
+        },
+        {
+          "type": "bullets",
+          "items": [
+            "**Google Gemini**: create a key in Google AI Studio. A Gemini key is free to create.",
+            "**OpenAI**: create a key on the API keys page of your OpenAI account. OpenAI bills API use to that account.",
+            "In Settings › AI Services, open the provider, paste the key, tap **Test** to check it, then **Save**.",
+            "With keys for both providers, choose which one each feature uses under **Provider**."
+          ]
+        },
+        {
+          "type": "link",
+          "title": "Get a Gemini key",
+          "url": "https://aistudio.google.com/app/apikey"
+        },
+        {
+          "type": "link",
+          "title": "Get an OpenAI key",
+          "url": "https://platform.openai.com/settings/organization/api-keys"
+        },
+        {
+          "type": "heading",
+          "text": "What it costs"
+        },
+        {
+          "type": "paragraph",
+          "text": "Your provider bills your own account at its API prices. Google's free tier costs nothing within its limits, which are low: the app slows down to stay inside the per-minute limit, so a long episode takes longer, and a key that reaches its daily limit can't run another analysis until the limit resets. Settings › AI Services shows the tokens each run used, counted on your device. Your provider's dashboard is the bill."
+        },
+        {
+          "type": "heading",
+          "text": "Your key on your devices"
+        },
+        {
+          "type": "bullets",
+          "items": [
+            "With **Sync with iCloud Keychain** on, the default, the key is saved in your iCloud Keychain and works on your other devices that use iCloud Keychain.",
+            "With it off, the key stays on this device only. Turning sync off for a synced key keeps it here and removes the synced copy from your other devices.",
+            "A key kept on this device only is the one used here, even when a synced key also exists. If you remove it, a synced key from another device can still be used here.",
+            "When a synced copy is also on your other devices beside this device's own key, the key screen offers **Remove synced copy**, which removes it from your other devices and keeps the key here."
+          ]
+        },
+        {
+          "type": "heading",
+          "text": "Removing a key"
+        },
+        {
+          "type": "paragraph",
+          "text": "Open the provider in Settings › AI Services and choose **Remove Key**. When a synced copy exists, removing the key deletes it everywhere: on this device and on your other devices that use iCloud Keychain. **Delete Data** doesn't remove your keys, and keys stay in the Keychain after you delete the app, so remove them here when you no longer want them."
+        },
+        {
+          "type": "heading",
+          "text": "Without a key"
+        },
+        {
+          "type": "paragraph",
+          "text": "Without a key of your own, ad detection and Chapters & Summary use this build's built-in Google Gemini key, when it has one. Its requests share that key's Gemini limits. Add your own key to use your own account and limits instead."
+        },
+        {
+          "type": "heading",
+          "text": "Privacy"
+        },
+        {
+          "type": "bullets",
+          "items": [
+            "**Google Gemini**: on Google's free tier, Google may use what you send and its answers to improve its products, and human reviewers may read them. With a paid Gemini key, Google doesn't use your prompts or responses to improve its products, and logs them for a limited period only to detect abuse and meet legal requirements.",
+            "**OpenAI**: OpenAI doesn't use API data to train its models unless you opt in, and keeps abuse-monitoring logs for up to 30 days."
+          ]
         }
       ]
     },
@@ -111,7 +199,8 @@
           "items": [
             "Apple's model may decline a passage. opencast shows a short notice, does not retry, and an Ask conversation keeps going.",
             "Recaps are cached on this device so a repeat tap answers at once; Ask conversations are not saved. **Delete Data** clears the cache and the one-time notice.",
-            "Nothing runs until you tap Recap or Ask. Turning off Apple Intelligence in iOS Settings stops both."
+            "Nothing runs until you tap Recap or Ask. Turning off Apple Intelligence in iOS Settings stops both.",
+            "Neither feature needs an API key."
           ]
         }
       ]
@@ -146,7 +235,7 @@
       "title": "Storage",
       "symbol": "internaldrive",
       "summary": "Automatic caches are capped; downloads follow your limits.",
-      "updatedAt": "2026-10-21T00:00:00Z",
+      "updatedAt": "2026-10-29T03:01:55Z",
       "related": [
         "icloud-sync"
       ],
@@ -157,7 +246,7 @@
         },
         {
           "type": "paragraph",
-          "text": "Downloaded episodes stay until you delete them, unless a limit removes them. Keep Downloaded, set for every show in Download Settings (the gear in Downloads) or for one show in its own download settings, keeps only a show's most recently downloaded episodes; when it has more, the oldest are removed. Delete Downloads After Played removes episodes once they're played. Neither removes the episode that's playing, or one being transcribed, scanned for ads, or whose transcript follows the downloaded audio."
+          "text": "Downloaded episodes stay until you delete them, unless a limit removes them. Keep Downloaded, set for every show in Download Settings (the gear in Downloads) or for one show in its own download settings, keeps only a show's most recently downloaded episodes; when it has more, the oldest are removed. Delete Downloads After Played removes episodes once they're played. Neither removes the current episode, or an episode being transcribed or scanned for ads."
         },
         {
           "type": "paragraph",

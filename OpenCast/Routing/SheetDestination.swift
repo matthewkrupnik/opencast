@@ -2,6 +2,7 @@ import Foundation
 
 enum SheetDestination: Identifiable {
     case addPodcast
+    case analysisKeyRequired(AnalysisKeyRequiredRequest)
     case episodeDiagnostics(episodeID: String)
     case helpTopic(id: String)
     case importOPMLFile(URL)
@@ -16,6 +17,8 @@ enum SheetDestination: Identifiable {
         switch self {
         case .addPodcast:
             "addPodcast"
+        case .analysisKeyRequired(let request):
+            "analysisKeyRequired-\(request.id.uuidString)"
         case .episodeDiagnostics(let episodeID):
             "episodeDiagnostics-\(episodeID)"
         case .helpTopic(let id):

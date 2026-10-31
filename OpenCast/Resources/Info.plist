@@ -8,6 +8,7 @@
 	<array>
 		<string>mk.lan.opencast.ad-free-pass</string>
 		<string>mk.lan.opencast.transcript-generation</string>
+		<string>mk.lan.opencast.chapters-summary</string>
 	</array>
 	<key>CFBundleDevelopmentRegion</key>
 	<string>$(DEVELOPMENT_LANGUAGE)</string>

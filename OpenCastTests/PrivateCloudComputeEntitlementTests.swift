@@ -20,16 +20,5 @@ struct PrivateCloudComputeEntitlementTests {
         await #expect(throws: TranscriptIntelligenceFailure.notEntitled) {
             _ = try await session.respond(to: "Hi", options: options)
         }
-        await #expect(throws: TranscriptIntelligenceFailure.notEntitled) {
-            _ = try await session.respond(to: "Hi", generating: AppleAdAnalysisAnswer.self, options: options)
-        }
-        await #expect(throws: TranscriptIntelligenceFailure.notEntitled) {
-            _ = try await session.respond(
-                to: "Hi",
-                generating: AppleAdAnalysisAnswer.self,
-                options: options,
-                onPartialContent: { _ in }
-            )
-        }
     }
 }

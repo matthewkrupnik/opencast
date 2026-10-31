@@ -38,7 +38,7 @@ struct AdFreePassQueueUITestOverride: Equatable {
         case "transcribing":
             stage = .transcribing(progress(environment: environment))
         case "analyzing":
-            stage = .analyzing
+            stage = .analyzing(steps: nil)
         default:
             return nil
         }

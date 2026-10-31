@@ -77,8 +77,8 @@ extension EpisodeAdFreePassStage {
             "installingSpeechAssets fraction=\(fractionCompleted.backgroundLogNumber)"
         case .transcribing(let progress):
             "transcribing completed=\(progress.completedDuration.backgroundLogSeconds) audio=\(progress.audioDuration.backgroundLogSeconds) checkpoints=\(progress.checkpointCount) window=\(progress.currentWindowIndex.map(String.init) ?? "nil")"
-        case .analyzing:
-            "analyzing"
+        case .analyzing(let steps):
+            "analyzing steps=\(steps.map { "\($0.completed)/\($0.total)" } ?? "nil")"
         case .completed(let zoneCount):
             "completed zoneCount=\(zoneCount)"
         case .interrupted:

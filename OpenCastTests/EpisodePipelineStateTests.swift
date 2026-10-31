@@ -97,7 +97,10 @@ struct EpisodePipelineStateTests {
 
     @Test("Analyzing stage marks earlier steps done")
     func activeAnalyzingStage() {
-        let state = makeState(queueStatus: .running, queueSnapshot: activeSnapshot(stage: .analyzing))
+        let state = makeState(
+            queueStatus: .running,
+            queueSnapshot: activeSnapshot(stage: .analyzing(steps: EpisodeAdFreePassAnalysisSteps(completed: 1, total: 3)))
+        )
 
         #expect(state?.steps == [
             EpisodePipelineStep(kind: .download, status: .done),
@@ -175,17 +178,28 @@ struct EpisodePipelineStateTests {
         #expect(state?.action == .resumeQueue)
     }
 
-    @Test("Cap deferral shows the settled copy with Retry")
-    func capDeferred() {
+    @Test("A key-required item fails the pass on the detect step with the reason's copy and Retry")
+    func keyRequiredPassNamesTheReason() {
         let state = makeState(
-            queueStatus: .capDeferred,
-            queueSnapshot: pendingSnapshot(state: .capDeferred, pendingIDs: [episodeID])
+            queueStatus: .keyRequired(.trialPaused),
+            downloadRecord: downloadRecord(state: .completed),
+            transcription: .completed(transcriptRecord(state: .completed))
         )
 
-        #expect(state?.footnote == EpisodeAdFreePassPresentation.capDeferred.statusText)
-        #expect(state?.action == .retryQueue)
+        #expect(state == EpisodePipelineState(
+            title: EpisodePipelineState.passFailedTitle,
+            steps: [
+                EpisodePipelineStep(kind: .download, status: .done),
+                EpisodePipelineStep(kind: .transcribe, status: .done),
+                EpisodePipelineStep(
+                    kind: .detectAds,
+                    status: .failed(message: "Free analyses are paused for now. Add a key in Settings › AI Services.")
+                )
+            ],
+            footnote: nil,
+            action: .retryPass
+        ))
     }
-
     @Test("A queued episode reports its position and offers removal")
     func queuedBehindTwo() {
         let state = makeState(
@@ -375,6 +389,8 @@ struct EpisodePipelineStateTests {
             (.interrupted, "Ad detection was interrupted. Try again."),
             (.validationExhausted, "Ad boundaries couldn't be verified for this transcript. You can still retry."),
             (.capExceeded, "Ad detection has reached today's limit."),
+            (.keyRequiredNoKey, "Add a key in Settings › AI Services to detect ads."),
+            (.keyRequiredTrialExhausted, "Your free analyses are used. Add a key in Settings › AI Services."),
             (.generic, "Ad detection couldn't finish.")
         ] as [(EpisodeAnalysisFailureKind, String)]
     )

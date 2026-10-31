@@ -1,4 +1,6 @@
 import Foundation
+import OpenCastAnalysis
+import OpenCastAnalysisProviders
 import OpenCastTranscription
 import SwiftData
 import Testing
@@ -7,56 +9,907 @@ import Testing
 @MainActor
 @Suite("Episode ad analysis store")
 struct EpisodeAdAnalysisStoreTests {
-    @Test("Creates ad analysis record and document from client response")
-    func createsAdAnalysisRecordAndDocumentFromClientResponse() async throws {
+    @Test("A direct run installs the break a validating reply names and counts the run once")
+    func directRunInstallsValidatedBreak() async throws {
         let container = try OpenCastModelContainerFactory.make(inMemory: true)
         let context = ModelContext(container)
-        let temporaryDirectory = try makeTemporaryDirectory()
-        let client = FakeEpisodeAdAnalysisClient()
-        let fileStore = EpisodeAdAnalysisFileStore(baseDirectory: temporaryDirectory)
-        let store = EpisodeAdAnalysisStore(client: client, fileStore: fileStore)
+        let fileStore = EpisodeAdAnalysisFileStore(baseDirectory: try makeTemporaryDirectory())
+        let environment = ScriptedAdAnalysisRunEnvironment()
+        let client = UnpolledAdAnalysisClient()
+        let store = makeStore(fileStore: fileStore, environment: environment, client: client)
         let transcript = makeTranscriptDocument(episodeID: "ad-create")
 
         store.startAnalysis(transcript: transcript, modelContext: context)
 
         #expect(await waitUntil {
-            store.record(for: transcript.episodeID)?.state == .completed
+            !store.hasActiveJob && store.record(for: transcript.episodeID)?.state == .completed
         })
         let record = try #require(store.record(for: transcript.episodeID))
         let document = try #require(store.document(for: transcript.episodeID))
-        let request = try #require(client.lastRequest)
-        let encodedRequest = try encodedJSONString(request)
+        let model = try #require(environment.snapshot.adDetection(provider: .google)).model
         #expect(record.spanCount == 1)
         #expect(record.transcriptState == .completed)
-        #expect(document.spans.first?.label == "Example Sponsor")
+        #expect(record.model == model.modelID)
+        #expect(EpisodeAdAnalysisContract.supports(policy: record.policy))
+        #expect(document.spans.first?.kind == .hostReadAd)
+        #expect(document.spans.first?.label == "Sponsor read")
+        #expect(document.spans.first?.startSegmentID == 1)
         #expect(document.transcriptSegmentCount == transcript.segments.count)
         #expect(document.transcriptState == .completed)
-        #expect(request.transcript.state == "completed")
-        #expect(request.asyncSupported == true)
-        #expect(encodedRequest.contains(#""async_supported":true"#))
-        #expect(request.segments.map(\.text) == transcript.segments.map(\.text))
-        #expect(encodedRequest.contains(transcript.segments[1].text))
-        #expect(encodedRequest.contains(request.transcript.fingerprint))
-        #expect(!encodedRequest.contains(transcript.sourceAudioURL))
-        #expect(!encodedRequest.contains(transcript.sourceFileSHA256))
-        #expect(!encodedRequest.contains(String(transcript.sourceFileByteCount)))
-        #expect(!encodedRequest.contains("\"sourceAudioURL\""))
-        #expect(!encodedRequest.contains("\"sourceFileSHA256\""))
-        #expect(!encodedRequest.contains("\"sourceFileByteCount\""))
-        #expect(!encodedRequest.contains("\"source_audio_url\""))
-        #expect(!encodedRequest.contains("\"source_file_sha256\""))
-        #expect(!encodedRequest.contains("\"source_file_byte_count\""))
+        #expect(document.policyRevision == environment.adDetectionPolicyRevision)
+        #expect(store.isCurrentAnalysisDocument(document, for: transcript))
+
+        // The pipeline sends the normalized segments and nothing about the
+        // source file.
+        #expect(environment.sends.firstSegments.map(\.text) == transcript.segments.map(\.text))
+        let payload = try #require(environment.sends.all.first?.payloadText)
+        #expect(!payload.contains(transcript.sourceAudioURL))
+        #expect(!payload.contains(transcript.sourceFileSHA256))
+        #expect(!payload.contains(String(transcript.sourceFileByteCount)))
+
+        let run = try #require(environment.latestRun)
+        #expect(run.state == .finished)
+        #expect(run.outcomeCode == "completed")
+        #expect(run.route == .direct)
+        #expect(run.provider == .google)
+        #expect(run.modelID == model.modelID)
+        #expect(run.episodeID == transcript.episodeID)
+        #expect(run.transcriptFingerprint == record.transcriptFingerprint)
+        #expect(run.policyRevision == environment.adDetectionPolicyRevision)
+        #expect(run.windows == ["0": .init(verdict: .accepted, sends: 1)])
+        let inputDigest = try #require(run.inputDigest)
+        #expect(inputDigest.count == 64)
+        #expect(inputDigest.allSatisfy { "0123456789abcdef".contains($0) })
+        #expect(environment.usage == [.init(provider: .google, inputTokens: 420, outputTokens: 36, runID: run.id)])
+        // Usage is counted while the run is still open, before it ends.
+        #expect(environment.usageRunStates == [.dispatched])
+        #expect(environment.transportRunIDs == [run.id])
+        #expect(environment.resolvedRunIDs == [nil])
+        #expect(client.pollCount == 0)
+        #expect(store.analysisProgress(for: transcript.episodeID) == nil)
     }
 
-    @Test("Normalizes tiny transcript overlap before client request")
-    func normalizesTinyTranscriptOverlapBeforeClientRequest() async throws {
+    @Test("A trial run completes on the trial's model without counting the listener's usage")
+    func trialRunCompletesWithoutUsage() async throws {
         let container = try OpenCastModelContainerFactory.make(inMemory: true)
         let context = ModelContext(container)
-        let temporaryDirectory = try makeTemporaryDirectory()
-        let client = FakeEpisodeAdAnalysisClient()
-        let store = EpisodeAdAnalysisStore(
-            client: client,
-            fileStore: EpisodeAdAnalysisFileStore(baseDirectory: temporaryDirectory)
+        let environment = ScriptedAdAnalysisRunEnvironment()
+        environment.route = .trial
+        let store = makeStore(
+            fileStore: EpisodeAdAnalysisFileStore(baseDirectory: try makeTemporaryDirectory()),
+            environment: environment
+        )
+        let transcript = makeTranscriptDocument(episodeID: "ad-trial")
+
+        store.startAnalysis(transcript: transcript, modelContext: context)
+
+        #expect(await waitUntil {
+            !store.hasActiveJob && store.record(for: transcript.episodeID)?.state == .completed
+        })
+        let run = try #require(environment.latestRun)
+        #expect(run.route == .trial)
+        #expect(run.provider == .google)
+        #expect(run.modelID == environment.snapshot.bundle.trial.modelID)
+        #expect(run.state == .finished)
+        #expect(environment.usage.isEmpty)
+        #expect(store.record(for: transcript.episodeID)?.spanCount == 1)
+    }
+
+    @Test("A route that needs the listener's key fails the run, and only a start that asks opens the key screen")
+    func keyRequiredRouteFailsAndPresentsOnlyWhenAsked() async throws {
+        let container = try OpenCastModelContainerFactory.make(inMemory: true)
+        let context = ModelContext(container)
+        let environment = ScriptedAdAnalysisRunEnvironment()
+        environment.route = .keyRequired(.trialExhausted)
+        let store = makeStore(
+            fileStore: EpisodeAdAnalysisFileStore(baseDirectory: try makeTemporaryDirectory()),
+            environment: environment
+        )
+        let automatic = makeTranscriptDocument(episodeID: "ad-key-required-automatic")
+        let listener = makeTranscriptDocument(episodeID: "ad-key-required-listener")
+
+        store.startAnalysis(transcript: automatic, presentsKeyScreen: false, modelContext: context)
+        #expect(await waitUntil {
+            !store.hasActiveJob && store.record(for: automatic.episodeID)?.state == .failed
+        })
+        #expect(store.record(for: automatic.episodeID)?.failureKind == .keyRequiredTrialExhausted)
+        #expect(environment.presentedReasons.isEmpty)
+
+        store.startAnalysis(transcript: listener, modelContext: context)
+        #expect(await waitUntil {
+            !store.hasActiveJob && store.record(for: listener.episodeID)?.state == .failed
+        })
+        #expect(store.record(for: listener.episodeID)?.failureKind == .keyRequiredTrialExhausted)
+        #expect(environment.presentedReasons == [.trialExhausted])
+        #expect(store.lastErrorMessage(for: listener.episodeID) == EpisodeAdAnalysisError.keyRequired(.trialExhausted).localizedDescription)
+        #expect(environment.sends.count == 0)
+        #expect(environment.transportRunIDs.isEmpty)
+        #expect(environment.runs.records(limit: 10).isEmpty)
+    }
+
+    @Test(
+        "A provider's refusal fails the run with the listener's kind and no key screen",
+        arguments: [
+            ProviderRefusal(
+                answer: .failure(.rejected(status: 400), status: 400, listener: .invalidKey),
+                kind: .providerRejectedKey,
+                listener: .invalidKey,
+                code: "gemini_http_error"
+            ),
+            ProviderRefusal(
+                answer: .failure(.quotaExhausted, status: 429, listener: .billingOrQuota),
+                kind: .providerRejectedKey,
+                listener: .billingOrQuota,
+                code: "gemini_quota_exhausted"
+            ),
+            ProviderRefusal(
+                answer: .failure(.quotaExhausted, status: 429, listener: .dailyLimit),
+                kind: .providerLimited,
+                listener: .dailyLimit,
+                code: "gemini_quota_exhausted"
+            ),
+            ProviderRefusal(
+                answer: .failure(.retryable(status: 503, retryAfterSeconds: 0), status: 503, listener: .overloaded),
+                kind: .providerLimited,
+                listener: .overloaded,
+                code: "gemini_retry_exhausted"
+            ),
+            ProviderRefusal(
+                answer: .failure(.network, status: nil, listener: .unreachable),
+                kind: .providerUnavailable,
+                listener: .unreachable,
+                code: "worker_fetch_error"
+            ),
+            ProviderRefusal(
+                answer: .failure(.timeout, status: nil, listener: .timeout),
+                kind: .timedOut,
+                listener: .timeout,
+                code: "gemini_timeout"
+            ),
+            ProviderRefusal(
+                answer: .failure(.rejected(status: 404), status: 404, listener: .modelUnavailable),
+                kind: .providerUnavailable,
+                listener: .modelUnavailable,
+                code: "gemini_http_error"
+            ),
+            ProviderRefusal(
+                answer: .failure(.retryable(status: 429, retryAfterSeconds: 0), status: 429, listener: .rateLimited),
+                kind: .providerLimited,
+                listener: .rateLimited,
+                code: "gemini_retry_exhausted"
+            ),
+            ProviderRefusal(
+                answer: .failure(.oversizedBody, status: 200, listener: .malformedAnswer),
+                kind: .generic,
+                listener: .malformedAnswer,
+                code: "gemini_response_oversized"
+            ),
+            ProviderRefusal(
+                answer: .failure(.invalidEncoding, status: 200, listener: .malformedAnswer),
+                kind: .generic,
+                listener: .malformedAnswer,
+                code: "gemini_response_encoding"
+            ),
+            // A retry hint longer than the run's longest pause cannot fit
+            // its budget: the deadline is exhausted.
+            ProviderRefusal(
+                answer: .failure(.retryable(status: 503, retryAfterSeconds: 30), status: 503, listener: .overloaded),
+                kind: .timedOut,
+                listener: .timeout,
+                code: "analysis_deadline_exhausted"
+            ),
+        ]
+    )
+    func providerRefusalThreadsListenerKind(_ refusal: ProviderRefusal) async throws {
+        let container = try OpenCastModelContainerFactory.make(inMemory: true)
+        let context = ModelContext(container)
+        let environment = ScriptedAdAnalysisRunEnvironment()
+        environment.answer = refusal.answer
+        let store = makeStore(
+            fileStore: EpisodeAdAnalysisFileStore(baseDirectory: try makeTemporaryDirectory()),
+            environment: environment
+        )
+        let transcript = makeTranscriptDocument(episodeID: "ad-refusal-\(refusal.code)-\(refusal.listener.rawValue)")
+
+        store.startAnalysis(transcript: transcript, modelContext: context)
+
+        #expect(await waitUntil {
+            !store.hasActiveJob && store.record(for: transcript.episodeID)?.state == .failed
+        })
+        let record = try #require(store.record(for: transcript.episodeID))
+        #expect(record.failureKind == refusal.kind)
+        #expect(record.errorMessage == "Promo/ad analysis failed (\(refusal.code), \(refusal.listener.rawValue)).")
+        #expect(store.document(for: transcript.episodeID) == nil)
+        let run = try #require(environment.latestRun)
+        #expect(run.state == .failed)
+        #expect(run.outcomeCode == refusal.code)
+        #expect(run.listenerFailure == refusal.listener.rawValue)
+        #expect(run.windows["0"]?.verdict == .failed)
+        #expect(environment.presentedReasons.isEmpty)
+        #expect(environment.trialRefreshCount == 0)
+        // No tokens were spent, so the listener's usage is untouched.
+        #expect(environment.usage.isEmpty)
+    }
+
+    @Test("A trial refusal reads the trial status again and opens the key screen with its reason")
+    func trialRefusalRefreshesStatusAndPresentsKeyScreen() async throws {
+        let container = try OpenCastModelContainerFactory.make(inMemory: true)
+        let context = ModelContext(container)
+        let environment = ScriptedAdAnalysisRunEnvironment()
+        environment.route = .trial
+        environment.answer = .failure(.rejected(status: 403), status: 403, listener: .trialExhausted)
+        let store = makeStore(
+            fileStore: EpisodeAdAnalysisFileStore(baseDirectory: try makeTemporaryDirectory()),
+            environment: environment
+        )
+        let exhausted = makeTranscriptDocument(episodeID: "ad-trial-exhausted")
+        let paused = makeTranscriptDocument(episodeID: "ad-trial-paused")
+
+        store.startAnalysis(transcript: exhausted, modelContext: context)
+        #expect(await waitUntil {
+            !store.hasActiveJob && store.record(for: exhausted.episodeID)?.state == .failed
+        })
+        environment.answer = .failure(.rejected(status: 503), status: 503, listener: .trialPaused)
+        store.startAnalysis(transcript: paused, presentsKeyScreen: false, modelContext: context)
+        #expect(await waitUntil {
+            !store.hasActiveJob && store.record(for: paused.episodeID)?.state == .failed
+        })
+
+        #expect(store.record(for: exhausted.episodeID)?.failureKind == .keyRequiredTrialExhausted)
+        #expect(store.record(for: paused.episodeID)?.failureKind == .keyRequiredTrialPaused)
+        #expect(environment.trialRefreshCount == 2)
+        #expect(environment.presentedReasons == [.trialExhausted])
+        #expect(environment.usage.isEmpty)
+    }
+
+    @Test(
+        "A trial refusal that needs the listener's key fails with its reason, and only a listener's start opens the key screen",
+        arguments: [
+            TrialRefusal(
+                answer: .failure(.rejected(status: 403), status: 403, listener: .trialRunBound),
+                kind: .keyRequiredTrialRunBound,
+                reason: .trialRunBound
+            ),
+            TrialRefusal(
+                answer: .failure(.rejected(status: 503), status: 503, listener: .trialUnavailable),
+                kind: .keyRequiredProxyUnavailable,
+                reason: .proxyUnavailable
+            ),
+        ]
+    )
+    func trialRefusalNeedsListenerKey(_ refusal: TrialRefusal) async throws {
+        let container = try OpenCastModelContainerFactory.make(inMemory: true)
+        let context = ModelContext(container)
+        let environment = ScriptedAdAnalysisRunEnvironment()
+        environment.route = .trial
+        environment.answer = refusal.answer
+        let store = makeStore(
+            fileStore: EpisodeAdAnalysisFileStore(baseDirectory: try makeTemporaryDirectory()),
+            environment: environment
+        )
+        let automatic = makeTranscriptDocument(episodeID: "ad-trial-automatic-\(refusal.reason.rawValue)")
+        let listener = makeTranscriptDocument(episodeID: "ad-trial-listener-\(refusal.reason.rawValue)")
+
+        store.startAnalysis(transcript: automatic, retryFailed: false, presentsKeyScreen: false, modelContext: context)
+        #expect(await waitUntil {
+            !store.hasActiveJob && store.record(for: automatic.episodeID)?.state == .failed
+        })
+        #expect(environment.presentedReasons.isEmpty)
+
+        store.startAnalysis(transcript: listener, modelContext: context)
+        #expect(await waitUntil {
+            !store.hasActiveJob && store.record(for: listener.episodeID)?.state == .failed
+        })
+
+        #expect(store.record(for: automatic.episodeID)?.failureKind == refusal.kind)
+        #expect(store.record(for: listener.episodeID)?.failureKind == refusal.kind)
+        #expect(environment.presentedReasons == [refusal.reason])
+        #expect(environment.trialRefreshCount == 0)
+        #expect(environment.latestRun?.listenerFailure == refusal.answerListener.rawValue)
+        #expect(environment.usage.isEmpty)
+    }
+
+    @Test("A document that fails to install leaves its run open, and the next start resumes it without paying again")
+    func failedInstallLeavesRunOpenForNextStart() async throws {
+        let container = try OpenCastModelContainerFactory.make(inMemory: true)
+        let context = ModelContext(container)
+        let fileStore = EpisodeAdAnalysisFileStore(baseDirectory: try makeTemporaryDirectory())
+        let environment = ScriptedAdAnalysisRunEnvironment()
+        let store = makeStore(fileStore: fileStore, environment: environment)
+        let transcript = makeTranscriptDocument(episodeID: "ad-install-failure")
+        // A directory where the document goes makes its write fail.
+        let blocker = fileStore.fileURL(relativePath: fileStore.relativePath(
+            episodeID: transcript.episodeID,
+            transcriptFingerprint: fileStore.transcriptFingerprint(for: transcript)
+        ))
+        try FileManager.default.createDirectory(at: blocker, withIntermediateDirectories: true)
+        try Data("blocker".utf8).write(to: blocker.appending(path: "occupied"))
+
+        store.startAnalysis(transcript: transcript, modelContext: context)
+
+        #expect(await waitUntil {
+            !store.hasActiveJob && store.record(for: transcript.episodeID)?.state == .failed
+        })
+        #expect(store.record(for: transcript.episodeID)?.failureKind == .generic)
+        let open = try #require(environment.latestRun)
+        #expect(open.state == .dispatched)
+        #expect(open.finishedAt == nil)
+        #expect(environment.runs.replies(runID: open.id).count == 1)
+        #expect(environment.usage.isEmpty)
+
+        try FileManager.default.removeItem(at: blocker)
+        store.startAnalysis(transcript: transcript, modelContext: context)
+
+        #expect(await waitUntil {
+            !store.hasActiveJob && store.record(for: transcript.episodeID)?.state == .completed
+        })
+        #expect(environment.resolvedRunIDs == [nil, open.id])
+        #expect(environment.transportRunIDs == [open.id, open.id])
+        #expect(environment.sends.count == 1)
+        #expect(environment.runs.record(id: open.id)?.state == .finished)
+        #expect(environment.usage == [.init(provider: .google, inputTokens: 420, outputTokens: 36, runID: open.id)])
+        #expect(store.document(for: transcript.episodeID)?.spans.count == 1)
+    }
+
+    @Test("The run record is written before the first send and ends only after the document is in place")
+    func runRecordBracketsTheDocument() async throws {
+        let container = try OpenCastModelContainerFactory.make(inMemory: true)
+        let context = ModelContext(container)
+        let gate = AsyncTestGate()
+        let environment = ScriptedAdAnalysisRunEnvironment()
+        environment.gate = gate
+        environment.perCallTimeoutSeconds = 45
+        let store = makeStore(
+            fileStore: EpisodeAdAnalysisFileStore(baseDirectory: try makeTemporaryDirectory()),
+            environment: environment
+        )
+        let transcript = makeTranscriptDocument(episodeID: "ad-run-record-order")
+
+        store.startAnalysis(transcript: transcript, modelContext: context)
+
+        #expect(await waitUntil { environment.sends.count == 1 })
+        let dispatched = try #require(environment.latestRun)
+        #expect(dispatched.state == .dispatched)
+        #expect(dispatched.finishedAt == nil)
+        #expect(store.record(for: transcript.episodeID)?.state == .running)
+        #expect(store.document(for: transcript.episodeID) == nil)
+        let progress = try #require(store.analysisProgress(for: transcript.episodeID))
+        #expect(progress.completed == 0)
+        #expect(progress.total == 1)
+        // Each step's creep paces over the run's own model.
+        #expect(progress.stepBudgetSeconds == AdAnalysisRunProgress.stepBudgetSeconds(perCallTimeoutSeconds: 45))
+
+        await gate.release()
+
+        #expect(await waitUntil {
+            !store.hasActiveJob && store.record(for: transcript.episodeID)?.state == .completed
+        })
+        let finished = try #require(environment.runs.record(id: dispatched.id))
+        let record = try #require(store.record(for: transcript.episodeID))
+        #expect(finished.state == .finished)
+        #expect(finished.windows == ["0": .init(verdict: .accepted, sends: 1)])
+        let finishedAt = try #require(finished.finishedAt)
+        #expect(finishedAt >= record.updatedAt)
+        #expect(environment.runs.replies(runID: dispatched.id).isEmpty)
+    }
+
+    @Test("A listener's cancel ends the run record cancelled, and the next launch does not resume it")
+    func listenerCancelEndsRunRecord() async throws {
+        let container = try OpenCastModelContainerFactory.make(inMemory: true)
+        let context = ModelContext(container)
+        let directory = try makeTemporaryDirectory()
+        let transcriptFileStore = EpisodeTranscriptFileStore(baseDirectory: directory)
+        let environment = ScriptedAdAnalysisRunEnvironment()
+        environment.answer = .hold
+        let store = makeStore(fileStore: EpisodeAdAnalysisFileStore(baseDirectory: directory), environment: environment)
+        let transcript = makeTranscriptDocument(episodeID: "ad-listener-cancel")
+        _ = try writeTranscript(transcript, fileStore: transcriptFileStore, modelContext: context)
+
+        store.startAnalysis(transcript: transcript, modelContext: context)
+        #expect(await waitUntil { environment.sends.count == 1 })
+        store.cancelActiveRun(reason: .listener)
+
+        #expect(await waitUntil { !store.hasActiveJob })
+        let run = try #require(environment.latestRun)
+        #expect(run.state == .cancelled)
+        #expect(run.outcomeCode == "cancelled")
+        #expect(store.record(for: transcript.episodeID)?.state == .running)
+
+        let relaunched = makeStore(fileStore: EpisodeAdAnalysisFileStore(baseDirectory: directory), environment: environment)
+        relaunched.load(modelContext: context)
+
+        let record = try #require(relaunched.record(for: transcript.episodeID))
+        #expect(record.state == .failed)
+        #expect(record.failureKind == .interrupted)
+        #expect(!relaunched.hasActiveJob)
+        #expect(environment.resolvedRunIDs == [nil])
+        #expect(environment.sends.count == 1)
+    }
+
+    @Test("A run whose card expired resumes at the next launch under its id, sending only the windows it had not answered")
+    func expiredRunResumesAtLaunchFromKeptReplies() async throws {
+        let container = try OpenCastModelContainerFactory.make(inMemory: true)
+        let context = ModelContext(container)
+        let directory = try makeTemporaryDirectory()
+        let transcriptFileStore = EpisodeTranscriptFileStore(baseDirectory: directory)
+        let environment = ScriptedAdAnalysisRunEnvironment()
+        environment.answerForRequest = { request in
+            request.purpose == .adWindow(index: 1) ? .hold : .sponsorRead
+        }
+        let client = UnpolledAdAnalysisClient()
+        let store = makeStore(
+            fileStore: EpisodeAdAnalysisFileStore(baseDirectory: directory),
+            environment: environment,
+            client: client
+        )
+        let transcript = makeLongTranscriptDocument(episodeID: "ad-expired-resume", segmentCount: 900)
+        _ = try writeTranscript(transcript, fileStore: transcriptFileStore, modelContext: context)
+
+        store.startAnalysis(transcript: transcript, modelContext: context)
+        #expect(await waitUntil {
+            environment.sends.count(of: .adWindow(index: 1)) == 1
+                && store.analysisProgress(for: transcript.episodeID)?.completed == 1
+        })
+        #expect(store.analysisProgress(for: transcript.episodeID)?.total == 2)
+        store.cancelActiveRun(reason: .expiration)
+
+        #expect(await waitUntil { !store.hasActiveJob })
+        let expired = try #require(environment.latestRun)
+        #expect(expired.state == .expired)
+        #expect(expired.windows["0"]?.verdict == .answered)
+        #expect(environment.runs.replies(runID: expired.id).count == 1)
+        #expect(store.record(for: transcript.episodeID)?.state == .running)
+
+        environment.answerForRequest = nil
+        let relaunched = makeStore(
+            fileStore: EpisodeAdAnalysisFileStore(baseDirectory: directory),
+            environment: environment,
+            client: client
+        )
+        relaunched.load(modelContext: context)
+
+        #expect(await waitUntil {
+            !relaunched.hasActiveJob && relaunched.record(for: transcript.episodeID)?.state == .completed
+        })
+        #expect(environment.resolvedRunIDs == [nil, expired.id])
+        #expect(environment.transportRunIDs == [expired.id, expired.id])
+        #expect(environment.sends.count(of: .adWindow(index: 0)) == 1)
+        #expect(environment.sends.count(of: .adWindow(index: 1)) == 2)
+        let finished = try #require(environment.runs.record(id: expired.id))
+        #expect(finished.state == .finished)
+        #expect(finished.windows.values.allSatisfy { $0.verdict == .accepted })
+        #expect(environment.runs.records(limit: 10).count == 1)
+        #expect(environment.usage == [.init(provider: .google, inputTokens: 840, outputTokens: 72, runID: expired.id)])
+        #expect(relaunched.record(for: transcript.episodeID)?.spanCount == 1)
+        #expect(client.pollCount == 0)
+    }
+
+    @Test("A new start resumes the episode's expired run instead of dispatching another")
+    func newStartResumesExpiredRun() async throws {
+        let container = try OpenCastModelContainerFactory.make(inMemory: true)
+        let context = ModelContext(container)
+        let environment = ScriptedAdAnalysisRunEnvironment()
+        environment.route = .trial
+        environment.answer = .hold
+        let store = makeStore(
+            fileStore: EpisodeAdAnalysisFileStore(baseDirectory: try makeTemporaryDirectory()),
+            environment: environment
+        )
+        let transcript = makeTranscriptDocument(episodeID: "ad-restart-expired")
+
+        store.startAnalysis(transcript: transcript, modelContext: context)
+        #expect(await waitUntil { environment.sends.count == 1 })
+        store.cancelActiveRun(reason: .expiration)
+        #expect(await waitUntil { !store.hasActiveJob })
+        let expired = try #require(environment.latestRun)
+        #expect(expired.state == .expired)
+
+        environment.answer = .sponsorRead
+        store.startAnalysis(transcript: transcript, modelContext: context)
+
+        #expect(await waitUntil {
+            !store.hasActiveJob && store.record(for: transcript.episodeID)?.state == .completed
+        })
+        #expect(environment.resolvedRunIDs == [nil, expired.id])
+        #expect(environment.transportRunIDs == [expired.id, expired.id])
+        #expect(environment.runs.records(limit: 10).map(\.id) == [expired.id])
+        #expect(environment.runs.record(id: expired.id)?.state == .finished)
+    }
+
+    @Test("At most one device run resumes at launch; the other running records fail as interrupted")
+    func atMostOneDeviceRunResumesAtLaunch() async throws {
+        let container = try OpenCastModelContainerFactory.make(inMemory: true)
+        let context = ModelContext(container)
+        let directory = try makeTemporaryDirectory()
+        let transcriptFileStore = EpisodeTranscriptFileStore(baseDirectory: directory)
+        let environment = ScriptedAdAnalysisRunEnvironment()
+        environment.answer = .hold
+        let store = makeStore(fileStore: EpisodeAdAnalysisFileStore(baseDirectory: directory), environment: environment)
+        var openRuns: [String: String] = [:]
+        for episodeID in ["ad-launch-first", "ad-launch-second"] {
+            let transcript = makeTranscriptDocument(episodeID: episodeID)
+            _ = try writeTranscript(transcript, fileStore: transcriptFileStore, modelContext: context)
+            openRuns[episodeID] = try await expireRun(of: transcript, store: store, environment: environment, context: context)
+        }
+
+        environment.answer = .sponsorRead
+        let relaunched = makeStore(fileStore: EpisodeAdAnalysisFileStore(baseDirectory: directory), environment: environment)
+        relaunched.load(modelContext: context)
+
+        #expect(await waitUntil {
+            !relaunched.hasActiveJob
+                && relaunched.records.allSatisfy { $0.state == .completed || $0.state == .failed }
+        })
+        let completed = relaunched.records.filter { $0.state == .completed }
+        let failed = relaunched.records.filter { $0.state == .failed }
+        #expect(completed.count == 1)
+        #expect(failed.count == 1)
+        #expect(failed.first?.failureKind == .interrupted)
+        let resumedEpisodeID = try #require(completed.first?.episodeID)
+        let resumedRunID = try #require(openRuns[resumedEpisodeID])
+        #expect(environment.resolvedRunIDs == [nil, nil, resumedRunID])
+        #expect(environment.transportRunIDs.last == resumedRunID)
+        #expect(environment.runs.record(id: resumedRunID)?.state == .finished)
+    }
+
+    @Test("A launch never starts a new run when the open run's route no longer applies")
+    func launchNeverStartsNewRun() async throws {
+        let container = try OpenCastModelContainerFactory.make(inMemory: true)
+        let context = ModelContext(container)
+        let directory = try makeTemporaryDirectory()
+        let environment = ScriptedAdAnalysisRunEnvironment()
+        environment.answer = .hold
+        let store = makeStore(fileStore: EpisodeAdAnalysisFileStore(baseDirectory: directory), environment: environment)
+        let transcript = makeTranscriptDocument(episodeID: "ad-launch-no-new-run")
+        _ = try writeTranscript(transcript, fileStore: EpisodeTranscriptFileStore(baseDirectory: directory), modelContext: context)
+        let runID = try await expireRun(of: transcript, store: store, environment: environment, context: context)
+
+        environment.keepsResumedRoute = false
+        environment.answer = .sponsorRead
+        let relaunched = makeStore(fileStore: EpisodeAdAnalysisFileStore(baseDirectory: directory), environment: environment)
+        relaunched.load(modelContext: context)
+
+        #expect(await waitUntil {
+            !relaunched.hasActiveJob && relaunched.record(for: transcript.episodeID)?.state == .failed
+        })
+        #expect(relaunched.record(for: transcript.episodeID)?.failureKind == .interrupted)
+        #expect(environment.resolvedRunIDs == [nil, runID])
+        #expect(environment.transportRunIDs == [runID])
+        #expect(environment.sends.count == 1)
+        #expect(environment.presentedReasons.isEmpty)
+    }
+
+    @Test("A declared runtime that changed after the kill keeps the next launch from reusing the kept replies")
+    func changedDeclaredRuntimeBlocksResumeAtLaunch() async throws {
+        let container = try OpenCastModelContainerFactory.make(inMemory: true)
+        let context = ModelContext(container)
+        let directory = try makeTemporaryDirectory()
+        let environment = ScriptedAdAnalysisRunEnvironment()
+        let transcript = makeLongTranscriptDocument(episodeID: "ad-declared-runtime-launch", segmentCount: 900)
+        _ = try writeTranscript(transcript, fileStore: EpisodeTranscriptFileStore(baseDirectory: directory), modelContext: context)
+        let store = makeStore(fileStore: EpisodeAdAnalysisFileStore(baseDirectory: directory), environment: environment)
+        let expired = try await expireAfterFirstWindow(of: transcript, store: store, environment: environment, context: context)
+        #expect(environment.runs.replies(runID: expired).count == 1)
+
+        try insertDeclaredRuntime(1_700, for: transcript, context: context)
+        let relaunched = makeStore(fileStore: EpisodeAdAnalysisFileStore(baseDirectory: directory), environment: environment)
+        relaunched.load(modelContext: context)
+
+        #expect(await waitUntil {
+            !relaunched.hasActiveJob && relaunched.record(for: transcript.episodeID)?.state == .failed
+        })
+        #expect(relaunched.record(for: transcript.episodeID)?.failureKind == .interrupted)
+        #expect(environment.runs.record(id: expired)?.state == .cancelled)
+        #expect(environment.runs.replies(runID: expired).isEmpty)
+        // No route was resolved and nothing was sent at the launch.
+        #expect(environment.resolvedRunIDs == [nil])
+        #expect(environment.sends.count(of: .adWindow(index: 0)) == 1)
+        // The closed run's spent tokens still count, once, before it closes.
+        #expect(environment.usage == [.init(provider: .google, inputTokens: 420, outputTokens: 36, runID: expired)])
+        #expect(environment.usageRunStates == [.expired])
+    }
+
+    @Test("A declared runtime that changed after the card expired makes the next start dispatch a new run")
+    func changedDeclaredRuntimeStartsNewRun() async throws {
+        let container = try OpenCastModelContainerFactory.make(inMemory: true)
+        let context = ModelContext(container)
+        let environment = ScriptedAdAnalysisRunEnvironment()
+        let transcript = makeLongTranscriptDocument(episodeID: "ad-declared-runtime-start", segmentCount: 900)
+        let store = makeStore(
+            fileStore: EpisodeAdAnalysisFileStore(baseDirectory: try makeTemporaryDirectory()),
+            environment: environment
+        )
+        let expired = try await expireAfterFirstWindow(of: transcript, store: store, environment: environment, context: context)
+
+        try insertDeclaredRuntime(1_700, for: transcript, context: context)
+        store.startAnalysis(transcript: transcript, modelContext: context)
+
+        #expect(await waitUntil {
+            !store.hasActiveJob && store.record(for: transcript.episodeID)?.state == .completed
+        })
+        #expect(environment.resolvedRunIDs == [nil, nil])
+        #expect(environment.transportRunIDs.count == 2)
+        let fresh = try #require(environment.transportRunIDs.last)
+        #expect(fresh != expired)
+        #expect(environment.runs.record(id: expired)?.state == .cancelled)
+        #expect(environment.runs.record(id: fresh)?.state == .finished)
+        #expect(environment.runs.record(id: fresh)?.inputDigest != environment.runs.record(id: expired)?.inputDigest)
+        #expect(environment.sends.count(of: .adWindow(index: 0)) == 2)
+    }
+
+    @Test("A run killed after its document was installed finishes at the next launch, its usage counted once")
+    func installedRunFinishesAtLaunch() async throws {
+        let container = try OpenCastModelContainerFactory.make(inMemory: true)
+        let context = ModelContext(container)
+        let directory = try makeTemporaryDirectory()
+        let runsDirectory = try makeTemporaryDirectory()
+        let environment = ScriptedAdAnalysisRunEnvironment(directory: runsDirectory)
+        let store = makeStore(fileStore: EpisodeAdAnalysisFileStore(baseDirectory: directory), environment: environment)
+        let transcript = makeTranscriptDocument(episodeID: "ad-installed-run")
+        await startAndWait(store: store, transcript: transcript, modelContext: context)
+        let runID = try #require(environment.latestRun?.id)
+        let request = try #require(environment.sends.all.first)
+        // The process died between the install and the run record's end.
+        environment.runs.update(runID: runID) { record in
+            record.state = .dispatched
+            record.outcomeCode = nil
+            record.finishedAt = nil
+            record.windows["0"]?.verdict = .answered
+        }
+        environment.runs.saveReply(AnalysisRunStoredReply(.geminiBody("{}")), for: AnalysisRunReplyKey(request), runID: runID)
+
+        let relaunchedEnvironment = ScriptedAdAnalysisRunEnvironment(directory: runsDirectory)
+        let relaunched = makeStore(fileStore: EpisodeAdAnalysisFileStore(baseDirectory: directory), environment: relaunchedEnvironment)
+        relaunched.load(modelContext: context)
+
+        let finished = try #require(relaunchedEnvironment.runs.record(id: runID))
+        #expect(finished.state == .finished)
+        #expect(finished.outcomeCode == "completed")
+        #expect(finished.windows == ["0": .init(verdict: .accepted, sends: 1)])
+        #expect(relaunchedEnvironment.runs.replies(runID: runID).isEmpty)
+        #expect(relaunchedEnvironment.usage == [.init(provider: .google, inputTokens: 420, outputTokens: 36, runID: runID)])
+        #expect(relaunchedEnvironment.usageRunStates == [.dispatched])
+        #expect(relaunched.record(for: transcript.episodeID)?.state == .completed)
+        #expect(!relaunched.hasActiveJob)
+        #expect(relaunchedEnvironment.resolvedRunIDs.isEmpty)
+        #expect(relaunchedEnvironment.sends.count == 0)
+
+        // An ended run is not finished or counted again.
+        let againEnvironment = ScriptedAdAnalysisRunEnvironment(directory: runsDirectory)
+        makeStore(fileStore: EpisodeAdAnalysisFileStore(baseDirectory: directory), environment: againEnvironment)
+            .load(modelContext: context)
+        #expect(againEnvironment.usage.isEmpty)
+    }
+
+    @Test("A run counted part-way and killed before it ended counts its full totals once when it resumes")
+    func partlyCountedRunCountsFullTotalsOnResume() async throws {
+        let container = try OpenCastModelContainerFactory.make(inMemory: true)
+        let context = ModelContext(container)
+        let directory = try makeTemporaryDirectory()
+        let environment = ScriptedAdAnalysisRunEnvironment()
+        let usageStore = AnalysisUsageStore()
+        environment.usageStore = usageStore
+        let transcript = makeLongTranscriptDocument(episodeID: "ad-partly-counted", segmentCount: 900)
+        _ = try writeTranscript(transcript, fileStore: EpisodeTranscriptFileStore(baseDirectory: directory), modelContext: context)
+        let store = makeStore(fileStore: EpisodeAdAnalysisFileStore(baseDirectory: directory), environment: environment)
+        let runID = try await expireAfterFirstWindow(of: transcript, store: store, environment: environment, context: context)
+        // A cancel counted the totals so far under the run id, and the
+        // process stopped before the run ended: the run is still open.
+        let partial = try #require(environment.runs.record(id: runID))
+        #expect(usageStore.record(
+            provider: .google,
+            feature: .adDetection,
+            inputTokens: Int(partial.inputTokens),
+            outputTokens: Int(partial.outputTokens),
+            at: .now,
+            runID: runID,
+            modelContext: context
+        ))
+        environment.runs.markUsageRecorded(runID: runID)
+        #expect(usageStore.usage(for: .google).monthInputTokens == 420)
+
+        let relaunched = makeStore(fileStore: EpisodeAdAnalysisFileStore(baseDirectory: directory), environment: environment)
+        relaunched.load(modelContext: context)
+
+        #expect(await waitUntil {
+            !relaunched.hasActiveJob && relaunched.record(for: transcript.episodeID)?.state == .completed
+        })
+        let finished = try #require(environment.runs.record(id: runID))
+        #expect(finished.state == .finished)
+        #expect(finished.inputTokens == 840)
+        #expect(finished.outputTokens == 72)
+        #expect(finished.usageRecorded == true)
+        let usage = usageStore.usage(for: .google)
+        #expect(usage.monthInputTokens == 840)
+        #expect(usage.monthOutputTokens == 72)
+        #expect(usage.lastRun?.inputTokens == 840)
+        #expect(usage.lastRun?.outputTokens == 72)
+    }
+
+    @Test("A usage count whose save failed is counted at the next launch, once")
+    func failedUsageSaveCountsAtNextLaunch() async throws {
+        let container = try OpenCastModelContainerFactory.make(inMemory: true)
+        let context = ModelContext(container)
+        let directory = try makeTemporaryDirectory()
+        let saves = UsageSaveSwitch()
+        let usageStore = AnalysisUsageStore(save: { context in
+            if saves.fails { throw CocoaError(.fileWriteUnknown) }
+            try context.save()
+        })
+        let environment = ScriptedAdAnalysisRunEnvironment()
+        environment.usageStore = usageStore
+        let store = makeStore(fileStore: EpisodeAdAnalysisFileStore(baseDirectory: directory), environment: environment)
+        let transcript = makeTranscriptDocument(episodeID: "ad-usage-save-failure")
+
+        await startAndWait(store: store, transcript: transcript, modelContext: context)
+
+        let run = try #require(environment.latestRun)
+        #expect(run.state == .finished)
+        #expect(run.usageRecorded != true)
+        #expect(usageStore.usage(for: .google).monthInputTokens == 0)
+        #expect(environment.runs.unaccountedDirectRuns(feature: .adDetection).map(\.id) == [run.id])
+
+        saves.fails = false
+        makeStore(fileStore: EpisodeAdAnalysisFileStore(baseDirectory: directory), environment: environment)
+            .load(modelContext: context)
+
+        #expect(usageStore.usage(for: .google).monthInputTokens == 420)
+        #expect(usageStore.usage(for: .google).monthOutputTokens == 36)
+        #expect(environment.runs.record(id: run.id)?.usageRecorded == true)
+        #expect(environment.runs.unaccountedDirectRuns(feature: .adDetection).isEmpty)
+
+        makeStore(fileStore: EpisodeAdAnalysisFileStore(baseDirectory: directory), environment: environment)
+            .load(modelContext: context)
+        #expect(usageStore.usage(for: .google).monthInputTokens == 420)
+    }
+
+    @Test("A key removed mid-run fails the run as needing a key, and only a listener's start opens the key screen")
+    func keyRemovedMidRunNeedsKey() async throws {
+        let container = try OpenCastModelContainerFactory.make(inMemory: true)
+        let context = ModelContext(container)
+        let keys = InMemoryAnalysisProviderKeyStorage(seeded: [.google: (ScriptedAdAnalysisRunEnvironment.key, syncs: false)])
+        let environment = ScriptedAdAnalysisRunEnvironment()
+        environment.keyStorage = keys
+        // The window's answer does not validate, so the run needs a
+        // corrective request; the key goes before it is sent.
+        environment.answer = .unverifiableBreak
+        environment.onSend = { request in
+            if request.purpose == .adWindow(index: 0) {
+                try? keys.remove(provider: .google, includingSyncedCopy: true)
+            }
+        }
+        let store = makeStore(
+            fileStore: EpisodeAdAnalysisFileStore(baseDirectory: try makeTemporaryDirectory()),
+            environment: environment
+        )
+        let listener = makeTranscriptDocument(episodeID: "ad-key-removed-listener")
+        let automatic = makeTranscriptDocument(episodeID: "ad-key-removed-automatic")
+
+        store.startAnalysis(transcript: listener, modelContext: context)
+        #expect(await waitUntil {
+            !store.hasActiveJob && store.record(for: listener.episodeID)?.state == .failed
+        })
+        let run = try #require(environment.latestRun)
+        #expect(store.record(for: listener.episodeID)?.failureKind == .keyRequiredNoKey)
+        #expect(environment.presentedReasons == [.noKey])
+        #expect(environment.keyRemoval(runID: run.id) == .noKey)
+        #expect(run.state == .failed)
+        #expect(run.outcomeCode == AnalysisFailureCode.providerRejected.rawValue)
+        #expect(run.listenerFailure == AnalysisProviderFailure.keyRequired.rawValue)
+        #expect(environment.sends.count(of: .adWindow(index: 0)) == 1)
+        #expect(environment.sends.count(of: .adRepair(index: 0)) == 0)
+        // What was sent before the key went still counts, before the run ends.
+        #expect(environment.usage == [.init(provider: .google, inputTokens: 420, outputTokens: 36, runID: run.id)])
+        #expect(environment.usageRunStates == [.dispatched])
+        // A run that needs a key pauses nothing for the transcript.
+        #expect(try await store.automaticReplayError(for: listener) == nil)
+
+        try keys.save(ScriptedAdAnalysisRunEnvironment.key, provider: .google, syncs: false)
+        store.startAnalysis(transcript: automatic, retryFailed: false, presentsKeyScreen: false, modelContext: context)
+        #expect(await waitUntil {
+            !store.hasActiveJob && store.record(for: automatic.episodeID)?.state == .failed
+        })
+        #expect(store.record(for: automatic.episodeID)?.failureKind == .keyRequiredNoKey)
+        #expect(environment.presentedReasons == [.noKey])
+    }
+
+    @Test("Removing the key in AI Services ends the run at once as a removal from another device does, without the key screen")
+    func keyRemovedInAppEndsRunAsNeedingKey() async throws {
+        let container = try OpenCastModelContainerFactory.make(inMemory: true)
+        let context = ModelContext(container)
+        let keys = InMemoryAnalysisProviderKeyStorage(seeded: [.google: (ScriptedAdAnalysisRunEnvironment.key, syncs: false)])
+        let environment = ScriptedAdAnalysisRunEnvironment()
+        environment.keyStorage = keys
+        // The window's answer does not validate and its corrective request
+        // waits, so the run has tokens to count when the key goes.
+        environment.answerForRequest = { request in
+            request.purpose == .adRepair(index: 0) ? .hold : .unverifiableBreak
+        }
+        let store = makeStore(
+            fileStore: EpisodeAdAnalysisFileStore(baseDirectory: try makeTemporaryDirectory()),
+            environment: environment
+        )
+        let appModel = OpenCastAppModel(adAnalyses: store, allowsAutomaticFeedRefresh: false)
+        let transcript = makeTranscriptDocument(episodeID: "ad-key-removed-in-app")
+
+        store.startAnalysis(transcript: transcript, modelContext: context)
+        #expect(await waitUntil { environment.sends.count(of: .adRepair(index: 0)) == 1 })
+        try keys.remove(provider: .google, includingSyncedCopy: true)
+        appModel.cancelAnalysisRuns(onProvider: .google)
+
+        // The card says what to do as soon as the run stops.
+        #expect(await waitUntil { !store.hasActiveJob })
+        let record = try #require(store.record(for: transcript.episodeID))
+        #expect(record.state == .failed)
+        #expect(record.failureKind == .keyRequiredNoKey)
+        #expect(EpisodePipelineState.analysisFailedMessage(for: record.failureKind) == "Add a key in Settings › AI Services to detect ads.")
+        #expect(store.endedForKeyRemoval(episodeID: transcript.episodeID))
+        // The listener is where keys are added: no key screen.
+        #expect(environment.presentedReasons.isEmpty)
+        // The run record ends as a send that found the key gone ends it.
+        let run = try #require(environment.latestRun)
+        #expect(run.state == .failed)
+        #expect(run.outcomeCode == AnalysisFailureCode.providerRejected.rawValue)
+        #expect(run.listenerFailure == AnalysisProviderFailure.keyRequired.rawValue)
+        #expect(run.finishedAt != nil)
+        #expect(environment.runs.latestDispatched(feature: .adDetection, episodeID: transcript.episodeID) == nil)
+        // What was sent before the key went counts, before the run ends.
+        #expect(environment.usage == [.init(provider: .google, inputTokens: 420, outputTokens: 36, runID: run.id)])
+        #expect(environment.usageRunStates == [.dispatched])
+        #expect(try await store.automaticReplayError(for: transcript) == nil)
+
+        // The episode's next run clears the mark.
+        environment.route = .keyRequired(.noKey)
+        store.startAnalysis(transcript: transcript, modelContext: context)
+        #expect(!store.endedForKeyRemoval(episodeID: transcript.episodeID))
+        #expect(await waitUntil { !store.hasActiveJob })
+        #expect(environment.presentedReasons == [.noKey])
+    }
+
+    @Test("Removing a key cancels the active run on that provider only")
+    func removingKeyCancelsRunOnThatProvider() async throws {
+        let container = try OpenCastModelContainerFactory.make(inMemory: true)
+        let context = ModelContext(container)
+        let environment = ScriptedAdAnalysisRunEnvironment()
+        environment.answer = .hold
+        let store = makeStore(
+            fileStore: EpisodeAdAnalysisFileStore(baseDirectory: try makeTemporaryDirectory()),
+            environment: environment
+        )
+        let appModel = OpenCastAppModel(adAnalyses: store, allowsAutomaticFeedRefresh: false)
+        let google = makeTranscriptDocument(episodeID: "ad-cancel-on-provider")
+
+        store.startAnalysis(transcript: google, modelContext: context)
+        #expect(await waitUntil { environment.sends.count == 1 })
+        #expect(store.activeDirectProvider == .google)
+        appModel.cancelAnalysisRuns(onProvider: .openai)
+        #expect(store.isRunning(for: google.episodeID))
+
+        appModel.cancelAnalysisRuns(onProvider: .google)
+        #expect(await waitUntil { !store.hasActiveJob })
+        #expect(environment.latestRun?.state == .failed)
+        #expect(store.record(for: google.episodeID)?.failureKind == .keyRequiredNoKey)
+        #expect(store.activeDirectProvider == nil)
+
+        environment.route = .trial
+        let trial = makeTranscriptDocument(episodeID: "ad-cancel-trial")
+        store.startAnalysis(transcript: trial, modelContext: context)
+        #expect(await waitUntil { environment.sends.count == 2 })
+        #expect(store.activeDirectProvider == nil)
+        appModel.cancelAnalysisRuns(onProvider: .google)
+        #expect(store.isRunning(for: trial.episodeID))
+        store.cancelActiveRun(reason: .listener)
+        #expect(await waitUntil { !store.hasActiveJob })
+    }
+
+    @Test("Normalizes tiny transcript overlap before the pipeline")
+    func normalizesTinyTranscriptOverlapBeforePipeline() async throws {
+        let container = try OpenCastModelContainerFactory.make(inMemory: true)
+        let context = ModelContext(container)
+        let environment = ScriptedAdAnalysisRunEnvironment()
+        let store = makeStore(
+            fileStore: EpisodeAdAnalysisFileStore(baseDirectory: try makeTemporaryDirectory()),
+            environment: environment
         )
         var transcript = makeTranscriptDocument(episodeID: "ad-overlap")
         transcript.segments = [
@@ -84,22 +937,18 @@ struct EpisodeAdAnalysisStoreTests {
         #expect(await waitUntil {
             store.record(for: transcript.episodeID)?.state == .completed
         })
-        let request = try #require(client.lastRequest)
-        #expect(request.transcript.segmentCount == 2)
-        #expect(request.segments.map(\.id) == [0, 1])
-        #expect(request.segments[0].end == 8760.3935546875)
-        #expect(request.segments[1].start == 8760.3935546875)
-        #expect(request.segments[1].end == 8767.3916015625)
+        #expect(environment.sends.firstSegments.map(\.id) == [0, 1])
+        #expect(store.record(for: transcript.episodeID)?.transcriptSegmentCount == 2)
+        #expect(store.record(for: transcript.episodeID)?.spanCount == 0)
     }
 
-    @Test("Drops blank transcript segments before client request")
-    func dropsBlankTranscriptSegmentsBeforeClientRequest() async throws {
+    @Test("Drops blank transcript segments before the pipeline")
+    func dropsBlankTranscriptSegmentsBeforePipeline() async throws {
         let container = try OpenCastModelContainerFactory.make(inMemory: true)
         let context = ModelContext(container)
-        let temporaryDirectory = try makeTemporaryDirectory()
-        let client = FakeEpisodeAdAnalysisClient()
-        let fileStore = EpisodeAdAnalysisFileStore(baseDirectory: temporaryDirectory)
-        let store = EpisodeAdAnalysisStore(client: client, fileStore: fileStore)
+        let fileStore = EpisodeAdAnalysisFileStore(baseDirectory: try makeTemporaryDirectory())
+        let environment = ScriptedAdAnalysisRunEnvironment()
+        let store = makeStore(fileStore: fileStore, environment: environment)
         var transcript = makeTranscriptDocument(episodeID: "ad-blank-segments")
         transcript.segments = [
             OpenCastTranscriptSegment(
@@ -144,10 +993,9 @@ struct EpisodeAdAnalysisStoreTests {
         })
         let record = try #require(store.record(for: transcript.episodeID))
         let document = try #require(store.document(for: transcript.episodeID))
-        let request = try #require(client.lastRequest)
-        #expect(request.transcript.segmentCount == 2)
-        #expect(request.segments.map(\.id) == [0, 1])
-        #expect(request.segments.map(\.text) == [
+        let segments = environment.sends.firstSegments
+        #expect(segments.map(\.id) == [0, 1])
+        #expect(segments.map(\.text) == [
             "Welcome back to the show.",
             "Back to the episode."
         ])
@@ -160,11 +1008,10 @@ struct EpisodeAdAnalysisStoreTests {
     func blankOnlyTranscriptIsUnavailableForAnalysis() async throws {
         let container = try OpenCastModelContainerFactory.make(inMemory: true)
         let context = ModelContext(container)
-        let temporaryDirectory = try makeTemporaryDirectory()
-        let client = FakeEpisodeAdAnalysisClient()
-        let store = EpisodeAdAnalysisStore(
-            client: client,
-            fileStore: EpisodeAdAnalysisFileStore(baseDirectory: temporaryDirectory)
+        let environment = ScriptedAdAnalysisRunEnvironment()
+        let store = makeStore(
+            fileStore: EpisodeAdAnalysisFileStore(baseDirectory: try makeTemporaryDirectory()),
+            environment: environment
         )
         var transcript = makeTranscriptDocument(episodeID: "ad-blank-only")
         transcript.segments = [
@@ -190,38 +1037,34 @@ struct EpisodeAdAnalysisStoreTests {
             !store.hasActiveJob
         })
 
-        #expect(client.lastRequest == nil)
+        #expect(environment.sends.count == 0)
+        #expect(environment.resolvedRunIDs.isEmpty)
         #expect(store.record(for: transcript.episodeID) == nil)
         #expect(store.lastErrorMessage(for: transcript.episodeID) == EpisodeAdAnalysisError.transcriptNotCompleted.localizedDescription)
     }
 
-    @Test("Unavailable backend hides analysis start and avoids client calls")
-    func unavailableBackendHidesAnalysisStartAndAvoidsClientCalls() async throws {
+    @Test("Without a run environment nothing starts, and an episode without a record stays ready")
+    func missingRunEnvironmentStartsNothing() async throws {
         let container = try OpenCastModelContainerFactory.make(inMemory: true)
         let context = ModelContext(container)
-        let temporaryDirectory = try makeTemporaryDirectory()
-        let client = FakeEpisodeAdAnalysisClient()
         let store = EpisodeAdAnalysisStore(
-            client: client,
-            fileStore: EpisodeAdAnalysisFileStore(baseDirectory: temporaryDirectory),
-            analysisUnavailableMessage: "Promo/ad analysis is not configured on this device."
+            client: UnpolledAdAnalysisClient(),
+            fileStore: EpisodeAdAnalysisFileStore(baseDirectory: try makeTemporaryDirectory())
         )
-        let transcript = makeTranscriptDocument(episodeID: "ad-unavailable")
+        let transcript = makeTranscriptDocument(episodeID: "ad-no-environment")
 
         #expect(!store.canStartAnalysis)
-        if case .unavailable(let message) = store.jobState(for: transcript) {
-            #expect(message == "Promo/ad analysis is not configured on this device.")
-        } else {
-            Issue.record("Expected unavailable state.")
+        #expect(store.analysisStartUnavailableMessage == EpisodeAdAnalysisError.clientDisabled.localizedDescription)
+        guard case .ready = store.jobState(for: transcript) else {
+            Issue.record("The route is decided when a run starts; the episode stays ready.")
+            return
         }
 
         store.startAnalysis(transcript: transcript, modelContext: context)
-        try? await Task.sleep(for: .milliseconds(20))
 
-        #expect(client.lastRequest == nil)
         #expect(store.record(for: transcript.episodeID) == nil)
         #expect(!store.hasActiveJob)
-        #expect(store.lastErrorMessage(for: transcript.episodeID) == "Promo/ad analysis is not configured on this device.")
+        #expect(store.lastErrorMessage(for: transcript.episodeID) == EpisodeAdAnalysisError.clientDisabled.localizedDescription)
     }
 
     @Test("App model refuses ad analysis for non-completed transcript records")
@@ -231,10 +1074,10 @@ struct EpisodeAdAnalysisStoreTests {
         let temporaryDirectory = try makeTemporaryDirectory()
         let transcriptFileStore = EpisodeTranscriptFileStore(baseDirectory: temporaryDirectory)
         let transcriptions = EpisodeTranscriptionStore(fileStore: transcriptFileStore)
-        let client = FakeEpisodeAdAnalysisClient()
-        let adAnalyses = EpisodeAdAnalysisStore(
-            client: client,
-            fileStore: EpisodeAdAnalysisFileStore(baseDirectory: temporaryDirectory)
+        let environment = ScriptedAdAnalysisRunEnvironment()
+        let adAnalyses = makeStore(
+            fileStore: EpisodeAdAnalysisFileStore(baseDirectory: temporaryDirectory),
+            environment: environment
         )
         let appModel = OpenCastAppModel(
             transcriptions: transcriptions,
@@ -261,23 +1104,70 @@ struct EpisodeAdAnalysisStoreTests {
         }
 
         appModel.analyzeEpisodeTranscript(transcript, modelContext: context)
-        try? await Task.sleep(for: .milliseconds(20))
 
-        #expect(client.lastRequest == nil)
+        #expect(adAnalyses.runEnvironment === environment)
+        #expect(environment.sends.count == 0)
         #expect(adAnalyses.record(for: transcript.episodeID) == nil)
         #expect(!adAnalyses.hasActiveJob)
         #expect(adAnalyses.lastErrorMessage(for: transcript.episodeID) == EpisodeAdAnalysisError.transcriptNotCompleted.localizedDescription)
+    }
+
+    @Test("The app model's Detect Ads opens the key screen when the run needs the listener's key")
+    func appModelDetectAdsPresentsKeyScreen() async throws {
+        let container = try OpenCastModelContainerFactory.make(inMemory: true)
+        let context = ModelContext(container)
+        let temporaryDirectory = try makeTemporaryDirectory()
+        let transcriptFileStore = EpisodeTranscriptFileStore(baseDirectory: temporaryDirectory)
+        let transcriptions = EpisodeTranscriptionStore(fileStore: transcriptFileStore)
+        let environment = ScriptedAdAnalysisRunEnvironment()
+        environment.route = .keyRequired(.noKey)
+        let adAnalyses = makeStore(
+            fileStore: EpisodeAdAnalysisFileStore(baseDirectory: temporaryDirectory),
+            environment: environment
+        )
+        let appModel = OpenCastAppModel(
+            transcriptions: transcriptions,
+            adAnalyses: adAnalyses,
+            allowsAutomaticFeedRefresh: false
+        )
+        let transcript = makeTranscriptDocument(episodeID: "ad-app-key-screen")
+        _ = try writeTranscript(transcript, fileStore: transcriptFileStore, modelContext: context)
+        transcriptions.load(modelContext: context)
+
+        appModel.analyzeEpisodeTranscript(transcript, modelContext: context)
+
+        #expect(await waitUntil {
+            !adAnalyses.hasActiveJob && adAnalyses.record(for: transcript.episodeID)?.state == .failed
+        })
+        #expect(adAnalyses.record(for: transcript.episodeID)?.failureKind == .keyRequiredNoKey)
+        #expect(environment.presentedReasons == [.noKey])
+    }
+
+    @Test("The app model gives a store without a run environment the live one")
+    func appModelConfiguresLiveRunEnvironment() throws {
+        let adAnalyses = EpisodeAdAnalysisStore(
+            client: UnpolledAdAnalysisClient(),
+            fileStore: EpisodeAdAnalysisFileStore(baseDirectory: try makeTemporaryDirectory())
+        )
+        let runs = AnalysisRunRecordStore(directory: try makeTemporaryDirectory())
+        let appModel = OpenCastAppModel(adAnalyses: adAnalyses, analysisRuns: runs, allowsAutomaticFeedRefresh: false)
+
+        let environment = try #require(adAnalyses.runEnvironment as? EpisodeAdAnalysisLiveRunEnvironment)
+        #expect(environment.runs === runs)
+        #expect(environment.adDetectionPolicyRevision == appModel.analysisPolicy.snapshot.bundle.features.adDetection.revision)
+        #expect(adAnalyses.canStartAnalysis)
     }
 
     @Test("Active analysis reports running and blocks another analysis")
     func activeAnalysisReportsRunningAndBlocksAnotherAnalysis() async throws {
         let container = try OpenCastModelContainerFactory.make(inMemory: true)
         let context = ModelContext(container)
-        let temporaryDirectory = try makeTemporaryDirectory()
-        let client = HangingEpisodeAdAnalysisClient()
-        let store = EpisodeAdAnalysisStore(
-            client: client,
-            fileStore: EpisodeAdAnalysisFileStore(baseDirectory: temporaryDirectory)
+        let gate = AsyncTestGate()
+        let environment = ScriptedAdAnalysisRunEnvironment()
+        environment.gate = gate
+        let store = makeStore(
+            fileStore: EpisodeAdAnalysisFileStore(baseDirectory: try makeTemporaryDirectory()),
+            environment: environment
         )
         let firstTranscript = makeTranscriptDocument(episodeID: "ad-active-first")
         let secondTranscript = makeTranscriptDocument(episodeID: "ad-active-second")
@@ -295,13 +1185,12 @@ struct EpisodeAdAnalysisStoreTests {
         #expect(store.record(for: secondTranscript.episodeID) == nil)
         #expect(store.lastErrorMessage(for: secondTranscript.episodeID) == EpisodeAdAnalysisError.anotherJobActive.localizedDescription)
 
-        await client.release()
+        await gate.release()
 
         #expect(await waitUntil {
             store.record(for: firstTranscript.episodeID)?.state == .completed
         })
-        let requestCount = await client.currentRequestCount()
-        #expect(requestCount == 1)
+        #expect(environment.sends.count == 1)
         #expect(!store.hasActiveJob)
     }
 
@@ -309,10 +1198,12 @@ struct EpisodeAdAnalysisStoreTests {
     func activeJobNeverMarksOtherEpisodesRunning() async throws {
         let container = try OpenCastModelContainerFactory.make(inMemory: true)
         let context = ModelContext(container)
-        let client = HangingEpisodeAdAnalysisClient()
-        let store = EpisodeAdAnalysisStore(
-            client: client,
-            fileStore: EpisodeAdAnalysisFileStore(baseDirectory: try makeTemporaryDirectory())
+        let gate = AsyncTestGate()
+        let environment = ScriptedAdAnalysisRunEnvironment()
+        environment.gate = gate
+        let store = makeStore(
+            fileStore: EpisodeAdAnalysisFileStore(baseDirectory: try makeTemporaryDirectory()),
+            environment: environment
         )
         let runningTranscript = makeTranscriptDocument(episodeID: "ad-running-first")
         let otherTranscript = makeTranscriptDocument(episodeID: "ad-idle-second")
@@ -323,12 +1214,13 @@ struct EpisodeAdAnalysisStoreTests {
         // The uninvolved episode was never queued: while the first job is in
         // flight it must offer detection, not report that run as its own.
         #expect(!store.isRunning(for: otherTranscript.episodeID))
+        #expect(store.analysisProgress(for: otherTranscript.episodeID) == nil)
         if case .ready = store.jobState(for: otherTranscript) {
         } else {
             Issue.record("Expected the uninvolved episode to stay ready, got \(store.jobState(for: otherTranscript))")
         }
 
-        await client.release()
+        await gate.release()
 
         #expect(await waitUntil {
             !store.hasActiveJob
@@ -340,10 +1232,10 @@ struct EpisodeAdAnalysisStoreTests {
         let container = try OpenCastModelContainerFactory.make(inMemory: true)
         let context = ModelContext(container)
         let gate = AsyncTestGate()
-        let client = FakeEpisodeAdAnalysisClient()
-        let store = EpisodeAdAnalysisStore(
-            client: client,
+        let environment = ScriptedAdAnalysisRunEnvironment()
+        let store = makeStore(
             fileStore: EpisodeAdAnalysisFileStore(baseDirectory: try makeTemporaryDirectory()),
+            environment: environment,
             preparationGate: {
                 await gate.wait()
             }
@@ -358,7 +1250,7 @@ struct EpisodeAdAnalysisStoreTests {
         } else {
             Issue.record("Expected running while preparation is held.")
         }
-        #expect(client.lastRequest == nil)
+        #expect(environment.sends.count == 0)
 
         await gate.release()
 
@@ -372,10 +1264,10 @@ struct EpisodeAdAnalysisStoreTests {
         let container = try OpenCastModelContainerFactory.make(inMemory: true)
         let context = ModelContext(container)
         let gate = AsyncTestGate()
-        let client = FakeEpisodeAdAnalysisClient()
-        let store = EpisodeAdAnalysisStore(
-            client: client,
+        let environment = ScriptedAdAnalysisRunEnvironment()
+        let store = makeStore(
             fileStore: EpisodeAdAnalysisFileStore(baseDirectory: try makeTemporaryDirectory()),
+            environment: environment,
             preparationGate: {
                 await gate.wait()
             }
@@ -383,14 +1275,16 @@ struct EpisodeAdAnalysisStoreTests {
         let transcript = makeTranscriptDocument(episodeID: "ad-cancelled-preparation")
 
         store.startAnalysis(transcript: transcript, modelContext: context)
-        store.cancelActiveJob()
+        store.cancelActiveRun(reason: .listener)
         await gate.release()
 
         #expect(await waitUntil {
             !store.hasActiveJob
         })
         #expect(store.record(for: transcript.episodeID) == nil)
-        #expect(client.lastRequest == nil)
+        #expect(environment.resolvedRunIDs.isEmpty)
+        #expect(environment.sends.count == 0)
+        #expect(environment.runs.records(limit: 10).isEmpty)
     }
 
     @Test("Preparation failure clears running state and surfaces the error")
@@ -398,10 +1292,10 @@ struct EpisodeAdAnalysisStoreTests {
         let container = try OpenCastModelContainerFactory.make(inMemory: true)
         let context = ModelContext(container)
         let gate = AsyncTestGate()
-        let client = FakeEpisodeAdAnalysisClient()
-        let store = EpisodeAdAnalysisStore(
-            client: client,
+        let environment = ScriptedAdAnalysisRunEnvironment()
+        let store = makeStore(
             fileStore: EpisodeAdAnalysisFileStore(baseDirectory: try makeTemporaryDirectory()),
+            environment: environment,
             preparationGate: {
                 await gate.wait()
                 throw EpisodeAdAnalysisError.transcriptNotCompleted
@@ -421,21 +1315,21 @@ struct EpisodeAdAnalysisStoreTests {
                 == EpisodeAdAnalysisError.transcriptNotCompleted.localizedDescription
         )
         #expect(store.record(for: transcript.episodeID) == nil)
-        #expect(client.lastRequest == nil)
+        #expect(environment.sends.count == 0)
     }
 
-    @Test("Nuke cancels active analysis and removes running record")
+    @Test("Nuke cancels the active run, ends its run record and removes the running record")
     func nukeCancelsActiveAnalysisAndRemovesRunningRecord() async throws {
         let container = try OpenCastModelContainerFactory.make(inMemory: true)
         let context = ModelContext(container)
-        let temporaryDirectory = try makeTemporaryDirectory()
-        let client = HangingEpisodeAdAnalysisClient()
-        let fileStore = EpisodeAdAnalysisFileStore(baseDirectory: temporaryDirectory)
-        let store = EpisodeAdAnalysisStore(client: client, fileStore: fileStore)
+        let fileStore = EpisodeAdAnalysisFileStore(baseDirectory: try makeTemporaryDirectory())
+        let environment = ScriptedAdAnalysisRunEnvironment()
+        environment.answer = .hold
+        let store = makeStore(fileStore: fileStore, environment: environment)
         let transcript = makeTranscriptDocument(episodeID: "ad-active-nuke")
 
         store.startAnalysis(transcript: transcript, modelContext: context)
-        #expect(store.hasActiveJob)
+        #expect(await waitUntil { environment.sends.count == 1 })
 
         try await store.nukeAllAnalyses(modelContext: context)
 
@@ -443,8 +1337,8 @@ struct EpisodeAdAnalysisStoreTests {
         #expect(store.records.isEmpty)
         #expect(try context.fetch(FetchDescriptor<EpisodeAdAnalysisRecord>()).isEmpty)
         #expect(!FileManager.default.fileExists(atPath: fileStore.analysesDirectory.path))
+        #expect(environment.latestRun?.state == .cancelled)
     }
-
     @Test("Ad analysis record is local-only but included in full schema")
     func adAnalysisRecordIsLocalOnlyButIncludedInFullSchema() {
         #expect(OpenCastModelContainerFactory.localSchema.entitiesByName["EpisodeAdAnalysisRecord"] != nil)
@@ -457,10 +1351,7 @@ struct EpisodeAdAnalysisStoreTests {
         let container = try OpenCastModelContainerFactory.make(inMemory: true)
         let context = ModelContext(container)
         let temporaryDirectory = try makeTemporaryDirectory()
-        let store = EpisodeAdAnalysisStore(
-            client: FakeEpisodeAdAnalysisClient(),
-            fileStore: EpisodeAdAnalysisFileStore(baseDirectory: temporaryDirectory)
-        )
+        let store = makeStore(fileStore: EpisodeAdAnalysisFileStore(baseDirectory: temporaryDirectory))
         let transcript = makeTranscriptDocument(episodeID: "ad-stale")
 
         store.startAnalysis(transcript: transcript, modelContext: context)
@@ -486,10 +1377,7 @@ struct EpisodeAdAnalysisStoreTests {
         let container = try OpenCastModelContainerFactory.make(inMemory: true)
         let context = ModelContext(container)
         let temporaryDirectory = try makeTemporaryDirectory()
-        let store = EpisodeAdAnalysisStore(
-            client: FakeEpisodeAdAnalysisClient(),
-            fileStore: EpisodeAdAnalysisFileStore(baseDirectory: temporaryDirectory)
-        )
+        let store = makeStore(fileStore: EpisodeAdAnalysisFileStore(baseDirectory: temporaryDirectory))
         let transcript = makeTranscriptDocument(episodeID: "ad-fingerprint-stale")
 
         await startAndWait(store: store, transcript: transcript, modelContext: context)
@@ -511,10 +1399,7 @@ struct EpisodeAdAnalysisStoreTests {
         let container = try OpenCastModelContainerFactory.make(inMemory: true)
         let context = ModelContext(container)
         let temporaryDirectory = try makeTemporaryDirectory()
-        let store = EpisodeAdAnalysisStore(
-            client: FakeEpisodeAdAnalysisClient(),
-            fileStore: EpisodeAdAnalysisFileStore(baseDirectory: temporaryDirectory)
-        )
+        let store = makeStore(fileStore: EpisodeAdAnalysisFileStore(baseDirectory: temporaryDirectory))
         let transcript = makeTranscriptDocument(episodeID: "ad-state-stale")
 
         await startAndWait(store: store, transcript: transcript, modelContext: context)
@@ -533,10 +1418,7 @@ struct EpisodeAdAnalysisStoreTests {
         let container = try OpenCastModelContainerFactory.make(inMemory: true)
         let context = ModelContext(container)
         let temporaryDirectory = try makeTemporaryDirectory()
-        let store = EpisodeAdAnalysisStore(
-            client: FakeEpisodeAdAnalysisClient(),
-            fileStore: EpisodeAdAnalysisFileStore(baseDirectory: temporaryDirectory)
-        )
+        let store = makeStore(fileStore: EpisodeAdAnalysisFileStore(baseDirectory: temporaryDirectory))
         let transcript = makeTranscriptDocument(episodeID: "ad-policy-stale")
 
         await startAndWait(store: store, transcript: transcript, modelContext: context)
@@ -565,19 +1447,15 @@ struct EpisodeAdAnalysisStoreTests {
             Issue.record("Expected completed current state after re-run.")
         }
         let rerunDocument = try #require(store.document(for: transcript.episodeID))
-        #expect(rerunDocument.policy == EpisodeAdAnalysisContract.expectedPolicy)
+        #expect(EpisodeAdAnalysisContract.supports(policy: rerunDocument.policy))
         #expect(store.isCurrentAnalysisDocument(rerunDocument, for: transcript))
     }
-
     @Test("Current document check requires matching fingerprint metadata")
     func currentDocumentCheckRequiresMatchingFingerprintMetadata() async throws {
         let container = try OpenCastModelContainerFactory.make(inMemory: true)
         let context = ModelContext(container)
         let temporaryDirectory = try makeTemporaryDirectory()
-        let store = EpisodeAdAnalysisStore(
-            client: FakeEpisodeAdAnalysisClient(),
-            fileStore: EpisodeAdAnalysisFileStore(baseDirectory: temporaryDirectory)
-        )
+        let store = makeStore(fileStore: EpisodeAdAnalysisFileStore(baseDirectory: temporaryDirectory))
         let transcript = makeTranscriptDocument(episodeID: "ad-current-document")
 
         await startAndWait(store: store, transcript: transcript, modelContext: context)
@@ -615,10 +1493,7 @@ struct EpisodeAdAnalysisStoreTests {
         let context = ModelContext(container)
         let temporaryDirectory = try makeTemporaryDirectory()
         let fileStore = EpisodeAdAnalysisFileStore(baseDirectory: temporaryDirectory)
-        let store = EpisodeAdAnalysisStore(
-            client: FakeEpisodeAdAnalysisClient(),
-            fileStore: fileStore
-        )
+        let store = makeStore(fileStore: fileStore)
         let transcript = makeTranscriptDocument(episodeID: "ad-delete")
 
         store.startAnalysis(transcript: transcript, modelContext: context)
@@ -652,10 +1527,7 @@ struct EpisodeAdAnalysisStoreTests {
         let transcriptFileStore = EpisodeTranscriptFileStore(baseDirectory: temporaryDirectory)
         let adAnalysisFileStore = EpisodeAdAnalysisFileStore(baseDirectory: temporaryDirectory)
         let transcriptions = EpisodeTranscriptionStore(fileStore: transcriptFileStore)
-        let adAnalyses = EpisodeAdAnalysisStore(
-            client: FakeEpisodeAdAnalysisClient(),
-            fileStore: adAnalysisFileStore
-        )
+        let adAnalyses = makeStore(fileStore: adAnalysisFileStore)
         let appModel = OpenCastAppModel(
             transcriptions: transcriptions,
             adAnalyses: adAnalyses,
@@ -689,10 +1561,7 @@ struct EpisodeAdAnalysisStoreTests {
         let context = ModelContext(container)
         let temporaryDirectory = try makeTemporaryDirectory()
         let fileStore = EpisodeAdAnalysisFileStore(baseDirectory: temporaryDirectory)
-        let store = EpisodeAdAnalysisStore(
-            client: FakeEpisodeAdAnalysisClient(),
-            fileStore: fileStore
-        )
+        let store = makeStore(fileStore: fileStore)
         let firstTranscript = makeTranscriptDocument(
             episodeID: "ad-podcast-delete-1",
             podcastID: "https://example.com/delete.xml"
@@ -743,10 +1612,7 @@ struct EpisodeAdAnalysisStoreTests {
         let transcriptFileStore = EpisodeTranscriptFileStore(baseDirectory: temporaryDirectory)
         let adAnalysisFileStore = EpisodeAdAnalysisFileStore(baseDirectory: temporaryDirectory)
         let transcriptions = EpisodeTranscriptionStore(fileStore: transcriptFileStore)
-        let adAnalyses = EpisodeAdAnalysisStore(
-            client: FakeEpisodeAdAnalysisClient(),
-            fileStore: adAnalysisFileStore
-        )
+        let adAnalyses = makeStore(fileStore: adAnalysisFileStore)
         let appModel = OpenCastAppModel(
             library: LibraryStore(localCache: SQLiteLocalLibraryCacheStore.inMemory()),
             transcriptions: transcriptions,
@@ -799,10 +1665,7 @@ struct EpisodeAdAnalysisStoreTests {
         let context = ModelContext(container)
         let temporaryDirectory = try makeTemporaryDirectory()
         let fileStore = EpisodeAdAnalysisFileStore(baseDirectory: temporaryDirectory)
-        let store = EpisodeAdAnalysisStore(
-            client: FakeEpisodeAdAnalysisClient(),
-            fileStore: fileStore
-        )
+        let store = makeStore(fileStore: fileStore)
         let firstTranscript = makeTranscriptDocument(episodeID: "ad-nuke-1")
         let secondTranscript = makeTranscriptDocument(episodeID: "ad-nuke-2")
 
@@ -822,10 +1685,7 @@ struct EpisodeAdAnalysisStoreTests {
         let context = ModelContext(container)
         let temporaryDirectory = try makeTemporaryDirectory()
         let fileStore = EpisodeAdAnalysisFileStore(baseDirectory: temporaryDirectory)
-        let store = EpisodeAdAnalysisStore(
-            client: FakeEpisodeAdAnalysisClient(),
-            fileStore: fileStore
-        )
+        let store = makeStore(fileStore: fileStore)
         let transcript = makeTranscriptDocument(episodeID: "ad-missing-sidecar")
 
         await startAndWait(store: store, transcript: transcript, modelContext: context)
@@ -836,10 +1696,7 @@ struct EpisodeAdAnalysisStoreTests {
             return
         }
 
-        let reloadedStore = EpisodeAdAnalysisStore(
-            client: FakeEpisodeAdAnalysisClient(),
-            fileStore: fileStore
-        )
+        let reloadedStore = makeStore(fileStore: fileStore)
         reloadedStore.load(modelContext: context)
 
         let record = try #require(reloadedStore.record(for: transcript.episodeID))
@@ -847,20 +1704,27 @@ struct EpisodeAdAnalysisStoreTests {
         #expect(record.errorMessage == "Promo/ad analysis document is missing.")
     }
 
-    @Test("Validation exhaustion persists across relaunch, but explicit retry and changed inputs remain eligible")
+    @Test("Validation exhaustion pauses automatic retries across relaunch until the input or the bundle revision changes")
     func validationReplayPersistence() async throws {
         let container = try OpenCastModelContainerFactory.make(inMemory: true)
         let context = ModelContext(container)
         let files = EpisodeAdAnalysisFileStore(baseDirectory: try makeTemporaryDirectory())
-        let client = ThrowingEpisodeAdAnalysisClient(error: EpisodeAdAnalysisHTTPError(
-            statusCode: 422, code: "ad_analysis_incomplete", detail: nil,
-            failure: .init(category: .validationExhausted, retryDisposition: .explicitRetry, policyRevision: "revision-a")))
-        client.revision = "revision-a"
-        let store = EpisodeAdAnalysisStore(client: client, fileStore: files)
+        let environment = ScriptedAdAnalysisRunEnvironment()
+        environment.answer = .unverifiableBreak
+        let store = makeStore(fileStore: files, environment: environment)
         let transcript = makeTranscriptDocument(episodeID: "replay-persistence")
+
         store.startAnalysis(transcript: transcript, modelContext: context)
-        #expect(await waitUntil { store.record(for: transcript.episodeID)?.state == .failed })
-        let reloaded = EpisodeAdAnalysisStore(client: client, fileStore: files)
+        #expect(await waitUntil {
+            !store.hasActiveJob && store.record(for: transcript.episodeID)?.state == .failed
+        })
+        #expect(store.record(for: transcript.episodeID)?.failureKind == .validationExhausted)
+        #expect(environment.sends.count(of: .adWindow(index: 0)) == 1)
+        #expect(environment.sends.count(of: .adRepair(index: 0)) == 1)
+        #expect(environment.latestRun?.outcomeCode == "ad_analysis_incomplete")
+        #expect(environment.latestRun?.listenerFailure == AnalysisProviderFailure.malformedAnswer.rawValue)
+
+        let reloaded = makeStore(fileStore: files, environment: environment)
         reloaded.load(modelContext: context)
         #expect(try await reloaded.automaticReplayError(for: transcript) != nil)
         var reimported = transcript
@@ -872,17 +1736,20 @@ struct EpisodeAdAnalysisStoreTests {
         changed = transcript
         changed.segments[0].text += " New source text."
         #expect(try await reloaded.automaticReplayError(for: changed) == nil)
-        client.revision = "revision-b"
+        let revision = environment.adDetectionPolicyRevision
+        environment.adDetectionPolicyRevision = "a-later-revision"
         #expect(try await reloaded.automaticReplayError(for: transcript) == nil)
-        client.revision = "revision-a"
+        environment.adDetectionPolicyRevision = revision
+
+        let sendsBeforeAutomatic = environment.sends.count
         reloaded.startAnalysis(transcript: transcript, retryFailed: false, modelContext: context)
         #expect(await waitUntil { !reloaded.isRunning(for: transcript.episodeID) })
-        #expect(client.calls == 1)
-        client.error = nil
+        #expect(environment.sends.count == sendsBeforeAutomatic)
+
+        environment.answer = .sponsorRead
         reloaded.startAnalysis(transcript: transcript, modelContext: context)
         #expect(await waitUntil { reloaded.record(for: transcript.episodeID)?.state == .completed })
-        #expect(client.calls == 2)
-        #expect(client.lastRetryFailed == true)
+        #expect(environment.sends.count == sendsBeforeAutomatic + 1)
         #expect(try await reloaded.automaticReplayError(for: transcript) == nil)
     }
 
@@ -890,147 +1757,73 @@ struct EpisodeAdAnalysisStoreTests {
     func replacementFailurePreservesGoodAnalysis() async throws {
         let container = try OpenCastModelContainerFactory.make(inMemory: true)
         let context = ModelContext(container)
-        let files = EpisodeAdAnalysisFileStore(baseDirectory: try makeTemporaryDirectory())
-        let client = ThrowingEpisodeAdAnalysisClient(error: nil)
-        let store = EpisodeAdAnalysisStore(client: client, fileStore: files)
+        let environment = ScriptedAdAnalysisRunEnvironment()
+        let store = makeStore(
+            fileStore: EpisodeAdAnalysisFileStore(baseDirectory: try makeTemporaryDirectory()),
+            environment: environment
+        )
         let transcript = makeTranscriptDocument(episodeID: "retain-good-analysis")
         await startAndWait(store: store, transcript: transcript, modelContext: context)
         let original = try #require(store.document(for: transcript.episodeID))
-        client.error = EpisodeAdAnalysisHTTPError(statusCode: 422, code: "ad_analysis_incomplete", detail: nil)
+
+        environment.answer = .unverifiableBreak
         store.startAnalysis(transcript: transcript, modelContext: context)
-        #expect(await waitUntil { client.calls == 2 && !store.isRunning(for: transcript.episodeID) })
-        #expect(store.record(for: transcript.episodeID)?.state == .completed)
+
+        #expect(await waitUntil { environment.sends.count == 3 && !store.isRunning(for: transcript.episodeID) })
+        let record = try #require(store.record(for: transcript.episodeID))
+        #expect(record.state == .completed)
+        #expect(record.failureKind == .validationExhausted)
         #expect(store.document(for: transcript.episodeID) == original)
         #expect(store.lastErrorMessage(for: transcript.episodeID) != nil)
-    }
-
-    @Test("Cap rejections thread a typed failure kind onto the record")
-    func capRejectionThreadsFailureKindOntoRecord() async throws {
-        let container = try OpenCastModelContainerFactory.make(inMemory: true)
-        let context = ModelContext(container)
-        let temporaryDirectory = try makeTemporaryDirectory()
-        let client = ThrowingEpisodeAdAnalysisClient(error: EpisodeAdAnalysisHTTPError(
-            statusCode: 429,
-            code: "daily_input_token_cap_exceeded",
-            detail: nil
-        ))
-        let store = EpisodeAdAnalysisStore(
-            client: client,
-            fileStore: EpisodeAdAnalysisFileStore(baseDirectory: temporaryDirectory)
-        )
-        let transcript = makeTranscriptDocument(episodeID: "ad-cap-kind")
-
-        store.startAnalysis(transcript: transcript, modelContext: context)
-
-        #expect(await waitUntil {
-            store.record(for: transcript.episodeID)?.state == .failed
-        })
-        let record = try #require(store.record(for: transcript.episodeID))
-        #expect(record.failureKind == .capExceeded)
-        guard case .failed(let failedRecord, _) = store.jobState(for: transcript) else {
-            Issue.record("expected a failed job state")
-            return
-        }
-        #expect(failedRecord.failureKind == .capExceeded)
-    }
-
-    @Test("Non-cap failures thread their failure kind")
-    func nonCapFailuresThreadTheirFailureKind() async throws {
-        // A 5xx submit can follow a started run, so it is not repeated.
-        let cases: [(error: Error, kind: EpisodeAnalysisFailureKind, submits: Int)] = [
-            (EpisodeAdAnalysisHTTPError(statusCode: 500, code: "internal", detail: nil), .serviceUnavailable, 1),
-            (EpisodeAdAnalysisHTTPError(statusCode: 429, code: "rate_limited_other", detail: nil), .generic, 1)
-        ]
-        for (index, testCase) in cases.enumerated() {
-            let container = try OpenCastModelContainerFactory.make(inMemory: true)
-            let context = ModelContext(container)
-            let temporaryDirectory = try makeTemporaryDirectory()
-            let client = ThrowingEpisodeAdAnalysisClient(error: testCase.error)
-            let store = EpisodeAdAnalysisStore(
-                client: client,
-                fileStore: EpisodeAdAnalysisFileStore(baseDirectory: temporaryDirectory),
-                pollingSleep: { _ in }
-            )
-            let transcript = makeTranscriptDocument(episodeID: "ad-generic-kind-\(index)")
-
-            store.startAnalysis(transcript: transcript, modelContext: context)
-
-            #expect(await waitUntil {
-                store.record(for: transcript.episodeID)?.state == .failed
-            })
-            let record = try #require(store.record(for: transcript.episodeID))
-            #expect(record.failureKind == testCase.kind)
-            #expect(client.calls == testCase.submits)
-        }
-    }
-
-    @Test("A response containing an unknown span kind fails cleanly, never a trusted skip")
-    func unknownSpanKindFailsCleanlyInsteadOfTrustedSkip() async throws {
-        let container = try OpenCastModelContainerFactory.make(inMemory: true)
-        let context = ModelContext(container)
-        let temporaryDirectory = try makeTemporaryDirectory()
-        let client = FakeEpisodeAdAnalysisClient()
-        client.spanKind = .unknown
-        let store = EpisodeAdAnalysisStore(
-            client: client,
-            fileStore: EpisodeAdAnalysisFileStore(baseDirectory: temporaryDirectory)
-        )
-        let transcript = makeTranscriptDocument(episodeID: "ad-unknown-kind")
-
-        store.startAnalysis(transcript: transcript, modelContext: context)
-
-        #expect(await waitUntil {
-            store.record(for: transcript.episodeID)?.state == .failed
-        })
-        let record = try #require(store.record(for: transcript.episodeID))
-        #expect(record.failureKind == .generic)
-        #expect(record.errorMessage == EpisodeAdAnalysisError.unrecognizedSpanKind.localizedDescription)
-        #expect(store.document(for: transcript.episodeID) == nil)
     }
 
     @Test("A successful rerun clears the stored failure kind")
     func successfulRerunClearsFailureKind() async throws {
         let container = try OpenCastModelContainerFactory.make(inMemory: true)
         let context = ModelContext(container)
-        let temporaryDirectory = try makeTemporaryDirectory()
-        let client = ThrowingEpisodeAdAnalysisClient(error: EpisodeAdAnalysisHTTPError(
-            statusCode: 429,
-            code: "daily_request_cap_exceeded",
-            detail: nil
-        ))
-        let store = EpisodeAdAnalysisStore(
-            client: client,
-            fileStore: EpisodeAdAnalysisFileStore(baseDirectory: temporaryDirectory)
+        let environment = ScriptedAdAnalysisRunEnvironment()
+        environment.answer = .failure(.rejected(status: 400), status: 400, listener: .invalidKey)
+        let store = makeStore(
+            fileStore: EpisodeAdAnalysisFileStore(baseDirectory: try makeTemporaryDirectory()),
+            environment: environment
         )
-        let transcript = makeTranscriptDocument(episodeID: "ad-cap-clears")
+        let transcript = makeTranscriptDocument(episodeID: "ad-failure-clears")
 
         store.startAnalysis(transcript: transcript, modelContext: context)
         #expect(await waitUntil {
-            store.record(for: transcript.episodeID)?.state == .failed
+            !store.hasActiveJob && store.record(for: transcript.episodeID)?.state == .failed
         })
+        #expect(store.record(for: transcript.episodeID)?.failureKind == .providerRejectedKey)
 
-        client.error = nil
+        environment.answer = .sponsorRead
         store.startAnalysis(transcript: transcript, modelContext: context)
         #expect(await waitUntil {
-            store.record(for: transcript.episodeID)?.state == .completed
+            !store.hasActiveJob && store.record(for: transcript.episodeID)?.state == .completed
         })
         let record = try #require(store.record(for: transcript.episodeID))
         #expect(record.failureKind == nil)
+        #expect(record.errorMessage == nil)
     }
 
-    #if DEBUG
-    #endif
+    @Test("A device run's failure reads back through the service's error body")
+    func deviceFailureReadsThroughServiceErrorBody() throws {
+        let failure = AnalysisFailure(feature: .adDetection, code: .adAnalysisIncomplete, status: 422, windowIndex: 0)
+        let body = Data(JSONWriter.string(failure.errorJSON(policyRevision: "revision-a")).utf8)
 
-    @Test("Ad-analysis request carries the feed's declared runtime only when known")
-    func adAnalysisRequestCarriesDeclaredDurationOnlyWhenKnown() throws {
-        var request = makeAPIRequest(requestID: "client-declared")
-        let encoder = JSONEncoder.openCastAdAnalysisTestEncoder
-        #expect(String(decoding: try encoder.encode(request), as: UTF8.self).contains("declared_duration") == false)
-        request.transcript.declaredDuration = 2471
-        let payload = String(decoding: try encoder.encode(request), as: UTF8.self)
-        #expect(payload.contains(#""audio_duration":30,"declared_duration":2471,"fingerprint":"fingerprint""#))
+        let error = EpisodeAdAnalysisHTTPError(statusCode: failure.status, body: body, listenerFailure: .malformedAnswer)
+
+        #expect(error.statusCode == 422)
+        #expect(error.code == "ad_analysis_incomplete")
+        #expect(error.failure == OpenCastAdAnalysisFailure(
+            category: .validationExhausted,
+            retryDisposition: .explicitRetry,
+            policyRevision: "revision-a"
+        ))
+        #expect(error.replayFailure?.suppressesAutomaticReplay == true)
+        #expect(error.listenerFailure == .malformedAnswer)
+        #expect(!error.isCapExceeded)
+        #expect(EpisodeAdAnalysisHTTPError(statusCode: 503, body: Data("not json".utf8)).code == "http_503")
     }
-
     private func makeAPIRequest(requestID: String) -> EpisodeAdAnalysisAPIRequest {
         EpisodeAdAnalysisAPIRequest(
             schemaVersion: 1,
@@ -1065,11 +1858,6 @@ struct EpisodeAdAnalysisStoreTests {
                 )
             ]
         )
-    }
-
-    private func encodedJSONString(_ request: EpisodeAdAnalysisAPIRequest) throws -> String {
-        let data = try JSONEncoder.openCastAdAnalysisTestEncoder.encode(request)
-        return String(decoding: data, as: UTF8.self)
     }
 
     private func writeTranscript(
@@ -1172,6 +1960,98 @@ struct EpisodeAdAnalysisStoreTests {
         return url
     }
 
+    private func makeStore(
+        fileStore: EpisodeAdAnalysisFileStore,
+        environment: ScriptedAdAnalysisRunEnvironment = ScriptedAdAnalysisRunEnvironment(),
+        client: any EpisodeAdAnalysisClient = UnpolledAdAnalysisClient(),
+        preparationGate: @escaping @Sendable () async throws -> Void = {}
+    ) -> EpisodeAdAnalysisStore {
+        EpisodeAdAnalysisStore(
+            client: client,
+            fileStore: fileStore,
+            runEnvironment: environment,
+            preparationGate: preparationGate
+        )
+    }
+
+    /// Starts a run that holds its first send, then lets its card expire;
+    /// returns the open run's id.
+    private func expireRun(
+        of transcript: EpisodeTranscriptDocument,
+        store: EpisodeAdAnalysisStore,
+        environment: ScriptedAdAnalysisRunEnvironment,
+        context: ModelContext
+    ) async throws -> String {
+        let sent = environment.sends.count
+        store.startAnalysis(transcript: transcript, modelContext: context)
+        #expect(await waitUntil { environment.sends.count == sent + 1 })
+        store.cancelActiveRun(reason: .expiration)
+        #expect(await waitUntil { !store.hasActiveJob })
+        let run = try #require(environment.latestRun)
+        #expect(run.state == .expired)
+        return run.id
+    }
+
+    /// Runs a two-window transcript until its first window is answered and
+    /// kept, then lets the card expire; returns the open run's id.
+    private func expireAfterFirstWindow(
+        of transcript: EpisodeTranscriptDocument,
+        store: EpisodeAdAnalysisStore,
+        environment: ScriptedAdAnalysisRunEnvironment,
+        context: ModelContext
+    ) async throws -> String {
+        environment.answerForRequest = { request in
+            request.purpose == .adWindow(index: 1) ? .hold : .sponsorRead
+        }
+        defer { environment.answerForRequest = nil }
+        store.startAnalysis(transcript: transcript, modelContext: context)
+        #expect(await waitUntil {
+            environment.sends.count(of: .adWindow(index: 1)) == 1
+                && store.analysisProgress(for: transcript.episodeID)?.completed == 1
+        })
+        store.cancelActiveRun(reason: .expiration)
+        #expect(await waitUntil { !store.hasActiveJob })
+        let run = try #require(environment.latestRun)
+        #expect(run.state == .expired)
+        return run.id
+    }
+
+    /// The feed's declared runtime for the episode, as the episode cache
+    /// holds it.
+    private func insertDeclaredRuntime(
+        _ seconds: Double,
+        for transcript: EpisodeTranscriptDocument,
+        context: ModelContext
+    ) throws {
+        context.insert(EpisodeCacheRecord(
+            episodeID: transcript.episodeID,
+            podcastID: transcript.podcastID,
+            podcastTitle: "Example Podcast",
+            title: "Example Episode",
+            duration: seconds
+        ))
+        try context.save()
+    }
+
+    private func makeLongTranscriptDocument(episodeID: String, segmentCount: Int) -> EpisodeTranscriptDocument {
+        var transcript = makeTranscriptDocument(episodeID: episodeID)
+        transcript.segments = (0..<segmentCount).map { index in
+            OpenCastTranscriptSegment(
+                id: index,
+                start: Double(index * 2),
+                end: Double(index * 2 + 2),
+                text: index == 1
+                    ? "This episode is brought to you by Example Sponsor."
+                    : "Part \(index) of the conversation continues here.",
+                avgLogProbability: -0.1,
+                noSpeechProbability: 0.01
+            )
+        }
+        transcript.text = transcript.segments.map(\.text).joined(separator: " ")
+        transcript.audioDuration = Double(segmentCount * 2)
+        return transcript
+    }
+
     private func startAndWait(
         store: EpisodeAdAnalysisStore,
         transcript: EpisodeTranscriptDocument,
@@ -1185,140 +2065,49 @@ struct EpisodeAdAnalysisStoreTests {
     }
 }
 
+/// One provider refusal and what the listener is told about it.
+struct ProviderRefusal: Sendable, CustomTestStringConvertible {
+    let answer: ScriptedAdAnswer
+    let kind: EpisodeAnalysisFailureKind
+    let listener: AnalysisProviderFailure
+    let code: String
 
-private final class ThrowingEpisodeAdAnalysisClient: EpisodeAdAnalysisClient, @unchecked Sendable {
-    var error: Error?
-    var revision: String?
-    var calls = 0
-    var lastRetryFailed: Bool?
-
-    func servingPolicyRevision() async throws -> String? { revision }
-
-    init(error: Error?) {
-        self.error = error
-    }
-
-    func analyze(_ request: EpisodeAdAnalysisAPIRequest) async throws -> EpisodeAdAnalysisSubmitOutcome {
-        calls += 1
-        lastRetryFailed = request.retryFailed
-        if let error {
-            throw error
-        }
-
-        return .completed(EpisodeAdAnalysisAPIResponse(
-            schemaVersion: 1,
-            requestID: request.requestID,
-            model: "gemini-3.5-flash",
-            policy: EpisodeAdAnalysisContract.expectedPolicy,
-            spans: [],
-            warnings: [],
-            usage: nil
-        ))
-    }
-
-    func pollJob(id: String) async throws -> EpisodeAdAnalysisJobPollOutcome {
-        throw EpisodeAdAnalysisError.clientDisabled
+    var testDescription: String {
+        "\(code), \(listener.rawValue)"
     }
 }
 
-private final class FakeEpisodeAdAnalysisClient: EpisodeAdAnalysisClient, @unchecked Sendable {
-    var lastRequest: EpisodeAdAnalysisAPIRequest?
-    var spanKind: EpisodeAdAnalysisSpanKind = .hostReadAd
+/// A trial refusal and the reason the key screen gives for it.
+struct TrialRefusal: Sendable, CustomTestStringConvertible {
+    let answer: ScriptedAdAnswer
+    let kind: EpisodeAnalysisFailureKind
+    let reason: AnalysisKeyRequiredReason
 
-    func analyze(_ request: EpisodeAdAnalysisAPIRequest) async throws -> EpisodeAdAnalysisSubmitOutcome {
-        lastRequest = request
-        return .completed(EpisodeAdAnalysisAPIResponse(
-            schemaVersion: 1,
-            requestID: request.requestID,
-            model: "gemini-3.5-flash",
-            policy: EpisodeAdAnalysisContract.expectedPolicy,
-            spans: [
-                EpisodeAdAnalysisAPIAdSpan(
-                    kind: spanKind,
-                    label: "Example Sponsor",
-                    startSegmentID: 1,
-                    endSegmentID: 1,
-                    startTime: 5,
-                    endTime: 12,
-                    confidence: 0.96,
-                    evidenceQuote: "brought to you"
-                )
-            ],
-            warnings: [],
-            usage: EpisodeAdAnalysisAPIUsage(
-                promptTokenCount: 100,
-                candidatesTokenCount: 20,
-                totalTokenCount: 120
+    var answerListener: AnalysisProviderFailure {
+        if case .failure(_, _, let listener) = answer { listener } else { .requestRejected }
+    }
+
+    var testDescription: String {
+        reason.rawValue
+    }
+}
+private enum ServiceResponse {
+    case running(jobID: String)
+    case error(statusCode: Int, code: String)
+
+    var httpResponse: (statusCode: Int, body: Data) {
+        switch self {
+        case .running(let jobID):
+            return (
+                202,
+                Data(#"{"job_id":"\#(jobID)","state":"running","poll_after_seconds":10}"#.utf8)
             )
-        ))
-    }
-
-    func pollJob(id: String) async throws -> EpisodeAdAnalysisJobPollOutcome {
-        throw EpisodeAdAnalysisError.clientDisabled
+        case .error(let statusCode, let code):
+            return (statusCode, Data(#"{"error":"\#(code)"}"#.utf8))
+        }
     }
 }
-
-private actor HangingEpisodeAdAnalysisClient: EpisodeAdAnalysisClient {
-    private(set) var requestCount = 0
-    private var shouldRelease = false
-
-    func analyze(_ request: EpisodeAdAnalysisAPIRequest) async throws -> EpisodeAdAnalysisSubmitOutcome {
-        requestCount += 1
-        while !shouldRelease {
-            try await Task.sleep(for: .milliseconds(10))
-            try Task.checkCancellation()
-        }
-        return .completed(EpisodeAdAnalysisAPIResponse(
-            schemaVersion: request.schemaVersion,
-            requestID: request.requestID,
-            model: "gemini-3.5-flash",
-            policy: EpisodeAdAnalysisContract.expectedPolicy,
-            spans: [
-                EpisodeAdAnalysisAPIAdSpan(
-                    kind: .hostReadAd,
-                    label: "Example Sponsor",
-                    startSegmentID: 1,
-                    endSegmentID: 1,
-                    startTime: 5,
-                    endTime: 12,
-                    confidence: 0.96,
-                    evidenceQuote: "brought to you"
-                )
-            ],
-            warnings: [],
-            usage: nil
-        ))
-    }
-
-    func pollJob(id: String) async throws -> EpisodeAdAnalysisJobPollOutcome {
-        throw EpisodeAdAnalysisError.clientDisabled
-    }
-
-    func waitForRequest() async -> Bool {
-        let deadline = ContinuousClock.now + .seconds(60)
-        while ContinuousClock.now < deadline {
-            if requestCount > 0 {
-                return true
-            }
-            try? await Task.sleep(for: .milliseconds(20))
-        }
-        return requestCount > 0
-    }
-
-    func currentRequestCount() -> Int {
-        requestCount
-    }
-
-    func release() {
-        shouldRelease = true
-    }
-}
-
-private extension JSONEncoder {
-    static var openCastAdAnalysisTestEncoder: JSONEncoder {
-        let encoder = JSONEncoder()
-        encoder.dateEncodingStrategy = .iso8601
-        encoder.outputFormatting = [.sortedKeys]
-        return encoder
-    }
+/// Whether the usage store's saves fail, flipped by a test.
+private final class UsageSaveSwitch {
+    var fails = true
 }

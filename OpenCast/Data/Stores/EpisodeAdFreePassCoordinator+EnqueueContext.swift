@@ -8,6 +8,7 @@ extension EpisodeAdFreePassCoordinator {
         modelContext: ModelContext,
         transcriptionEngine: AdFreePassTranscriptionEngine = .productDefault,
         podcastLanguageCode: String?,
+        presentsKeyScreen: Bool = true,
         prepareBackgroundSession: @escaping @MainActor () -> Void = {},
         refreshSkipZones: @escaping @MainActor () async -> Int
     ) {
@@ -22,6 +23,7 @@ extension EpisodeAdFreePassCoordinator {
             modelContext: modelContext,
             transcriptionEngine: transcriptionEngine,
             podcastLanguageCode: podcastLanguageCode,
+            presentsKeyScreen: presentsKeyScreen,
             prepareBackgroundSession: prepareBackgroundSession,
             refreshSkipZones: refreshSkipZones
         )

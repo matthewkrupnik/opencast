@@ -2,8 +2,8 @@
 /// terminal never notifies: a drained queue reports results, and an
 /// interrupt explains the pause — the system posts an unsuppressable "Task
 /// failed" banner when it revokes the continued-processing task, so this is
-/// the honest counterpart telling the user nothing is lost. Cap deferral
-/// and model consent stay silent (the queue screen carries those).
+/// the honest counterpart telling the user nothing is lost. Model consent
+/// stays silent (the queue screen carries it).
 struct AdFreePassCompletionNotificationContent: Equatable {
     let title: String
     let body: String
@@ -25,7 +25,7 @@ struct AdFreePassCompletionNotificationContent: Equatable {
             switch outcome.kind {
             case .completed(let zoneCount):
                 completed.append((outcome.episodeTitle, zoneCount))
-            case .failed:
+            case .failed, .keyRequired:
                 failedCount += 1
             }
         }

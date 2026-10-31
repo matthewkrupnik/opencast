@@ -3,7 +3,9 @@
 /// generate disclosure — the dialog must never claim something that isn't
 /// live.
 enum TranscriptAnalysisFeatureFlags {
-    /// Cross-user result sharing (`SHARED_RESULTS_ENABLED` on the worker).
-    /// While false the client sends `allow_shared: false` on every request.
-    nonisolated static let isSharingEnabled = false
+    /// Chapters & Summary runs on the device with the listener's own provider
+    /// key (or the built-in key), so it never charges transcription minutes.
+    /// While false the ready-state cost label, the needs-minutes surfaces and
+    /// the disclosure's minutes sentence stay dark.
+    nonisolated static let chargesTranscriptionMinutes = false
 }

@@ -17,12 +17,14 @@ struct AdAutoDetectPlayPolicyTests {
             // A current completed analysis never re-analyzes.
             (true, true, .notQueued, false),
             (true, true, .failed(message: "probe"), false),
-            // Already queued, running, finished this session, or cap-deferred.
+            // Already queued, running, or finished this session.
             (true, false, .queued(ahead: 1), false),
             (true, false, .queued(ahead: 0), false),
             (true, false, .running, false),
             (true, false, .completed(zoneCount: 2), false),
-            (true, false, .capDeferred, false)
+            // It needed the listener's key this session; playing it again
+            // would only ask again.
+            (true, false, .keyRequired(.noKey), false)
         ]
 
         for (isEnabled, hasAnalysis, status, expected) in cases {
@@ -49,7 +51,7 @@ struct AdAutoDetectPlayPolicyTests {
             // Still never doubles up on queued or running work.
             (true, .queued(ahead: 0), false),
             (true, .running, false),
-            (true, .capDeferred, false)
+            (true, .keyRequired(.noKey), false)
         ]
 
         for (hasAnalysis, status, expected) in cases {

@@ -2,7 +2,7 @@ import Foundation
 
 enum EpisodeTranscriptAnalysisError: LocalizedError, Sendable, Equatable {
     case clientDisabled
-    case apiKeyMissing
+    case appAttestUnavailable
     case transcriptNotCompleted
     case analysisDocumentMissing
     case anotherJobActive
@@ -12,8 +12,8 @@ enum EpisodeTranscriptAnalysisError: LocalizedError, Sendable, Equatable {
         switch self {
         case .clientDisabled:
             "Chapters & Summary is disabled in this build."
-        case .apiKeyMissing:
-            GeminiConfiguration.missingKeyMessage
+        case .appAttestUnavailable:
+            "Chapters & Summary requires App Attest on a physical device."
         case .transcriptNotCompleted:
             "Complete the transcript before generating chapters and a summary."
         case .analysisDocumentMissing:

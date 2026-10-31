@@ -16,6 +16,12 @@ struct SettingsHubTranscriptsSection: View {
                 systemImage: "forward.end",
                 route: .adSkipping
             )
+            SettingsNavigationRow(
+                title: AIServicesCopy.screenTitle,
+                systemImage: "key",
+                route: .aiServices,
+                value: AIServicesCopy.hubValue(hasSavedKey: appModel.analysisKeys.hasSavedKey)
+            )
         }
     }
 

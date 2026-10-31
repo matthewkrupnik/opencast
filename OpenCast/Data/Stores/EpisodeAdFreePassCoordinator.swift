@@ -40,10 +40,14 @@ final class EpisodeAdFreePassCoordinator {
     @ObservationIgnored private var stickyComputeProfile: OpenCastTranscriptionComputeProfile?
     @ObservationIgnored private var pausedForEnvironmentalInterrupt = false
     @ObservationIgnored private var lastInterruptedEpisodeID: String?
-    @ObservationIgnored private var hasProbedCapThisForegroundSession = false
+    /// The running item's analysis store, so a cancel stops its device run.
+    @ObservationIgnored private var activeAdAnalyses: EpisodeAdAnalysisStore?
     @ObservationIgnored private let launchPreparationGate: @Sendable () async -> Void
     @ObservationIgnored var onStageChange: (@MainActor (EpisodeAdFreePassStage, AdFreePassQueueContext) -> Void)?
     @ObservationIgnored var onQueueTerminal: (@MainActor (AdFreePassQueueTerminalOutcome) -> Void)?
+    /// Shows the key screen for ad detection; called for each item the
+    /// listener started that ended needing a key, never for automatic ones.
+    @ObservationIgnored var onKeyRequired: (@MainActor (AnalysisKeyRequiredReason) -> Void)?
     @ObservationIgnored var isBackgroundProtected: @MainActor () -> Bool = { false }
     @ObservationIgnored var prefersAppleSpeech: @MainActor () -> Bool = { false }
     /// UI-testing stand-in for the live queue (App Store pipeline shot): the
@@ -109,9 +113,6 @@ final class EpisodeAdFreePassCoordinator {
         }
 
         if let index = entries.firstIndex(where: { $0.item.episodeID == episodeID }) {
-            if queueState == .capDeferred, index == 0 {
-                return .capDeferred
-            }
             let ahead = index + (activeItem != nil ? 1 : 0)
             return .queued(ahead: ahead)
         }
@@ -122,6 +123,8 @@ final class EpisodeAdFreePassCoordinator {
                 return .completed(zoneCount: zoneCount)
             case .failed(let message):
                 return .failed(message: message)
+            case .keyRequired(let reason):
+                return .keyRequired(reason)
             }
         }
 
@@ -308,16 +311,23 @@ final class EpisodeAdFreePassCoordinator {
         modelContext: ModelContext,
         transcriptionEngine: AdFreePassTranscriptionEngine = .productDefault,
         podcastLanguageCode: String? = nil,
+        presentsKeyScreen: Bool = true,
         prepareBackgroundSession: @escaping @MainActor () -> Void = {},
         refreshSkipZones: @escaping @MainActor () async -> Int
     ) {
         let episodeID = episode.episodeID
+        // Only a manual start is the listener's; `presentsKeyScreen` is false
+        // when the app restarts one for them (an environmental resume).
+        let isListenerStart = origin == .manual && presentsKeyScreen
 
         guard activeItem?.episodeID != episodeID else {
             return
         }
 
-        if entries.contains(where: { $0.item.episodeID == episodeID }) {
+        if let index = entries.firstIndex(where: { $0.item.episodeID == episodeID }) {
+            if isListenerStart {
+                entries[index].presentsKeyScreen = true
+            }
             resumePausedQueueIfHeadReEnqueued(
                 episodeID: episodeID,
                 prepareBackgroundSession: prepareBackgroundSession
@@ -360,7 +370,8 @@ final class EpisodeAdFreePassCoordinator {
         let entry = QueueEntry(
             item: item,
             deps: dependencies,
-            launchPreparation: launchPreparation
+            launchPreparation: launchPreparation,
+            presentsKeyScreen: isListenerStart
         )
         if insertsAtFront {
             entries.insert(entry, at: 0)
@@ -374,7 +385,7 @@ final class EpisodeAdFreePassCoordinator {
             startDrain()
         case .pausedInterrupted where lastInterruptedEpisodeID == episodeID:
             startDrain()
-        case .running, .pausedInterrupted, .awaitingModelConsent, .capDeferred:
+        case .running, .pausedInterrupted, .awaitingModelConsent:
             break
         }
         SoundLabResponsivenessDiagnostics.mark(
@@ -445,7 +456,8 @@ final class EpisodeAdFreePassCoordinator {
                     prepareBackgroundSession: {},
                     refreshSkipZones: { await refreshSkipZones(episode) }
                 ),
-                launchPreparation: nil
+                launchPreparation: nil,
+                presentsKeyScreen: false
             )
             entries.append(entry)
         }
@@ -467,6 +479,7 @@ final class EpisodeAdFreePassCoordinator {
         }
 
         pausedForEnvironmentalInterrupt = false
+        markHeadPresentsKeyScreen(false)
         if let prepareBackgroundSession = entries.first?.deps.prepareBackgroundSession {
             scheduleResumeLaunchPreparation(
                 prepareBackgroundSession: prepareBackgroundSession
@@ -475,10 +488,20 @@ final class EpisodeAdFreePassCoordinator {
         startDrain()
     }
 
+    private func markHeadPresentsKeyScreen(_ presents: Bool) {
+        guard !entries.isEmpty else {
+            return
+        }
+        entries[0].presentsKeyScreen = presents
+    }
+
+    /// The listener's Resume (the queue's, the card's or the consent
+    /// button): the head is theirs from now on, whoever queued it.
     func resumePausedQueue() {
         switch queueState {
-        case .pausedInterrupted, .awaitingModelConsent, .capDeferred:
+        case .pausedInterrupted, .awaitingModelConsent:
             pausedForEnvironmentalInterrupt = false
+            markHeadPresentsKeyScreen(true)
             if let prepareBackgroundSession = entries.first?.deps.prepareBackgroundSession {
                 scheduleResumeLaunchPreparation(
                     prepareBackgroundSession: prepareBackgroundSession
@@ -492,22 +515,6 @@ final class EpisodeAdFreePassCoordinator {
 
     func handleForegroundReturn() {
         stickyComputeProfile = nil
-        hasProbedCapThisForegroundSession = false
-    }
-
-    func probeCapDeferredQueueIfAllowed(trigger: AdFreePassCapDeferralPolicy.Trigger) {
-        let policy = AdFreePassCapDeferralPolicy(
-            queueState: queueState,
-            hasProbedThisForegroundSession: hasProbedCapThisForegroundSession,
-            trigger: trigger
-        )
-        guard policy.shouldProbe else {
-            return
-        }
-
-        hasProbedCapThisForegroundSession = true
-        AdFreePassBackgroundRunLog.record("cap probe trigger=\(trigger)")
-        startDrain()
     }
 
     func republishCurrentStage() {
@@ -528,6 +535,7 @@ final class EpisodeAdFreePassCoordinator {
         }
         entries = []
         activeItem = nil
+        activeAdAnalyses = nil
         currentStage = nil
         queueState = .idle
         drainCompletedCount = 0
@@ -549,6 +557,22 @@ final class EpisodeAdFreePassCoordinator {
 
     func cancelActivePass() {
         cancellationSource.cancel(reason: .userRequest)
+        cancelActiveAnalysisRun(reason: .listener)
+    }
+
+    /// Stops the active item's device ad-detection run, on-device or a
+    /// cloud item's, so its sends stop with the pass: `.listener` ends the
+    /// run, `.expiration` keeps it resumable. A run the item is not waiting
+    /// on is left alone.
+    func cancelActiveAnalysisRun(reason: EpisodeAdAnalysisCancelReason) {
+        guard let activeEpisodeID,
+              let activeAdAnalyses,
+              activeAdAnalyses.isRunning(for: activeEpisodeID)
+        else {
+            return
+        }
+        AdFreePassBackgroundRunLog.record("analysis run cancelled episodeID=\(activeEpisodeID) reason=\(reason)")
+        activeAdAnalyses.cancelActiveRun(reason: reason)
     }
 
     func removePendingItem(episodeID: String, modelContext: ModelContext) {
@@ -597,6 +621,11 @@ final class EpisodeAdFreePassCoordinator {
         let item: AdFreePassQueueItem
         let deps: PassDependencies
         var launchPreparation: Task<LaunchPreparationOutcome, Never>?
+        /// Whether the listener asked for this run: a manual start, a manual
+        /// re-tap or Resume. Only such a run opens the key screen when it
+        /// ends needing a key; automatic, restored and environmentally
+        /// resumed runs end silently, the reason shown on the queue.
+        var presentsKeyScreen: Bool
     }
 
     private enum LaunchPreparationOutcome {
@@ -610,7 +639,9 @@ final class EpisodeAdFreePassCoordinator {
         case failed(message: String)
         case awaitingConsent
         case interrupted(environmental: Bool)
-        case capDeferred
+        /// Ad detection needed the listener's own key; terminal for the
+        /// item, and the drain goes on.
+        case keyRequired(AnalysisKeyRequiredReason)
     }
 
     private var finishedItemCount: Int {
@@ -654,13 +685,6 @@ final class EpisodeAdFreePassCoordinator {
         switch queueState {
         case .awaitingModelConsent, .pausedInterrupted:
             pausedForEnvironmentalInterrupt = false
-            scheduleResumeLaunchPreparation(
-                prepareBackgroundSession: prepareBackgroundSession
-            )
-            startDrain()
-        case .capDeferred:
-            // A manual tap on the deferred episode is always allowed to probe.
-            hasProbedCapThisForegroundSession = true
             scheduleResumeLaunchPreparation(
                 prepareBackgroundSession: prepareBackgroundSession
             )
@@ -811,6 +835,7 @@ final class EpisodeAdFreePassCoordinator {
 
             let entry = entries.removeFirst()
             activeItem = entry.item
+            activeAdAnalyses = entry.deps.adAnalyses
             lastPublishedStage = nil
             activeTranscriptionEngine = entry.deps.transcriptionEngine
             activeTranscriptionModelIdentity = nil
@@ -832,6 +857,7 @@ final class EpisodeAdFreePassCoordinator {
                 stickyComputeProfile = .cpuOnly
             }
             activeItem = nil
+            activeAdAnalyses = nil
             activeTranscriptionEngine = .productDefault
             activeTranscriptionModelIdentity = nil
 
@@ -868,14 +894,21 @@ final class EpisodeAdFreePassCoordinator {
                 }
                 endDrain(state: entries.isEmpty ? .idle : .pausedInterrupted, terminal: .interrupted)
                 return
-            case .capDeferred:
-                // The head item is retained (and stays persisted) so the
-                // deferral survives relaunch; this failed call was the
-                // foreground session's one probe.
-                entries.insert(entry, at: 0)
-                hasProbedCapThisForegroundSession = true
-                endDrain(state: .capDeferred, terminal: .capDeferred)
-                return
+            case .keyRequired(let reason):
+                drainFailedCount += 1
+                drainOutcomes.append(AdFreePassQueueItemOutcome(
+                    episodeID: entry.item.episodeID,
+                    episodeTitle: entry.item.episode.title,
+                    artworkURL: entry.item.episode.artworkURL,
+                    kind: .keyRequired(reason)
+                ))
+                removePersistedItem(episodeID: entry.item.episodeID, modelContext: entry.deps.modelContext)
+                // A key the listener just removed in AI Services needs no
+                // key screen; the queue row says what to do.
+                if entry.presentsKeyScreen,
+                   !entry.deps.adAnalyses.endedForKeyRemoval(episodeID: entry.item.episodeID) {
+                    onKeyRequired?(reason)
+                }
             }
         }
 
@@ -975,8 +1008,8 @@ final class EpisodeAdFreePassCoordinator {
             return .completed(zoneCount: zoneCount)
         } catch PassStop.awaitingModelConsent {
             return .awaitingConsent
-        } catch PassStop.capDeferred {
-            return .capDeferred
+        } catch PassStop.keyRequired(let reason) {
+            return keyRequiredOutcome(reason, episodeID: episode.episodeID)
         } catch PassStop.interrupted {
             setStage(.interrupted)
             return .interrupted(
@@ -1004,9 +1037,7 @@ final class EpisodeAdFreePassCoordinator {
         switch queueState {
         case .running:
             return .queued(ahead: index + (activeItem != nil ? 1 : 0))
-        case .capDeferred where index == 0:
-            return .capDeferred
-        case .pausedInterrupted, .awaitingModelConsent, .capDeferred, .idle:
+        case .pausedInterrupted, .awaitingModelConsent, .idle:
             // Paused heads fall through to store-derived presentation so
             // interrupted/consent copy and resume actions surface unchanged.
             return index == 0 ? nil : .queued(ahead: index)
@@ -1455,40 +1486,75 @@ final class EpisodeAdFreePassCoordinator {
         modelContext: ModelContext
     ) async throws {
         if !allowsExplicitRetry, let blocked = try await adAnalyses.automaticReplayError(for: transcriptDocument) { throw blocked }
+        let episodeID = transcriptDocument.episodeID
+        let progressUpdates = followAnalysisProgress(for: episodeID, adAnalyses: adAnalyses)
+        defer {
+            progressUpdates.cancel()
+        }
         var didStartAnalysis = false
 
-        while true {
-            try Task.checkCancellation()
+        do {
+            while true {
+                try Task.checkCancellation()
 
-            let analysisChangeSequence = adAnalyses.changeSequence
-            if adAnalyses.isRunning(for: transcriptDocument.episodeID) {
-                setStage(.analyzing)
-            } else if let record = adAnalyses.record(for: transcriptDocument.episodeID) {
-                switch record.state {
-                case .queued, .running:
-                    setStage(.analyzing)
-                case .completed:
-                    if await adAnalyses.hasCurrentCompletedAnalysis(
-                        for: transcriptDocument
-                    ) {
-                        return
-                    }
-                    try startAnalysisOrThrowOnSecondAttempt(
-                        didStartAnalysis: &didStartAnalysis,
-                        transcriptDocument: transcriptDocument,
-                        transcriptions: transcriptions,
-                        adAnalyses: adAnalyses,
-                        allowsExplicitRetry: allowsExplicitRetry,
-                        modelContext: modelContext
-                    )
-                case .failed:
-                    guard !didStartAnalysis else {
-                        if record.failureKind == .capExceeded {
-                            throw PassStop.capDeferred
+                let analysisChangeSequence = adAnalyses.changeSequence
+                if adAnalyses.isRunning(for: episodeID) {
+                    publishAnalyzing(steps: analysisSteps(for: episodeID, adAnalyses: adAnalyses))
+                } else if let record = adAnalyses.record(for: episodeID) {
+                    switch record.state {
+                    case .queued, .running:
+                        // No run holds it: a cancelled run leaves its record
+                        // running until a start (or the next launch) moves
+                        // it on.
+                        try startAnalysisOrThrowOnSecondAttempt(
+                            didStartAnalysis: &didStartAnalysis,
+                            transcriptDocument: transcriptDocument,
+                            transcriptions: transcriptions,
+                            adAnalyses: adAnalyses,
+                            allowsExplicitRetry: allowsExplicitRetry,
+                            modelContext: modelContext
+                        )
+                    case .completed:
+                        if await adAnalyses.hasCurrentCompletedAnalysis(
+                            for: transcriptDocument
+                        ) {
+                            return
                         }
+                        try startAnalysisOrThrowOnSecondAttempt(
+                            didStartAnalysis: &didStartAnalysis,
+                            transcriptDocument: transcriptDocument,
+                            transcriptions: transcriptions,
+                            adAnalyses: adAnalyses,
+                            allowsExplicitRetry: allowsExplicitRetry,
+                            modelContext: modelContext
+                        )
+                    case .failed:
+                        guard !didStartAnalysis else {
+                            if let reason = record.failureKind?.keyRequiredReason {
+                                throw PassStop.keyRequired(reason)
+                            }
+                            throw PassFailure(
+                                record.errorMessage
+                                    ?? adAnalyses.lastErrorMessage(for: episodeID)
+                                    ?? FailureMessage.analysisFailed
+                            )
+                        }
+                        try startAnalysisOrThrowOnSecondAttempt(
+                            didStartAnalysis: &didStartAnalysis,
+                            transcriptDocument: transcriptDocument,
+                            transcriptions: transcriptions,
+                            adAnalyses: adAnalyses,
+                            allowsExplicitRetry: allowsExplicitRetry,
+                            modelContext: modelContext
+                        )
+                    }
+                } else {
+                    if let unavailableMessage = adAnalyses.analysisStartUnavailableMessage {
+                        throw PassFailure(unavailableMessage)
+                    }
+                    guard !didStartAnalysis else {
                         throw PassFailure(
-                            record.errorMessage
-                                ?? adAnalyses.lastErrorMessage(for: transcriptDocument.episodeID)
+                            adAnalyses.lastErrorMessage(for: episodeID)
                                 ?? FailureMessage.analysisFailed
                         )
                     }
@@ -1501,30 +1567,21 @@ final class EpisodeAdFreePassCoordinator {
                         modelContext: modelContext
                     )
                 }
-            } else {
-                if let unavailableMessage = adAnalyses.analysisStartUnavailableMessage {
-                    throw PassFailure(unavailableMessage)
-                }
-                guard !didStartAnalysis else {
-                    throw PassFailure(
-                        adAnalyses.lastErrorMessage(for: transcriptDocument.episodeID)
-                            ?? FailureMessage.analysisFailed
-                    )
-                }
-                try startAnalysisOrThrowOnSecondAttempt(
-                    didStartAnalysis: &didStartAnalysis,
-                    transcriptDocument: transcriptDocument,
-                    transcriptions: transcriptions,
-                    adAnalyses: adAnalyses,
-                    allowsExplicitRetry: allowsExplicitRetry,
-                    modelContext: modelContext
-                )
-            }
 
-            try await adAnalyses.waitForChange(after: analysisChangeSequence)
+                try await adAnalyses.waitForChange(after: analysisChangeSequence)
+            }
+        } catch let error as CancellationError {
+            // The store owns the run, not the pass: stop its sends with the
+            // pass. An expired card keeps the run resumable.
+            cancelActiveAnalysisRun(
+                reason: cancellationSource.lastCancellationReason == .sessionExpiration ? .expiration : .listener
+            )
+            throw error
         }
     }
 
+    /// Every start is automatic for the store: the key screen shows once
+    /// per drain from the drain itself, whatever started the item.
     private func startAnalysisOrThrowOnSecondAttempt(
         didStartAnalysis: inout Bool,
         transcriptDocument: EpisodeTranscriptDocument,
@@ -1533,24 +1590,72 @@ final class EpisodeAdFreePassCoordinator {
         allowsExplicitRetry: Bool,
         modelContext: ModelContext
     ) throws {
+        let episodeID = transcriptDocument.episodeID
         guard !didStartAnalysis else {
-            if adAnalyses.record(for: transcriptDocument.episodeID)?.failureKind == .capExceeded {
-                throw PassStop.capDeferred
+            if let reason = adAnalyses.record(for: episodeID)?.failureKind?.keyRequiredReason {
+                throw PassStop.keyRequired(reason)
             }
             throw PassFailure(
-                adAnalyses.lastErrorMessage(for: transcriptDocument.episodeID)
+                adAnalyses.lastErrorMessage(for: episodeID)
                     ?? FailureMessage.analysisFailed
             )
         }
 
         adAnalyses.startAnalysis(
             transcript: transcriptDocument,
-            transcriptState: transcriptions.record(for: transcriptDocument.episodeID)?.state,
+            transcriptState: transcriptions.record(for: episodeID)?.state,
             retryFailed: allowsExplicitRetry,
+            presentsKeyScreen: false,
             modelContext: modelContext
         )
         didStartAnalysis = true
-        setStage(.analyzing)
+        publishAnalyzing(steps: analysisSteps(for: episodeID, adAnalyses: adAnalyses))
+    }
+
+    private func analysisSteps(
+        for episodeID: String,
+        adAnalyses: EpisodeAdAnalysisStore
+    ) -> EpisodeAdFreePassAnalysisSteps? {
+        adAnalyses.analysisProgress(for: episodeID).map(EpisodeAdFreePassAnalysisSteps.init)
+    }
+
+    /// Publishes the analyzing stage with the run's steps. A run that has
+    /// not counted its steps yet, or has just ended, keeps the steps shown.
+    private func publishAnalyzing(steps: EpisodeAdFreePassAnalysisSteps?) {
+        if steps == nil, case .analyzing(.some) = lastPublishedStage {
+            return
+        }
+        setStage(.analyzing(steps: steps))
+    }
+
+    /// Follows the store's step count while the pass waits on its run, so
+    /// the queue and the card move with each answered step.
+    private func followAnalysisProgress(
+        for episodeID: String,
+        adAnalyses: EpisodeAdAnalysisStore
+    ) -> Task<Void, Never> {
+        Task { [weak self] in
+            for await steps in Observations({
+                adAnalyses.analysisProgress(for: episodeID).map(EpisodeAdFreePassAnalysisSteps.init)
+            }) {
+                guard !Task.isCancelled, let self else {
+                    return
+                }
+                guard case .analyzing = lastPublishedStage else {
+                    continue
+                }
+                publishAnalyzing(steps: steps)
+            }
+        }
+    }
+
+    /// The item ends needing the listener's key: the card names the reason
+    /// and the drain goes on.
+    private func keyRequiredOutcome(_ reason: AnalysisKeyRequiredReason, episodeID: String) -> PassOutcome {
+        let message = EpisodePipelineState.analysisFailedMessage(for: EpisodeAnalysisFailureKind(keyRequired: reason))
+        recordFailure(message, episodeID: episodeID)
+        setStage(.failed(message: message))
+        return .keyRequired(reason)
     }
 
     private func installModelIfConsentedOrStop(
@@ -1702,7 +1807,7 @@ final class EpisodeAdFreePassCoordinator {
     private enum PassStop: Error {
         case awaitingModelConsent
         case interrupted
-        case capDeferred
+        case keyRequired(AnalysisKeyRequiredReason)
     }
 
     private struct PassFailure: LocalizedError {

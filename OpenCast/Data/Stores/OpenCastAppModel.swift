@@ -1,5 +1,7 @@
 import Foundation
 import Observation
+import OpenCastAnalysis
+import OpenCastAnalysisProviders
 import OpenCastCore
 import OpenCastPlayback
 import OpenCastTranscription
@@ -33,6 +35,26 @@ final class OpenCastAppModel {
     let adAnalyses: EpisodeAdAnalysisStore
     let transcriptAnalyses: EpisodeTranscriptAnalysisStore
     let transcriptIntelligence: TranscriptIntelligenceStore
+    let analysisPolicy: AnalysisPolicySnapshotStore
+    let analysisKeys: AnalysisProviderKeyStore
+    let analysisProviderSelection: AnalysisProviderSelectionStore
+    let analysisUsage: AnalysisUsageStore
+    let analysisKeyNotice: AnalysisKeyNoticeStore
+    let analysisKeyRequired: AnalysisKeyRequiredPresenter
+    let analysisKeyTester: any AnalysisKeyTesting
+    /// The durable record of every analysis run (both features).
+    let analysisRuns: AnalysisRunRecordStore
+    /// The install's trial status, cached for an hour.
+    let analysisTrialStatus: AnalysisTrialStatusCache
+    /// Decides each analysis run's route: key, trial or key screen.
+    let analysisRoutes: AnalysisRouteResolver
+    /// Builds each analysis run's transport from its route.
+    let analysisTransports: AnalysisTransportFactory
+    /// The one-card rule shared by every continued-processing session.
+    let analysisTaskArbiter: AnalysisContinuedTaskArbiterImpl
+    /// The Chapters & Summary continued-processing session: one app-wide
+    /// card, so a run can finish in the background.
+    let analysisExecutionSession: AnalysisExecutionSession
     let adFreePass: EpisodeAdFreePassCoordinator
     let upNextQueue: UpNextQueueStore
     let playlists: PlaylistStore
@@ -83,6 +105,9 @@ final class OpenCastAppModel {
     /// The nuke sheet stays hoisted at the root so `resetAfterDataNuke()` can
     /// swap it for onboarding in one transaction; Delete Data requests it here.
     var dataNukeConfirmationPresentationRequest = 0
+    /// Opens Settings at AI Services from anywhere; the root owns the tab,
+    /// the navigation paths and Now Playing.
+    var aiServicesSettingsPresentationRequest = 0
     var lastPlaybackError: String?
     var lastPlaylistError: String?
     /// The playlist the loaded episode was started from, or derived from the
@@ -189,11 +214,24 @@ final class OpenCastAppModel {
         adAnalyses: EpisodeAdAnalysisStore = EpisodeAdAnalysisStore(),
         transcriptAnalyses: EpisodeTranscriptAnalysisStore = EpisodeTranscriptAnalysisStore(),
         transcriptIntelligence: TranscriptIntelligenceStore = TranscriptIntelligenceStore(),
+        analysisPolicy: AnalysisPolicySnapshotStore = AnalysisPolicySnapshotStore.live(),
+        analysisKeys: AnalysisProviderKeyStore = AnalysisProviderKeyStore(storage: KeychainAnalysisProviderKeyStorage()),
+        analysisProviderSelection: AnalysisProviderSelectionStore = AnalysisProviderSelectionStore(),
+        analysisUsage: AnalysisUsageStore = AnalysisUsageStore(),
+        analysisKeyNotice: AnalysisKeyNoticeStore = AnalysisKeyNoticeStore(),
+        analysisKeyRequired: AnalysisKeyRequiredPresenter = AnalysisKeyRequiredPresenter(),
+        analysisKeyTester: any AnalysisKeyTesting = AnalysisProviderKeyTester(),
         adFreePass: EpisodeAdFreePassCoordinator = EpisodeAdFreePassCoordinator(),
         upNextQueue: UpNextQueueStore = UpNextQueueStore(),
         playlistDisplaySettings: PlaylistDisplaySettingsStore = PlaylistDisplaySettingsStore(),
         adFreePassBackgroundSession: EpisodeAdFreePassBackgroundSession = EpisodeAdFreePassBackgroundSession(),
         transcriptGenerationBackgroundSession: EpisodeTranscriptGenerationBackgroundSession = EpisodeTranscriptGenerationBackgroundSession(),
+        analysisRuns: AnalysisRunRecordStore = AnalysisRunRecordStore(),
+        analysisTrialConnection: AnalysisTrialConnection = AnalysisTrialConnection(),
+        analysisTransportFixture: AnalysisUITestTransportMode? = nil,
+        analysisContinuedTaskScheduler: (any AnalysisContinuedTaskScheduling)? = nil,
+        analysisTrialStatusDefaults: UserDefaults = .standard,
+        builtInAnalysisKey: AnalysisProviderKey? = nil,
         playback: AVFoundationPlaybackController? = nil,
         appearanceSettings: AppearanceSettingsStore = AppearanceSettingsStore(),
         appIcon: AppIconStore = AppIconStore(),
@@ -261,6 +299,44 @@ final class OpenCastAppModel {
         self.adAnalyses = adAnalyses
         self.transcriptAnalyses = transcriptAnalyses
         self.transcriptIntelligence = transcriptIntelligence
+        self.analysisPolicy = analysisPolicy
+        self.analysisKeys = analysisKeys
+        self.analysisProviderSelection = analysisProviderSelection
+        self.analysisUsage = analysisUsage
+        self.analysisKeyNotice = analysisKeyNotice
+        self.analysisKeyRequired = analysisKeyRequired
+        self.analysisKeyTester = analysisKeyTester
+        self.analysisRuns = analysisRuns
+        let trialStatus = AnalysisTrialStatusCache(defaults: analysisTrialStatusDefaults) { [snapshotStore = analysisPolicy, analysisTrialConnection] in
+            await analysisTrialConnection.fetchStatus(trialEndpoint: snapshotStore.snapshot.bundle.trial.endpoint)
+        }
+        analysisTrialStatus = trialStatus
+        analysisTransports = AnalysisTransportFactory(
+            policy: analysisPolicy,
+            runs: analysisRuns,
+            keys: builtInAnalysisKey.map { BuiltInKeyFallbackStorage(inner: analysisKeys.storage, builtInGoogleKey: $0) }
+                ?? analysisKeys.storage,
+            fixture: analysisTransportFixture
+        )
+        analysisTaskArbiter = AnalysisContinuedTaskArbiterImpl()
+        analysisExecutionSession = AnalysisExecutionSession(
+            identifier: AnalysisContinuedTaskArbiterImpl.chaptersSummaryIdentifier,
+            title: "Chapters & Summary",
+            scheduler: analysisContinuedTaskScheduler ?? BGContinuedProcessingAnalysisScheduler(),
+            arbiter: analysisTaskArbiter
+        )
+        analysisTaskArbiter.chaptersSummarySession = analysisExecutionSession
+        analysisRoutes = AnalysisRouteResolver(
+            keys: analysisKeys,
+            policy: analysisPolicy,
+            storedProvider: { [analysisProviderSelection] feature in
+                analysisProviderSelection.storedProvider(for: feature)
+            },
+            trialStatus: trialStatus,
+            trial: analysisTrialConnection,
+            runs: analysisRuns,
+            builtInGoogleKey: builtInAnalysisKey
+        )
         transcriptAnalysisQueue = TranscriptAnalysisQueue(
             transcriptAnalyses: transcriptAnalyses,
             transcriptions: transcriptions,
@@ -376,6 +452,27 @@ final class OpenCastAppModel {
             self?.autoDetectAdsOnDownloadIfQualified(record, modelContext: modelContext)
             self?.prepareSmartSpeedPausesIfEnabled(record)
         }
+        self.transcriptAnalyses.producer = makeChaptersSummaryProducer()
+        self.transcriptAnalyses.dispatchedRunLookup = { [analysisRuns] episodeID in
+            analysisRuns.latestDispatched(feature: .chaptersSummary, episodeID: episodeID).map { record in
+                ChaptersSummaryDispatchedRun(
+                    runID: record.id,
+                    transcriptFingerprint: record.transcriptFingerprint,
+                    startedAt: record.startedAt
+                )
+            }
+        }
+        self.transcriptAnalyses.openRunEpisodeIDs = { [analysisRuns] in
+            analysisRuns.records(limit: AnalysisRunRecordStore.maximumRecords)
+                .filter { $0.feature == .chaptersSummary && ($0.state == .dispatched || $0.state == .expired) }
+                .map(\.episodeID)
+        }
+        self.transcriptAnalyses.onRunInterrupted = { [weak self] modelContext in
+            guard let self, self.isSceneActive else {
+                return
+            }
+            self.transcriptAnalysisQueue.resumeInterruptedRuns(modelContext: modelContext)
+        }
         self.transcriptAnalyses.onEpisodeStateChanged = { [weak self] episodeID in
             self?.chapters.refreshIfCurrentEpisode(episodeID: episodeID)
         }
@@ -402,6 +499,24 @@ final class OpenCastAppModel {
         self.adAnalyses.onEpisodeStateChanged = { [weak self] episodeID in
             self?.skipZones.refreshIfCurrentEpisode(episodeID: episodeID)
         }
+        // Built here, after the analysis members it reads; a test that
+        // injected its own environment keeps it.
+        if adAnalyses.runEnvironment == nil {
+            adAnalyses.runEnvironment = EpisodeAdAnalysisLiveRunEnvironment(
+                routes: analysisRoutes,
+                transports: analysisTransports,
+                runs: analysisRuns,
+                usage: analysisUsage,
+                trialStatus: analysisTrialStatus,
+                policy: analysisPolicy,
+                presentKeyRequired: { [weak self] reason in
+                    self?.presentAnalysisKeyRequired(feature: .adDetection, reason: reason)
+                },
+                holdsContinuedProcessingCard: { [weak self] in
+                    self?.adFreePassBackgroundSession.isProtectingBackgroundExecution ?? false
+                }
+            )
+        }
         self.adFreePass.onStageChange = { [weak self] stage, queueContext in
             self?.adFreePassBackgroundSession.noteStage(stage, queueContext: queueContext)
         }
@@ -414,6 +529,17 @@ final class OpenCastAppModel {
         }
         self.adFreePass.isBackgroundProtected = { [weak self] in
             self?.adFreePassBackgroundSession.isProtectingBackgroundExecution ?? false
+        }
+        self.adFreePass.onKeyRequired = { [weak self] reason in
+            self?.presentAnalysisKeyRequired(feature: .adDetection, reason: reason)
+        }
+        analysisTrialStatus.onStatus = { [weak self] status in
+            self?.analysisKeyNotice.trialStatus = status
+        }
+        analysisTaskArbiter.otherCardArmed = { [weak self] in
+            guard let self else { return false }
+            return self.adFreePassBackgroundSession.isArmed
+                || self.transcriptGenerationBackgroundSession.isArmed
         }
         self.adFreePass.prefersAppleSpeech = { [weak self] in
             self?.transcriptionEngineSettings.prefersAppleSpeech ?? false
@@ -487,6 +613,9 @@ final class OpenCastAppModel {
             if let message = playlists.consumeLastErrorMessage() {
                 lastPlaylistError = message
             }
+            analysisProviderSelection.load(modelContext: modelContext)
+            analysisUsage.load(modelContext: modelContext)
+            analysisKeyNotice.load(modelContext: modelContext)
             let didLoadLibrary = await library.load(modelContext: modelContext)
             await downloads.load(modelContext: modelContext)
             listeningHistory.load(modelContext: modelContext)
@@ -505,6 +634,9 @@ final class OpenCastAppModel {
                 lastPlaylistError = message
             }
             coreStoresHydrated = true
+            // After hydration: the Keychain read runs off the main actor and
+            // no list view waits on it.
+            await analysisKeys.refreshPresences()
         }
         coreStoresLoadTask = task
         await task.value
@@ -539,6 +671,42 @@ final class OpenCastAppModel {
             reloadPlaylistsAfterSyncedChange(modelContext: modelContext)
         }
         return result
+    }
+
+    /// Duplicate repair reported as the library activity. False when the
+    /// repair failed; the failure is the activity's.
+    func repairSyncDuplicatesReportingActivity(modelContext: ModelContext) async -> Bool {
+        syncStatus.beginLibraryActivity(.repairingDuplicates)
+        await repairSyncDuplicates(modelContext: modelContext)
+
+        if let errorMessage = syncStatus.lastRepairErrorMessage {
+            syncStatus.recordLibraryActivityFailure(errorMessage)
+            return false
+        }
+
+        return true
+    }
+
+    /// Reloads the library and its playlists from the store, then repairs
+    /// sync duplicates, each step reported as the library activity, and
+    /// reapplies the loaded episode's playback settings from the repaired
+    /// records. False when the reload or the repair failed.
+    func reloadPersistedDataAndRepairDuplicates(modelContext: ModelContext) async -> Bool {
+        syncStatus.beginLibraryActivity(.reloading)
+
+        do {
+            try await library.reloadPersistedData(modelContext: modelContext)
+        } catch {
+            syncStatus.recordLibraryActivityFailure(error.localizedDescription)
+            return false
+        }
+        reloadPlaylistsAfterSyncedChange(modelContext: modelContext)
+
+        guard await repairSyncDuplicatesReportingActivity(modelContext: modelContext) else {
+            return false
+        }
+        refreshCurrentPlaybackSettings(modelContext: modelContext)
+        return true
     }
 
     /// Runs at most once per launch, before the first playlist load. A failure
@@ -1430,9 +1598,9 @@ final class OpenCastAppModel {
         adAnalyses.load(modelContext: modelContext)
         transcriptAnalyses.load(modelContext: modelContext)
         transcriptIntelligence.load(modelContext: modelContext)
-        // Launch is the "retry next day" moment for cap-deferred runs; the
-        // scene-activation probe can fire before this load and find nothing.
-        transcriptAnalysisQueue.retryDeferred(modelContext: modelContext, trigger: .launch)
+        // A device run the last process left dispatched resumes here; the
+        // scene-activation call can fire before this load and find nothing.
+        transcriptAnalysisQueue.resumeInterruptedRuns(modelContext: modelContext)
         refreshPlaybackSkipZonesForCurrentEpisode()
         Task { [appleSpeechAssets] in
             await appleSpeechAssets.refresh()
@@ -1528,7 +1696,8 @@ final class OpenCastAppModel {
     private func armTranscriptGenerationBackgroundSessionIfNeeded(episodeTitle: String) {
         guard !transcriptionEngineSettings.prefersAppleSpeech,
               !transcriptGenerationBackgroundSession.isArmed,
-              !adFreePassBackgroundSession.isArmed
+              !adFreePassBackgroundSession.isArmed,
+              !analysisTaskArbiter.isAnalysisCardArmed
         else {
             return
         }
@@ -1618,10 +1787,13 @@ final class OpenCastAppModel {
         transcriptions.deleteTranscript(episodeID: episodeID, modelContext: modelContext)
     }
 
+    /// The listener's Detect Ads: a run that needs the listener's own key
+    /// ends on the key screen.
     func analyzeEpisodeTranscript(_ document: EpisodeTranscriptDocument, modelContext: ModelContext) {
         adAnalyses.startAnalysis(
             transcript: document,
             transcriptState: transcriptions.record(for: document.episodeID)?.state,
+            presentsKeyScreen: true,
             modelContext: modelContext
         )
     }
@@ -1639,15 +1811,77 @@ final class OpenCastAppModel {
         transcriptAnalysisQueue.generate(episodeID: episodeID, modelContext: modelContext)
     }
 
-    func retryDeferredTranscriptAnalyses(
-        modelContext: ModelContext,
-        trigger: TranscriptAnalysisQueue.RetryTrigger = .launch
-    ) {
-        transcriptAnalysisQueue.retryDeferred(modelContext: modelContext, trigger: trigger)
+    /// Resumes Chapters & Summary runs a background card expiry or a
+    /// relaunch interrupted, with their run ids.
+    func resumeInterruptedTranscriptAnalyses(modelContext: ModelContext) {
+        transcriptAnalysisQueue.resumeInterruptedRuns(modelContext: modelContext)
     }
 
-    func resetTranscriptAnalysisForegroundProbe() {
-        transcriptAnalysisQueue.resetForegroundProbe()
+    /// Generate's route check before the disclosure, made without a
+    /// request: with no key for Chapters & Summary, no built-in key and no
+    /// trial route on this build, or a cached trial status that already refuses, the key
+    /// screen opens instead and this returns true. Otherwise the run's own
+    /// route resolution decides.
+    func presentChaptersSummaryKeyScreenIfNoRoute() -> Bool {
+        guard !analysisRoutes.hasBuiltInKey,
+              effectiveAnalysisProvider(for: .chaptersSummary) == nil,
+              !AnalysisProvider.allCases.contains(where: analysisKeys.lastReadFailed)
+        else {
+            return false
+        }
+        // A used-up trial stays used up; a paused month only while the
+        // status is fresh, since the next month lifts it.
+        let cached = analysisTrialStatus.status
+        let isFresh = analysisTrialStatus.fetchedAt.map {
+            (0..<AnalysisTrialStatusCache.timeToLive).contains(Date.now.timeIntervalSince($0))
+        } ?? false
+        let reason: AnalysisKeyRequiredReason
+        if !analysisRoutes.isTrialRouteConfigured {
+            reason = .proxyUnavailable
+        } else if isFresh, let cached, cached.mode == .trial, cached.monthPaused {
+            reason = .trialPaused
+        } else if (cached?.trialStatus ?? analysisKeyNotice.trialStatus) == .exhausted {
+            reason = .trialExhausted
+        } else {
+            return false
+        }
+        presentAnalysisKeyRequired(feature: .chaptersSummary, reason: reason)
+        return true
+    }
+
+    private func makeChaptersSummaryProducer() -> ChaptersSummaryRunProducer {
+        ChaptersSummaryRunProducer(dependencies: ChaptersSummaryRunProducer.Dependencies(
+            resolve: { [analysisRoutes] resumingRunID in
+                await analysisRoutes.resolve(feature: .chaptersSummary, resumingRunID: resumingRunID)
+            },
+            runs: analysisRuns,
+            makeTransport: { [analysisTransports] resolution, runID, observer throws(AnalysisTransportFactoryError) in
+                try analysisTransports.makeTransport(for: resolution, runID: runID, observer: observer)
+            },
+            session: analysisExecutionSession,
+            recordUsage: { [analysisUsage] provider, inputTokens, outputTokens, runID, modelContext in
+                analysisUsage.record(
+                    provider: provider,
+                    feature: .chaptersSummary,
+                    inputTokens: inputTokens,
+                    outputTokens: outputTokens,
+                    at: .now,
+                    runID: runID,
+                    modelContext: modelContext
+                )
+            },
+            presentKeyRequired: { [weak self] reason in
+                self?.presentAnalysisKeyRequired(feature: .chaptersSummary, reason: reason)
+            },
+            refreshTrialStatus: { [analysisTrialStatus] in
+                Task {
+                    _ = await analysisTrialStatus.status(forceRefresh: true)
+                }
+            },
+            keyRemoval: { [analysisTransports] runID in
+                analysisTransports.keyRemoval(runID: runID)
+            }
+        ))
     }
 
     var currentAdFreePassPresentation: EpisodeAdFreePassPresentation {
@@ -1677,10 +1911,13 @@ final class OpenCastAppModel {
         startAdFreePass(for: episode, modelContext: modelContext, transcriptionEngine: transcriptionEngine)
     }
 
+    /// `presentsKeyScreen` is false only when the app restarts the pass
+    /// itself (an environmental resume), so a key-required end stays silent.
     func startAdFreePass(
         for episode: EpisodeListItemSnapshot,
         modelContext: ModelContext,
-        transcriptionEngine: AdFreePassTranscriptionEngine = .productDefault
+        transcriptionEngine: AdFreePassTranscriptionEngine = .productDefault,
+        presentsKeyScreen: Bool = true
     ) {
         adFreePass.enqueue(
             episode: episode,
@@ -1689,6 +1926,7 @@ final class OpenCastAppModel {
             modelContext: modelContext,
             transcriptionEngine: transcriptionEngine,
             podcastLanguageCode: podcastLanguageCode(forPodcastID: episode.podcastID),
+            presentsKeyScreen: presentsKeyScreen,
             prepareBackgroundSession: { [weak self] in
                 self?.armAdFreePassBackgroundSessionIfNeeded(episodeTitle: episode.title)
             },
@@ -1740,7 +1978,6 @@ final class OpenCastAppModel {
 
     func resumeEnvironmentalAdFreePassIfNeeded(modelContext: ModelContext) {
         adFreePass.handleForegroundReturn()
-        adFreePass.probeCapDeferredQueueIfAllowed(trigger: .sceneActivated)
 
         if adFreePass.isQueuePausedForEnvironmentalInterrupt {
             adFreePass.resumeQueueForEnvironmentalAutoResume()
@@ -1756,7 +1993,7 @@ final class OpenCastAppModel {
             return
         }
 
-        startOrContinueAdFreePassForCurrentEpisode(modelContext: modelContext)
+        startAdFreePass(for: episode, modelContext: modelContext, presentsKeyScreen: false)
     }
 
     func detectAdsMenuState(for episode: EpisodeListItemSnapshot) -> EpisodeDetectAdsMenuState {
@@ -1787,6 +2024,10 @@ final class OpenCastAppModel {
 
     private func armAdFreePassBackgroundSessionIfNeeded(episodeTitle: String) {
         guard !adFreePassBackgroundSession.isArmed else {
+            return
+        }
+        guard !analysisTaskArbiter.isAnalysisCardArmed else {
+            AdFreePassBackgroundRunLog.record("arm skipped reason=analysisHoldsCard")
             return
         }
 
@@ -1907,6 +2148,8 @@ final class OpenCastAppModel {
 
     func configureBackgroundSessionExpirations(modelContext: ModelContext) {
         adFreePassBackgroundSession.onExpiration = { [weak self] in
+            // The run stays resumable with the replies it kept.
+            self?.adFreePass.cancelActiveAnalysisRun(reason: .expiration)
             self?.interruptActiveTranscriptionForLifecycleExit(modelContext: modelContext)
         }
         transcriptGenerationBackgroundSession.onExpiration = { [weak self] in
@@ -1944,6 +2187,10 @@ final class OpenCastAppModel {
 
     func deletePlayedDownloads(modelContext: ModelContext) {
         downloadCleanup.deletePlayedDownloads(modelContext: modelContext)
+    }
+
+    func removablePlayedDownloadCount() -> Int {
+        downloadCleanup.removablePlayedDownloadCount()
     }
 
     func resolvedPlaybackEpisode(
@@ -2058,7 +2305,7 @@ final class OpenCastAppModel {
                 source: preferredPlaybackSource(for: record.episodeID),
                 modelContext: modelContext
             )
-            applyVoiceBoostSetting(for: episode, modelContext: modelContext)
+            applyPlaybackSettings(for: episode, modelContext: modelContext)
             let boundaries = playbackEpisodeBoundaries(forPodcastID: record.podcastID)
             let startPosition = boundaries.ordinaryStartPosition(
                 library.resumePosition(for: record.episodeID),
@@ -2114,6 +2361,53 @@ final class OpenCastAppModel {
 
     func requestDataNukeConfirmationPresentation() {
         dataNukeConfirmationPresentationRequest += 1
+    }
+
+    func requestAIServicesSettingsPresentation() {
+        aiServicesSettingsPresentationRequest += 1
+    }
+
+    func refreshAnalysisPolicyIfDue() async {
+        await analysisPolicy.refreshIfDue()
+    }
+
+    /// The provider `feature` runs on with the listener's key, or `nil` when
+    /// no saved key has an entry for it.
+    func effectiveAnalysisProvider(for feature: AnalysisFeature) -> AnalysisProvider? {
+        analysisProviderSelection.effectiveProvider(
+            for: feature,
+            presences: analysisKeys.presences,
+            snapshot: analysisPolicy.snapshot
+        )
+    }
+
+    /// Stops every analysis run that sends with the listener's key for
+    /// `provider`, right after the listener removed that key, and ends it as
+    /// needing a key; a trial run or a run on another provider goes on.
+    func cancelAnalysisRuns(onProvider provider: AnalysisProvider) {
+        if adAnalyses.activeDirectProvider == provider {
+            adAnalyses.cancelActiveRun(reason: .keyRemoved)
+        }
+        transcriptAnalyses.cancelActiveRun(onProvider: provider)
+    }
+
+    /// Shows the key screen for `feature`, with the trial status that
+    /// explains `reason`.
+    func presentAnalysisKeyRequired(feature: AnalysisFeature, reason: AnalysisKeyRequiredReason) {
+        analysisKeyRequired.present(
+            feature: feature,
+            trialStatus: reason.trialStatus(lastKnown: analysisTrialStatus.status?.trialStatus ?? analysisKeyNotice.trialStatus)
+        )
+    }
+
+    /// Never with the built-in key: the notice announces the trial and the
+    /// move to the listener's own key, and this build has neither.
+    func isAnalysisKeyNoticeDue(now: Date = .now) -> Bool {
+        !analysisRoutes.hasBuiltInKey && analysisKeyNotice.isNoticeDue(
+            notice: analysisPolicy.snapshot.bundle.notice,
+            hasSavedKey: analysisKeys.hasSavedKey,
+            now: now
+        )
     }
 
     @discardableResult
@@ -2240,13 +2534,33 @@ final class OpenCastAppModel {
         return didSave
     }
 
-    func refreshCurrentVoiceBoostSetting(modelContext: ModelContext) {
+    /// Reapplies the playback settings to the loaded episode, its show's own
+    /// speed included.
+    func refreshCurrentPlaybackSettings(modelContext: ModelContext) {
+        let podcastID = playback.currentEpisode?.podcastID.rawValue
         playbackSettings.load(
             episodeID: playback.currentEpisode?.id.rawValue,
-            podcastID: playback.currentEpisode?.podcastID.rawValue,
+            podcastID: podcastID,
+            rateOverride: podcastID.flatMap(library.podcastPlaybackRateOverride(forPodcastID:)),
             modelContext: modelContext,
             playback: playback
         )
+    }
+
+    /// Refetches the playing show's subscription before reapplying: the
+    /// fetch lays a speed another device saved over the live record the
+    /// library reads, which a plain reapply would miss.
+    func refreshCurrentPlaybackSettingsFromStore(modelContext: ModelContext) {
+        if let feedURL = playback.currentEpisode?.podcastID.rawValue {
+            let descriptor = FetchDescriptor<SubscriptionRecord>(
+                predicate: #Predicate { record in
+                    record.feedURL == feedURL
+                }
+            )
+            // A failed refetch reapplies the speed last read.
+            _ = try? modelContext.fetch(descriptor)
+        }
+        refreshCurrentPlaybackSettings(modelContext: modelContext)
     }
 
     @discardableResult
@@ -2257,15 +2571,37 @@ final class OpenCastAppModel {
         appearanceSettings.setMode(mode, modelContext: modelContext)
     }
 
+    /// Edits the playing show's own speed while that show has one, the
+    /// global speed otherwise.
     @discardableResult
     func setPlaybackRate(
         _ rate: Float,
         modelContext: ModelContext
     ) -> Bool {
-        playbackSettings.setPlaybackRate(
+        guard let feedURL = playback.currentEpisode?.podcastID.rawValue,
+              library.podcastPlaybackRateOverride(forPodcastID: feedURL) != nil
+        else {
+            return playbackSettings.setPlaybackRate(
+                rate,
+                modelContext: modelContext,
+                playback: playback
+            )
+        }
+
+        return playbackSettings.setPlaybackRate(
             rate,
             modelContext: modelContext,
-            playback: playback
+            playback: playback,
+            persist: { [library] rate, modelContext in
+                guard library.setPodcastPlaybackRateOverride(rate, feedURL: feedURL, modelContext: modelContext) else {
+                    // The failure surfaces through the playback settings
+                    // error; left on the library it would raise the root
+                    // Library alert as well.
+                    let message = library.lastErrorMessage ?? "Unable to save this show's speed."
+                    library.clearLastError()
+                    throw PodcastPlaybackRateSaveError(message: message)
+                }
+            }
         )
     }
 
@@ -2435,6 +2771,12 @@ final class OpenCastAppModel {
         playbackRestorePreference.resetAfterDataNuke()
         currentPlaylistSourceID = nil
         library.resetAfterDataNuke()
+        // The run journals go before any store reloads: every run has
+        // stopped, and a reload's recovery (a stranded run closed, a run
+        // whose usage never saved counted) would otherwise add a deleted
+        // run's tokens to the wiped usage, together with the totals the
+        // usage store still holds from before the wipe.
+        analysisRuns.deleteAll()
         await downloads.load(modelContext: modelContext)
         listeningHistory.load(modelContext: modelContext)
         downloadSettings.load(modelContext: modelContext)
@@ -2453,6 +2795,7 @@ final class OpenCastAppModel {
         playlistMigrationDefaults.set(true, forKey: PlaylistLocalStoreMigration.completedDefaultsKey)
         adFreePassBackgroundSession.reset()
         transcriptGenerationBackgroundSession.reset()
+        analysisTrialStatus.reset()
         transcriptImprovement.resetForDataNuke()
         transcriptionModels.resetAfterDataNuke()
         transcriptionEngineSettings.load(modelContext: modelContext)
@@ -2462,6 +2805,11 @@ final class OpenCastAppModel {
         libraryDisplaySettings.load(modelContext: modelContext)
         playlistDisplaySettings.load(modelContext: modelContext)
         playlists.sortOrder = playlistDisplaySettings.sortOrder
+        // Provider keys are Keychain credentials and survive the wipe; only
+        // the device-local choices, usage and the notice flag reset.
+        analysisProviderSelection.load(modelContext: modelContext)
+        analysisUsage.load(modelContext: modelContext)
+        analysisKeyNotice.load(modelContext: modelContext)
         recentSearches.load(modelContext: modelContext)
         playbackSettings.load(modelContext: modelContext, playback: playback)
         notificationSettings.resetAfterDataNuke()
@@ -2507,7 +2855,7 @@ final class OpenCastAppModel {
         let isReloadingCurrentEpisode = playback.currentEpisode?.id.rawValue == snapshot.episodeID
         flushPlaybackProgress(modelContext: modelContext)
         nowPlayingProbeMark("play-validated")
-        applyVoiceBoostSetting(for: episode, modelContext: modelContext)
+        applyPlaybackSettings(for: episode, modelContext: modelContext)
         let boundaries = playbackEpisodeBoundaries(forPodcastID: snapshot.podcastID)
         let requestedStartPosition = startPosition ?? library.resumePosition(for: snapshot.episodeID)
         let resolvedStartPosition = startPosition != nil
@@ -2594,7 +2942,7 @@ final class OpenCastAppModel {
         // download may be different audio than that pass transcribed.
         let isOutOfQueue = switch adFreePass.queueStatus(for: record.episodeID) {
         case .notQueued, .completed: true
-        case .queued, .running, .failed, .capDeferred: false
+        case .queued, .running, .failed, .keyRequired: false
         }
         guard library.isAdAutoDetectEnabled(forPodcastID: record.podcastID),
               isOutOfQueue,
@@ -2660,10 +3008,11 @@ final class OpenCastAppModel {
         )
     }
 
-    private func applyVoiceBoostSetting(for episode: Episode, modelContext: ModelContext) {
+    private func applyPlaybackSettings(for episode: Episode, modelContext: ModelContext) {
         playbackSettings.load(
             episodeID: episode.id.rawValue,
             podcastID: episode.podcastID.rawValue,
+            rateOverride: library.podcastPlaybackRateOverride(forPodcastID: episode.podcastID.rawValue),
             modelContext: modelContext,
             playback: playback
         )
