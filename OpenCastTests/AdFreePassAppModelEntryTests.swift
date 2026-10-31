@@ -113,6 +113,27 @@ struct AdFreePassAppModelEntryTests {
         ])
     }
 
+    @Test("A finished download of an opted-in show auto-enqueues without arming the session")
+    func downloadTriggeredAutoPassEnqueuesWithoutArming() async throws {
+        let fixture = try await makeFixture(downloader: FinishingEntryAudioDownloader())
+        let episode = makeEpisode(episodeID: "app-entry-auto-download")
+        try await seedSubscription(
+            feedURL: episode.podcastID,
+            isAdAutoDetectEnabled: true,
+            fixture: fixture
+        )
+
+        #expect(fixture.appModel.downloads.startDownload(for: episode, modelContext: fixture.context))
+        #expect(await waitUntil {
+            fixture.appModel.downloads.record(for: episode.episodeID)?.state == .completed
+        })
+        #expect(await waitUntil {
+            fixture.appModel.adFreePass.activeEpisodeID == episode.episodeID
+                || fixture.appModel.adFreePass.queueItems.contains { $0.episodeID == episode.episodeID }
+        })
+        #expect(fixture.scheduler.submitCallCount == 0)
+    }
+
     @Test("Playing a show without the opt-in never enqueues an auto pass")
     func playWithoutOptInNeverEnqueues() async throws {
         let fixture = try await makeFixture()
@@ -221,13 +242,15 @@ struct AdFreePassAppModelEntryTests {
         let notificationCenter: FakeAdFreePassNotificationCenter
     }
 
-    private func makeFixture() async throws -> EntryFixture {
+    private func makeFixture(
+        downloader: any EpisodeAudioDownloading = HangingEntryAudioDownloader()
+    ) async throws -> EntryFixture {
         let container = try OpenCastModelContainerFactory.make(inMemory: true)
         let context = ModelContext(container)
         let temporaryDirectory = try makeTemporaryDirectory()
         let downloadFileStore = EpisodeDownloadFileStore(baseDirectory: temporaryDirectory)
         let downloads = DownloadStore(
-            downloader: HangingEntryAudioDownloader(),
+            downloader: downloader,
             fileStore: downloadFileStore
         )
         let scheduler = EntryFakeScheduler()
@@ -283,6 +306,21 @@ struct AdFreePassAppModelEntryTests {
             .appending(path: "OpenCastAdFreePassEntryTests-\(UUID().uuidString)", directoryHint: .isDirectory)
         try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
         return url
+    }
+}
+
+private struct FinishingEntryAudioDownloader: EpisodeAudioDownloading {
+    nonisolated func download(
+        from sourceURL: URL,
+        to temporaryURL: URL,
+        resume: EpisodeDownloadResumeContext?,
+        onResponseMetadata: @escaping @MainActor @Sendable (EpisodeDownloadResponseMetadata) -> Void,
+        progress: @escaping @MainActor @Sendable (_ bytesReceived: Int64, _ bytesExpected: Int64?) -> Void
+    ) async throws {
+        await onResponseMetadata(EpisodeDownloadResponseMetadata(entityTag: nil, lastModified: nil))
+        let contents = Data("downloaded audio".utf8)
+        try contents.write(to: temporaryURL, options: .atomic)
+        await progress(Int64(contents.count), Int64(contents.count))
     }
 }
 

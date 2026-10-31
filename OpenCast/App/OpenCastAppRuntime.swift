@@ -121,6 +121,11 @@ final class OpenCastAppRuntime {
                 httpClient: httpClient,
                 library: library,
                 localLibraryCacheStore: localLibraryCacheStore,
+                // UI tests keep the in-process downloader: the background
+                // session outlives a test's launch.
+                downloads: DownloadStore(downloader: launchConfiguration.usesInMemoryStore
+                    ? URLSessionEpisodeAudioDownloader()
+                    : BackgroundEpisodeAudioDownloader.shared),
                 transcriptionModels: transcriptionModels,
                 appleSpeechAssets: appleSpeechAssets,
                 transcriptions: transcriptions,

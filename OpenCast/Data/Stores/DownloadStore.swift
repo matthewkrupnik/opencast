@@ -103,6 +103,7 @@ final class DownloadStore {
         } catch {
             firstError = firstError ?? error
         }
+        await adoptFinishedBackgroundDownloads(modelContext: modelContext)
         do {
             autoDeletesPlayedDownloads = try storedAutoDeletePreference(modelContext: modelContext)
         } catch {
@@ -866,6 +867,54 @@ final class DownloadStore {
         recordFailure(error, episodeID: record.episodeID)
     }
 
+    /// Completes each unfinished record whose download a background session
+    /// finished after the process that started it ended, as a finished
+    /// download would: hashed, saved, then `onDownloadCompleted`. Runs after
+    /// every load, and when the session reports such a file while the app
+    /// runs.
+    func adoptFinishedBackgroundDownloads(modelContext: ModelContext) async {
+        let candidates = records.filter { $0.state != .completed && downloadTasks[$0.episodeID] == nil }
+        for candidate in candidates {
+            let episodeID = candidate.episodeID
+            do {
+                guard let finishedURL = try fileStore.finishedBackgroundDownloadURL(episodeID: episodeID),
+                      let sourceURL = URL(string: candidate.sourceAudioURL)
+                else {
+                    continue
+                }
+                let relativePath = candidate.localRelativePath
+                    ?? fileStore.relativePath(episodeID: episodeID, sourceAudioURL: sourceURL)
+                try fileStore.moveCompletedDownload(from: finishedURL, relativePath: relativePath)
+                let fileSize = try fileStore.fileSize(relativePath: relativePath)
+                let sourceFileSHA256 = try await OpenCastSHA256.hashFileOffCaller(
+                    at: fileStore.fileURL(relativePath: relativePath)
+                )
+                // A download started meanwhile owns the record now.
+                guard downloadTasks[episodeID] == nil,
+                      let record = try fetchRecord(episodeID: episodeID, modelContext: modelContext),
+                      record.state != .completed
+                else {
+                    continue
+                }
+                try fileStore.removeTemporaryFiles(episodeID: episodeID)
+                try fileStore.removePausedPartial(episodeID: episodeID)
+                record.state = .completed
+                record.localRelativePath = relativePath
+                record.sourceFileSHA256 = sourceFileSHA256
+                record.bytesReceived = fileSize
+                record.bytesExpected = fileSize
+                record.errorMessage = nil
+                record.completedAt = .now
+                record.updatedAt = .now
+                clearTransientProgress(episodeID: episodeID)
+                try commit(episodeID: episodeID, modelContext: modelContext, resort: true)
+                onDownloadCompleted?(record, modelContext)
+            } catch {
+                recordFailure(error, episodeID: episodeID)
+            }
+        }
+    }
+
     private func runDownload(
         episodeID: String,
         token: String,
@@ -1443,6 +1492,7 @@ final class DownloadStore {
         let outcomes = try await Self.reconcileFileOutcomes(
             inputs: inputs,
             claimedRelativePaths: Set(claimedRelativePaths),
+            liveDetachedTemporaryPaths: await downloader.liveDetachedTemporaryPaths(),
             fileStore: fileStore
         )
         await afterReconcileProbesForTesting?()
@@ -1584,6 +1634,7 @@ final class DownloadStore {
     private static func reconcileFileOutcomes(
         inputs: [ReconcileFileInput],
         claimedRelativePaths: Set<String>,
+        liveDetachedTemporaryPaths: Set<String>,
         fileStore: EpisodeDownloadFileStore
     ) async throws -> [String: ReconcileFileOutcome] {
         var outcomes: [String: ReconcileFileOutcome] = [:]
@@ -1600,6 +1651,16 @@ final class DownloadStore {
                         outcomes[input.episodeID] = .finalizeCompleted(size: completedSize)
                         continue
                     }
+                }
+                // A background session may still be running this download
+                // for an earlier process, or have finished it: the record
+                // stays downloading until the finished file is adopted.
+                let temporaryPrefix = "\(fileStore.safeStem(episodeID: input.episodeID))-"
+                if try fileStore.finishedBackgroundDownloadURL(episodeID: input.episodeID) != nil
+                    || liveDetachedTemporaryPaths.contains(where: {
+                        URL(filePath: $0).lastPathComponent.hasPrefix(temporaryPrefix)
+                    }) {
+                    continue
                 }
                 let adoptedByteCount = try fileStore.adoptNewestTemporaryPartial(episodeID: input.episodeID)
                 let resumableByteCount = try adoptedByteCount ?? fileSizeIfPresent(

@@ -231,8 +231,29 @@ struct EpisodeDownloadFileStore: Sendable {
             includingPropertiesForKeys: nil
         )
         for fileURL in fileURLs where fileURL.lastPathComponent.hasPrefix("\(stem)-")
-            && fileURL.lastPathComponent.hasSuffix(".partial") {
+            && (fileURL.lastPathComponent.hasSuffix(".partial") || fileURL.lastPathComponent.hasSuffix(".finished")) {
             try removeItemIfPresent(at: fileURL)
+        }
+    }
+
+    /// The newest download a background session finished for the episode
+    /// after the process that started it ended, if one is waiting.
+    nonisolated func finishedBackgroundDownloadURL(episodeID: String) throws -> URL? {
+        let fileManager = FileManager.default
+        guard fileManager.fileExists(atPath: downloadsDirectory.path) else {
+            return nil
+        }
+        let prefix = "\(safeStem(episodeID: episodeID))-"
+        return try fileManager.contentsOfDirectory(
+            at: downloadsDirectory,
+            includingPropertiesForKeys: [.contentModificationDateKey],
+            options: [.skipsHiddenFiles]
+        )
+        .filter { $0.lastPathComponent.hasPrefix(prefix) && $0.lastPathComponent.hasSuffix(".finished") }
+        .max { lhs, rhs in
+            let lhsDate = (try? lhs.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? .distantPast
+            let rhsDate = (try? rhs.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? .distantPast
+            return lhsDate < rhsDate
         }
     }
 
@@ -316,7 +337,7 @@ struct EpisodeDownloadFileStore: Sendable {
             guard !claimedStems.contains(stemCandidate) else {
                 continue
             }
-            if name.hasSuffix(".partial"),
+            if name.hasSuffix(".partial") || name.hasSuffix(".finished"),
                claimedStems.contains(where: { stemCandidate.hasPrefix("\($0)-") }) {
                 continue
             }

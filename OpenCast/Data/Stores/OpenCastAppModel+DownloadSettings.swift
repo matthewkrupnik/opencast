@@ -67,6 +67,29 @@ extension OpenCastAppModel {
         await autoDownloads.runPass(modelContext: modelContext)
     }
 
+    /// A new-episode push woke the app (in the background or not): refreshes
+    /// that show's feed and starts its automatic downloads, which the
+    /// background download session finishes after the app is suspended.
+    /// Returns whether any download started; never waits for one to finish.
+    func handleNewEpisodePush(feedURL: String, modelContext: ModelContext) async -> Bool {
+        await ensureCoreStoresLoaded(modelContext: modelContext)
+        guard library.activePodcastIDs.contains(feedURL) else {
+            AutoDetectAdsLog.record("push wake ignored podcastID=\(feedURL) reason=notSubscribed")
+            return false
+        }
+        let downloadingBefore = Set(downloads.records.filter { $0.state == .downloading }.map(\.episodeID))
+        await library.refresh(feedURL: feedURL, modelContext: modelContext)
+        await autoDownloads.runWakePass(modelContext: modelContext)
+        let started = downloads.records.contains {
+            $0.state == .downloading && !downloadingBefore.contains($0.episodeID)
+        }
+        AutoDetectAdsLog.record(
+            "push wake podcastID=\(feedURL) autoDownload=\(downloadSettings.autoDownloadsNewEpisodes(forPodcastID: feedURL)) "
+                + "downloadStarted=\(started) sceneActive=\(isSceneActive)"
+        )
+        return started
+    }
+
     /// Each root scene's lifecycle reports its phase here, from its first
     /// appearance to its removal.
     func setAutoDownloadsScene(_ sceneID: UUID, isActive: Bool) {

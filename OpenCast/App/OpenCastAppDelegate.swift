@@ -18,8 +18,70 @@ final class OpenCastAppDelegate: NSObject, UIApplicationDelegate, UNUserNotifica
     ) -> Bool {
         registerNotificationCategories()
         UNUserNotificationCenter.current().delegate = self
+        connectBackgroundDownloads()
 
         return true
+    }
+
+    /// The background download session reconnects at launch so iOS can hand
+    /// over downloads that finished while the app wasn't running.
+    private func connectBackgroundDownloads() {
+        let runtime = OpenCastAppRuntime.shared
+        guard !runtime.launchConfiguration.usesInMemoryStore else {
+            return
+        }
+        BackgroundEpisodeAudioDownloader.shared.setOrphanFinishedHandler {
+            Task {
+                await runtime.appModel.downloads.adoptFinishedBackgroundDownloads(
+                    modelContext: runtime.modelContainer.mainContext
+                )
+            }
+        }
+    }
+
+    func application(
+        _ application: UIApplication,
+        handleEventsForBackgroundURLSession identifier: String,
+        completionHandler: @escaping () -> Void
+    ) {
+        guard identifier == BackgroundEpisodeAudioDownloader.sessionIdentifier else {
+            completionHandler()
+            return
+        }
+        // UIKit's handler; it is called back on the main actor.
+        nonisolated(unsafe) let systemCompletionHandler = completionHandler
+        BackgroundEpisodeAudioDownloader.shared.handleEvents {
+            systemCompletionHandler()
+        }
+    }
+
+    /// A new-episode push (`content-available`) wakes the app: it refreshes
+    /// that show and starts its automatic downloads. iOS allows about 30
+    /// seconds, so the work stops waiting at 25; downloads already handed to
+    /// the background session keep going.
+    func application(
+        _ application: UIApplication,
+        didReceiveRemoteNotification userInfo: [AnyHashable: Any]
+    ) async -> UIBackgroundFetchResult {
+        guard let feedURL = Self.newEpisodeFeedURL(from: userInfo) else {
+            return .noData
+        }
+        let runtime = OpenCastAppRuntime.shared
+        return await withCheckedContinuation { continuation in
+            let reply = PushWakeReply(continuation)
+            let work = Task {
+                let started = await runtime.appModel.handleNewEpisodePush(
+                    feedURL: feedURL,
+                    modelContext: runtime.modelContainer.mainContext
+                )
+                reply.send(started ? .newData : .noData)
+            }
+            Task {
+                try? await Task.sleep(for: .seconds(25))
+                work.cancel()
+                reply.send(.failed)
+            }
+        }
     }
 
     func application(_ application: UIApplication, handlerFor intent: INIntent) -> Any? {
@@ -120,6 +182,15 @@ final class OpenCastAppDelegate: NSObject, UIApplicationDelegate, UNUserNotifica
         )
     }
 
+    private static func newEpisodeFeedURL(from userInfo: [AnyHashable: Any]) -> String? {
+        guard let opencastPayload = userInfo["opencast"] as? [String: Any],
+              opencastPayload["kind"] as? String == "episode"
+        else {
+            return nil
+        }
+        return opencastPayload["feed_url"] as? String
+    }
+
     nonisolated private static func episodeRoute(from notification: UNNotification) -> RemoteEpisodeNotificationRoute? {
         let userInfo = notification.request.content.userInfo
         guard let opencastPayload = userInfo["opencast"] as? [String: Any],
@@ -135,5 +206,20 @@ final class OpenCastAppDelegate: NSObject, UIApplicationDelegate, UNUserNotifica
             episodeID: episodeID,
             episodeTitle: opencastPayload["episode_title"] as? String
         )
+    }
+}
+
+/// Answers a push wake once: the work or the deadline, whichever is first.
+@MainActor
+private final class PushWakeReply {
+    private var continuation: CheckedContinuation<UIBackgroundFetchResult, Never>?
+
+    init(_ continuation: CheckedContinuation<UIBackgroundFetchResult, Never>) {
+        self.continuation = continuation
+    }
+
+    func send(_ result: UIBackgroundFetchResult) {
+        continuation?.resume(returning: result)
+        continuation = nil
     }
 }

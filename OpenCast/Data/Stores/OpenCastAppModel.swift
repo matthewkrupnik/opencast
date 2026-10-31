@@ -2904,15 +2904,19 @@ final class OpenCastAppModel {
         _ episode: EpisodeListItemSnapshot,
         modelContext: ModelContext
     ) {
-        guard library.isAdAutoDetectEnabled(forPodcastID: episode.podcastID),
-              adFreePass.queueStatus(for: episode.episodeID) == .notQueued
-        else {
+        let isEnabled = library.isAdAutoDetectEnabled(forPodcastID: episode.podcastID)
+        let queueStatus = adFreePass.queueStatus(for: episode.episodeID)
+        guard isEnabled, queueStatus == .notQueued else {
+            if isEnabled {
+                AutoDetectAdsLog.record("play skipped episodeID=\(episode.episodeID) queueStatus=\(queueStatus)")
+            }
             return
         }
 
         Task { [weak self] in
             await self?.enqueueAutoDetectAdsIfQualified(
                 episode,
+                trigger: "play",
                 modelContext: modelContext
             )
         }
@@ -2944,10 +2948,15 @@ final class OpenCastAppModel {
         case .notQueued, .completed: true
         case .queued, .running, .failed, .keyRequired: false
         }
-        guard library.isAdAutoDetectEnabled(forPodcastID: record.podcastID),
-              isOutOfQueue,
-              let episode = episodeSnapshot(for: record.episodeID)
-        else {
+        let isEnabled = library.isAdAutoDetectEnabled(forPodcastID: record.podcastID)
+        let episode = episodeSnapshot(for: record.episodeID)
+        AutoDetectAdsLog.record(
+            "download completed episodeID=\(record.episodeID) podcastID=\(record.podcastID) "
+                + "autoDetect=\(isEnabled) subscriptionsLoaded=\(!library.subscriptions.isEmpty) "
+                + "queueStatus=\(adFreePass.queueStatus(for: record.episodeID)) episodeResolved=\(episode != nil) "
+                + "sceneActive=\(isSceneActive)"
+        )
+        guard isEnabled, isOutOfQueue, let episode else {
             return
         }
 
@@ -2957,6 +2966,7 @@ final class OpenCastAppModel {
             await self?.ensurePlaybackDependenciesLoaded(modelContext: modelContext)
             await self?.enqueueAutoDetectAdsIfQualified(
                 episode,
+                trigger: "download",
                 modelContext: modelContext
             )
         }
@@ -2964,6 +2974,7 @@ final class OpenCastAppModel {
 
     private func enqueueAutoDetectAdsIfQualified(
         _ episode: EpisodeListItemSnapshot,
+        trigger: String,
         modelContext: ModelContext
     ) async {
         let hasCurrentCompletedAnalysis = await adFreePass.currentCompletedAnalysisVerdict(
@@ -2989,6 +3000,12 @@ final class OpenCastAppModel {
             queueStatus: adFreePass.queueStatus(for: episode.episodeID),
             isReplaySuppressed: isReplaySuppressed,
             isTranscriptStaleForDownload: isTranscriptStale
+        )
+        AutoDetectAdsLog.record(
+            "\(trigger) qualification episodeID=\(episode.episodeID) enqueue=\(policy.shouldEnqueue) "
+                + "autoDetect=\(policy.isAutoDetectEnabled) currentAnalysis=\(hasCurrentCompletedAnalysis) "
+                + "transcriptStale=\(isTranscriptStale) replaySuppressed=\(isReplaySuppressed) "
+                + "queueStatus=\(policy.queueStatus) queueState=\(adFreePass.queueState)"
         )
         guard policy.shouldEnqueue else {
             return

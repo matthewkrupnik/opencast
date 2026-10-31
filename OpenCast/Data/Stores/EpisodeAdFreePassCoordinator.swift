@@ -321,10 +321,16 @@ final class EpisodeAdFreePassCoordinator {
         let isListenerStart = origin == .manual && presentsKeyScreen
 
         guard activeItem?.episodeID != episodeID else {
+            if origin == .auto {
+                AutoDetectAdsLog.record("enqueue ignored episodeID=\(episodeID) reason=alreadyActive")
+            }
             return
         }
 
         if let index = entries.firstIndex(where: { $0.item.episodeID == episodeID }) {
+            if origin == .auto {
+                AutoDetectAdsLog.record("enqueue ignored episodeID=\(episodeID) reason=alreadyQueued queueState=\(queueState)")
+            }
             if isListenerStart {
                 entries[index].presentsKeyScreen = true
             }
@@ -380,6 +386,9 @@ final class EpisodeAdFreePassCoordinator {
         }
         clearFailure(episodeID: episodeID)
 
+        if origin == .auto {
+            AutoDetectAdsLog.record("enqueued episodeID=\(episodeID) queueState=\(queueState) pending=\(entries.count)")
+        }
         switch queueState {
         case .idle:
             startDrain()
@@ -429,6 +438,9 @@ final class EpisodeAdFreePassCoordinator {
             guard let origin = AdFreePassQueueOrigin(rawValue: record.originRawValue),
                   let episode = resolveEpisode(record.episodeID)
             else {
+                AutoDetectAdsLog.record(
+                    "restore dropped episodeID=\(record.episodeID) origin=\(record.originRawValue) reason=unresolved"
+                )
                 modelContext.delete(record)
                 didDropRecords = true
                 continue
@@ -739,6 +751,7 @@ final class EpisodeAdFreePassCoordinator {
                transcriptions: dependencies.transcriptions,
                adAnalyses: dependencies.adAnalyses
            ) {
+            AutoDetectAdsLog.record("launch skipped episodeID=\(item.episodeID) reason=currentAnalysis")
             return .skip
         }
 
@@ -847,6 +860,9 @@ final class EpisodeAdFreePassCoordinator {
             )
 
             let outcome = await runPass(entry)
+            if entry.item.origin == .auto {
+                AutoDetectAdsLog.record("pass ended episodeID=\(entry.item.episodeID) outcome=\(outcome)")
+            }
 
             guard generation == drainGeneration else {
                 return

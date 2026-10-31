@@ -1922,6 +1922,47 @@ struct DownloadStoreTests {
         #expect(fixture.episodeIDs(for: episode.podcastID) == ["completion-new"])
     }
 
+    @Test("Load completes a download a background session finished after its process ended")
+    func loadAdoptsFinishedBackgroundDownload() async throws {
+        let fixture = try await KeepLimitFixture.make()
+        let episodeID = "background-finished"
+        let record = try fixture.insertDownloading(episodeID, podcastID: KeepLimitFixture.showA)
+        let temporaryURL = fixture.fileStore.temporaryFileURL(episodeID: episodeID, token: UUID().uuidString)
+        let audio = Data("finished in the background".utf8)
+        try fixture.fileStore.prepareDownloadsDirectory()
+        try audio.write(to: BackgroundEpisodeAudioDownloader.finishedFileURL(forTemporaryURL: temporaryURL))
+        var completedEpisodeIDs: [String] = []
+        fixture.downloads.onDownloadCompleted = { record, _ in
+            completedEpisodeIDs.append(record.episodeID)
+        }
+
+        try await fixture.reload()
+
+        let adopted = try #require(fixture.downloads.record(for: episodeID))
+        #expect(adopted.state == .completed)
+        #expect(adopted.bytesReceived == Int64(audio.count))
+        #expect(!adopted.sourceFileSHA256.isEmpty)
+        let relativePath = try #require(record.localRelativePath)
+        #expect(try Data(contentsOf: fixture.fileStore.fileURL(relativePath: relativePath)) == audio)
+        #expect(try fixture.fileStore.finishedBackgroundDownloadURL(episodeID: episodeID) == nil)
+        #expect(completedEpisodeIDs == [episodeID])
+    }
+
+    @Test("Load leaves a download downloading while a background session still runs it")
+    func loadKeepsDetachedBackgroundDownload() async throws {
+        let episodeID = "background-running"
+        let fileStore = EpisodeDownloadFileStore(baseDirectory: try makeTemporaryDirectory())
+        let temporaryURL = fileStore.temporaryFileURL(episodeID: episodeID, token: UUID().uuidString)
+        let fixture = try await KeepLimitFixture.make(
+            downloader: DetachedTaskEpisodeAudioDownloader(livePaths: [temporaryURL.path])
+        )
+        try fixture.insertDownloading(episodeID, podcastID: KeepLimitFixture.showA)
+
+        try await fixture.reload()
+
+        #expect(fixture.downloads.record(for: episodeID)?.state == .downloading)
+    }
+
     @Test("onDownloadCompleted fires once per finished download, never for reloads or deletes")
     func completionHookFiresOnce() async throws {
         let container = try OpenCastModelContainerFactory.make(inMemory: true)
@@ -2975,6 +3016,24 @@ private final class KeepLimitFixture {
         return record
     }
 
+    @discardableResult
+    func insertDownloading(_ episodeID: String, podcastID: String) throws -> EpisodeDownloadRecord {
+        let sourceAudioURL = URL(string: "https://example.com/\(episodeID).mp3")!
+        let record = EpisodeDownloadRecord(
+            episodeID: episodeID,
+            podcastID: podcastID,
+            sourceAudioURL: sourceAudioURL.absoluteString,
+            localRelativePath: fileStore.relativePath(episodeID: episodeID, sourceAudioURL: sourceAudioURL),
+            state: .downloading,
+            bytesReceived: 0,
+            bytesExpected: nil,
+            completedAt: nil,
+            createdAt: Self.day(0)
+        )
+        context.insert(record)
+        return record
+    }
+
     func reload() async throws {
         try context.save()
         await downloads.load(modelContext: context)
@@ -2998,5 +3057,24 @@ private final class KeepLimitFixture {
 
     private static func day(_ day: Int) -> Date {
         base.addingTimeInterval(Double(day) * 86_400)
+    }
+}
+
+/// Reports a download a background session runs for an earlier process.
+private struct DetachedTaskEpisodeAudioDownloader: EpisodeAudioDownloading {
+    let livePaths: Set<String>
+
+    nonisolated func download(
+        from sourceURL: URL,
+        to temporaryURL: URL,
+        resume: EpisodeDownloadResumeContext?,
+        onResponseMetadata: @escaping @MainActor @Sendable (EpisodeDownloadResponseMetadata) -> Void,
+        progress: @escaping @MainActor @Sendable (_ bytesReceived: Int64, _ bytesExpected: Int64?) -> Void
+    ) async throws {
+        throw EpisodeDownloadError.interrupted
+    }
+
+    nonisolated func liveDetachedTemporaryPaths() async -> Set<String> {
+        livePaths
     }
 }

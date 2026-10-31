@@ -154,6 +154,7 @@ pub fn diagnostic_push_request(
             category: None,
             thread_id: None,
             mutable_content: None,
+            content_available: None,
             target_content_id: None,
         },
         opencast: DiagnosticOpenCastPayload { kind: "diagnostic" },
@@ -290,6 +291,7 @@ fn episode_push_request(
             category: Some(EPISODE_NOTIFICATION_CATEGORY),
             thread_id: Some(podcast_thread_id(notification.feed_url)),
             mutable_content: Some(1),
+            content_available: Some(1),
             target_content_id: Some(truncated_chars(notification.episode_id, 128)),
         },
         opencast: EpisodeOpenCastPayload {
@@ -466,6 +468,10 @@ struct Aps {
     thread_id: Option<String>,
     #[serde(rename = "mutable-content", skip_serializing_if = "Option::is_none")]
     mutable_content: Option<u8>,
+    /// Wakes the app in the background so it can download the episode; iOS
+    /// still shows the alert and may throttle or skip the wake.
+    #[serde(rename = "content-available", skip_serializing_if = "Option::is_none")]
+    content_available: Option<u8>,
     #[serde(rename = "target-content-id", skip_serializing_if = "Option::is_none")]
     target_content_id: Option<String>,
 }
@@ -680,6 +686,7 @@ mod tests {
         let payload = json_payload(&request);
         assert_eq!(payload["aps"]["category"], "OPENCAST_EPISODE");
         assert_eq!(payload["aps"]["mutable-content"], 1);
+        assert_eq!(payload["aps"]["content-available"], 1);
         assert_eq!(
             payload["aps"]["thread-id"],
             "opencast-podcast-7a775db75c1d6d17"

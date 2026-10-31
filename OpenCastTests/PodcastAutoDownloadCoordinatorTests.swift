@@ -385,6 +385,20 @@ struct PodcastAutoDownloadCoordinatorTests {
         #expect(fixture.startedEpisodeIDs == [fixture.id(2)])
     }
 
+    @Test("A new-episode push wake downloads while no scene is active")
+    func wakePassRunsInBackground() async throws {
+        let fixture = try await AutoDownloadFixture.make(releaseDays: [1, 2, 3])
+        defer { fixture.tearDown() }
+        fixture.coordinator.setScene(UUID(), isActive: false)
+        fixture.coordinator.enableAutoDownload(forPodcastID: fixture.feedURL, modelContext: fixture.context)
+        await fixture.coordinator.runPass(modelContext: fixture.context)
+        #expect(fixture.downloads.records.isEmpty)
+
+        await fixture.coordinator.runWakePass(modelContext: fixture.context)
+
+        #expect(fixture.startedEpisodeIDs == [fixture.id(2)])
+    }
+
     @Test("With two windows, one going inactive leaves passes running for the active one")
     func activeSceneKeepsGateOpen() async throws {
         let fixture = try await AutoDownloadFixture.make(releaseDays: [1, 2, 3])

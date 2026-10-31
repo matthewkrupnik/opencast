@@ -7,9 +7,9 @@ import SwiftData
 /// `unlimitedBatchCap` with No Limit), then moves the watermark to the
 /// newest release, so skipped older episodes are never downloaded later.
 /// Any existing download record blocks an episode: a failed or deleted
-/// automatic download is not retried. Passes run only in the foreground,
-/// after refreshes and on activation; nothing schedules them in the
-/// background.
+/// automatic download is not retried. Passes run in the foreground, after
+/// refreshes and on activation; the one background pass is a new-episode
+/// push's wake (`runWakePass`).
 final class PodcastAutoDownloadCoordinator {
     static let unlimitedBatchCap = 3
 
@@ -91,6 +91,29 @@ final class PodcastAutoDownloadCoordinator {
     func runPass(modelContext: ModelContext) async {
         schedulePass(modelContext: modelContext)
         await passTask?.value
+    }
+
+    /// A new-episode push woke the app: one pass outside the foreground gate,
+    /// so its downloads start on the background session before iOS suspends
+    /// the app. Joins a pass already running instead of starting another.
+    func runWakePass(modelContext: ModelContext) async {
+        if let passTask {
+            await passTask.value
+            return
+        }
+        passGeneration += 1
+        let generation = passGeneration
+        let task = Task { [weak self] in
+            guard let self else {
+                return
+            }
+            await runPassOnce(generation: generation, modelContext: modelContext)
+        }
+        passTask = task
+        await task.value
+        if passGeneration == generation {
+            passTask = nil
+        }
     }
 
     /// Open while any root scene is active, and before any scene reports
