@@ -3607,8 +3607,8 @@ final class OpenCastUITests: XCTestCase {
         attachSmokeScreenshot(named: "episode_transcript_stale_ad_analysis_no_badges")
 
         openTranscriptOptionsMenu(in: app)
-        assertDoesNotExist(app.buttons["Analyze Promos & Ads"], named: "Analyze action without ad-analysis token", timeout: 1)
-        assertDoesNotExist(app.buttons["Reanalyze Promos & Ads"], named: "Reanalyze action without ad-analysis token", timeout: 1)
+        assertExists(app.buttons["Analyze Promos & Ads"], named: "Analyze action for a stale analysis")
+        assertDoesNotExist(app.buttons["Reanalyze Promos & Ads"], named: "Reanalyze action for a stale analysis", timeout: 1)
         let deleteAnalysisButton = app.buttons["Delete Promo/Ad Analysis"]
         assertExists(deleteAnalysisButton, named: "Delete stale promo/ad analysis")
 
