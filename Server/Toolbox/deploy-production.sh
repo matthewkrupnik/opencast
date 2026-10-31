@@ -12,15 +12,22 @@ polling_dir="$root/Server/FeedPollingWorker"
 notifications_config=wrangler.production.toml
 polling_config=wrangler.production.jsonc
 apns_dir="$root/Server/Toolbox/apns"
-db=opencast-notifications-db
 bucket=opencast-feed-snapshots
 placeholder=REPLACE_WITH_APNS_MTLS_CERTIFICATE_ID
+# Supabase's root CA, from the project's Database settings.
+pg_ca="$root/Server/Toolbox/prod-ca-2021.crt"
 
 step() { printf '\n==> %s\n' "$*"; }
 wrangler() { "$root/node_modules/.bin/wrangler" "$@"; }
+# psql as the schema owner. The Workers connect as the runtime role through Hyperdrive.
+pg_owner() { psql "$OPENCAST_PG_OWNER_URL?sslmode=verify-full&sslrootcert=$pg_ca" -X -v ON_ERROR_STOP=1 "$@"; }
 
 if [[ -z "${CLOUDFLARE_API_TOKEN:-}" || -z "${CLOUDFLARE_ACCOUNT_ID:-}" ]]; then
   echo "Set CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID in Server/Toolbox/cloudflare.env." >&2
+  exit 1
+fi
+if [[ -z "${OPENCAST_PG_OWNER_URL:-}" || ! -f "$pg_ca" ]]; then
+  echo "Set OPENCAST_PG_OWNER_URL in Server/Toolbox/cloudflare.env and put prod-ca-2021.crt in Server/Toolbox/." >&2
   exit 1
 fi
 for config in "$notifications_dir/$notifications_config" "$polling_dir/$polling_config"; do
@@ -68,8 +75,14 @@ done
 
 cd "$notifications_dir"
 
-step "D1 migrations"
-wrangler d1 migrations apply "$db" --remote --config "$notifications_config"
+# The schema is applied once by hand (postgres/README.md's single-runtime-role
+# order); migration files are immutable, so a deploy only checks it is there.
+step "PostgreSQL schema"
+schema_tables="$(pg_owner -At -c "SELECT count(*) FROM pg_tables WHERE schemaname = 'opencast'")"
+if [[ "$schema_tables" != 32 ]]; then
+  echo "Expected 32 tables in schema opencast, found $schema_tables. Apply Server/NotificationsWorker/postgres first." >&2
+  exit 1
+fi
 
 step "Deploying opencast-notifications"
 wrangler deploy --config "$notifications_config"
@@ -79,10 +92,9 @@ if ! wrangler secret list --config "$notifications_config" 2>/dev/null | grep -q
   openssl rand -base64 32 | tr -d '\n' | wrangler secret put CHALLENGE_SOURCE_HASH_KEY --config "$notifications_config"
 fi
 
-# The D1 half of the dual switch; the wrangler vars are the other half.
+# The database half of the dual switch; the wrangler vars are the other half.
 step "Opening the new-episode n_control rows"
-wrangler d1 execute "$db" --remote --config "$notifications_config" --command \
-  "UPDATE n_control SET enabled=1, revision=revision+1 WHERE enabled=0 AND name IN \
+pg_owner -c "UPDATE opencast.n_control SET enabled=1, revision=revision+1 WHERE enabled=0 AND name IN \
    ('dispatcher_admission','feed_observation','episode_activation','episode_send','cleanup')"
 
 cd "$polling_dir"

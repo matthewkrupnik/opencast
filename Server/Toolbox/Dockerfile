@@ -18,5 +18,10 @@ RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \
     && cargo install --locked worker-build@0.8.7 \
     && rm -rf /root/.cargo/registry
 
+# deploy-production.sh checks the schema and opens the controls with psql.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends postgresql-client \
+    && rm -rf /var/lib/apt/lists/*
+
 WORKDIR /work
 CMD ["bash"]

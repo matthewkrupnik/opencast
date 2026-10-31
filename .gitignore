@@ -29,3 +29,4 @@ Server/Toolbox/cloudflare.env
 # Production Worker configs and the APNs certificate they deploy with
 Server/*/wrangler.production.*
 Server/Toolbox/apns/
+Server/Toolbox/prod-ca-2021.crt
