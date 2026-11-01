@@ -48,26 +48,9 @@ final class PlaylistStore {
         self.now = now
     }
 
-    static let defaultAllPlaylistID = "opencast-default-all"
-
     func load(modelContext: ModelContext) {
         stagedIdentityMigration = nil
         do {
-            // A fixed ID lets duplicate repair fold the copy each device
-            // creates into one, and a tombstone keeps a deleted one deleted.
-            if try modelContext.fetchCount(FetchDescriptor<PlaylistRecord>()) == 0,
-               try !PlaylistTombstoneIndex(modelContext.fetch(FetchDescriptor<PlaylistTombstoneRecord>()))
-                .shadowsPlaylist(Self.defaultAllPlaylistID) {
-                modelContext.insert(PlaylistRecord(
-                    playlistID: Self.defaultAllPlaylistID,
-                    name: "All Episodes",
-                    kind: .smart,
-                    // Every unplayed episode, newest first: the list the Inbox was.
-                    ruleJSON: PlaylistRule(sortOrder: .newestFirst).encodedJSON(),
-                    origin: .user
-                ))
-                try saveSyncedStore(modelContext)
-            }
             let state = try fetchListedState(modelContext: modelContext)
             playlists = state.playlists
             itemsByPlaylistID = state.itemsByPlaylistID

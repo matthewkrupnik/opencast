@@ -705,14 +705,9 @@ struct PlaylistStoreTests {
         #expect(try storedItems(in: storedContext).isEmpty)
     }
 
-    @Test("An empty store gets the default All playlist under its fixed ID, and a deleted one stays deleted")
-    func emptyLoadCreatesDefaultAllOnceDeleted() throws {
+    @Test("An empty store loads no playlists")
+    func emptyLoadCreatesNoPlaylists() throws {
         let fixture = try makeFixture()
-        fixture.store.load(modelContext: fixture.context)
-        #expect(fixture.store.playlists.map(\.playlistID) == [PlaylistStore.defaultAllPlaylistID])
-        #expect(fixture.store.playlists.map(\.name) == ["All Episodes"])
-
-        #expect(fixture.store.delete(PlaylistStore.defaultAllPlaylistID, modelContext: fixture.context))
         fixture.store.load(modelContext: fixture.context)
 
         #expect(fixture.store.playlists.isEmpty)
@@ -825,8 +820,7 @@ struct PlaylistStoreTests {
         #expect(change.removedPlaylistIDs.isEmpty)
         #expect(change.renamedPlaylistIDs.isEmpty)
         #expect(changeCount == 1)
-        // "All Episodes" is the smart playlist the store creates when it loads empty.
-        #expect(fixture.store.playlists.map(\.name) == ["All Episodes", "Winner Identity"])
+        #expect(fixture.store.playlists.map(\.name) == ["Winner Identity"])
         #expect(fixture.store.itemsByPlaylistID["twin"]?.map(\.itemID) == ["winner-item"])
         #expect(fixture.store.playlists.first { $0.playlistID == "twin" }?.itemCount == 1)
         #expect(try storedItems(in: ModelContext(fixture.container)).count == 2)

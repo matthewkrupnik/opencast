@@ -1464,8 +1464,7 @@ struct OpenCastAppModelPlaylistTests {
         await appModel.ensureCoreStoresLoaded(modelContext: context)
 
         #expect(defaults.object(forKey: PlaylistLocalStoreMigration.completedDefaultsKey) == nil)
-        // Only the default "All Episodes" playlist the store creates when it loads empty.
-        #expect(appModel.playlists.playlists.map(\.playlistID) == [PlaylistStore.defaultAllPlaylistID])
+        #expect(appModel.playlists.playlists.isEmpty)
         #expect(appModel.lastPlaylistError == nil)
     }
 

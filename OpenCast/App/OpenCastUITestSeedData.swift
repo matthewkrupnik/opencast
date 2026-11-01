@@ -32,6 +32,7 @@ enum OpenCastUITestSeedData {
     static let emptyPlaylistName = "Seeded Empty"
     static let smartPlaylistID = "ui-test-playlist-smart-unplayed"
     static let smartPlaylistName = "Seeded Unplayed"
+    static let allPlaylistID = "ui-test-playlist-all"
     private static let liveAdAnalysisTranscriptPathEnvironmentKey = "OPENCAST_SEED_LIVE_AD_ANALYSIS_TRANSCRIPT_PATH"
     private static let liveAdAnalysisResponsePathEnvironmentKey = "OPENCAST_SEED_LIVE_AD_ANALYSIS_RESPONSE_PATH"
     /// A v3 transcript fixture (`segments` of id/start/end/text) that replaces
@@ -292,6 +293,14 @@ enum OpenCastUITestSeedData {
                 context: context,
                 createdAt: refreshedAt
             )
+        } else {
+            // The app no longer creates one, and most UI tests browse from it.
+            context.insert(PlaylistRecord(
+                playlistID: allPlaylistID,
+                name: "All Episodes",
+                kind: .smart,
+                ruleJSON: PlaylistRule(sortOrder: .newestFirst).encodedJSON()
+            ))
         }
 
         if shouldSeedPlaylistPlaybackSource {

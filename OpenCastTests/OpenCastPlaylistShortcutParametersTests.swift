@@ -18,8 +18,7 @@ struct OpenCastPlaylistShortcutParametersTests {
         let replacement = OpenCastPlaylistShortcutParameters(playlists: store.playlists)
         #expect(replacement != duplicated)
         #expect(replacement != original)
-        // "All Episodes" is the smart playlist the store creates when it loads empty.
-        #expect(replacement.namesByID.values.sorted() == ["All Episodes", "Commute"])
+        #expect(replacement.namesByID.values.sorted() == ["Commute"])
     }
 
     @Test func renameChangesTheKeyButCollectionOrderAndCountsDoNot() async throws {
