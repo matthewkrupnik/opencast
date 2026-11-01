@@ -58,6 +58,7 @@ public final class AVFoundationPlaybackController {
     @ObservationIgnored private var mediaClockIntervals: [UUID: TimeInterval] = [:]
     @ObservationIgnored private var currentItemEndObserver: NSObjectProtocol?
     @ObservationIgnored private var currentItemPlaybackStalledObserver: NSObjectProtocol?
+    @ObservationIgnored private var currentItemFailedToPlayToEndObserver: NSObjectProtocol?
     @ObservationIgnored private var currentItemDurationObservation: NSKeyValueObservation?
     @ObservationIgnored private var currentItemStatusObservation: NSKeyValueObservation?
     @ObservationIgnored private var currentItemLikelyToKeepUpObservation: NSKeyValueObservation?
@@ -1059,6 +1060,10 @@ public final class AVFoundationPlaybackController {
         ObjectIdentifier(player)
     }
 
+    var currentItemForTesting: AVPlayerItem? {
+        player.currentItem
+    }
+
     private func observePlayerTimeControlStatus() {
         playerTimeControlStatusObservation = player.observe(\.timeControlStatus, options: [.new]) { [weak self] _, _ in
             Task { @MainActor [weak self] in
@@ -1461,6 +1466,7 @@ public final class AVFoundationPlaybackController {
         let generation = currentItemObservationGeneration
         installPeriodicTimeObserver(for: playerItem, generation: generation)
         observeEnd(of: playerItem, generation: generation)
+        observeFailureToPlayToEnd(of: playerItem, generation: generation)
         observePlaybackStall(of: playerItem, generation: generation)
         observeDuration(of: playerItem, generation: generation)
         observeStatus(of: playerItem, generation: generation)
@@ -1481,6 +1487,27 @@ public final class AVFoundationPlaybackController {
                     return
                 }
                 handleCurrentItemDidPlayToEnd(playerItem)
+            }
+        }
+    }
+
+    /// A failure mid-play (the audio output failing to start, a decode
+    /// error) stops the player without failing the item's status, so without
+    /// this the episode would keep showing as playing with a frozen clock.
+    private func observeFailureToPlayToEnd(of playerItem: AVPlayerItem, generation: Int) {
+        currentItemFailedToPlayToEndObserver = NotificationCenter.default.addObserver(
+            forName: AVPlayerItem.failedToPlayToEndTimeNotification,
+            object: playerItem,
+            queue: .main
+        ) { [weak self] notification in
+            let error = notification.userInfo?[AVPlayerItemFailedToPlayToEndTimeErrorKey] as? NSError
+            Task { @MainActor [weak self] in
+                guard let self,
+                      isCurrentItemCallback(playerItem, generation: generation)
+                else {
+                    return
+                }
+                handleFailedCurrentItem(playerItem, error: error)
             }
         }
     }
@@ -1579,6 +1606,10 @@ public final class AVFoundationPlaybackController {
         if let currentItemPlaybackStalledObserver {
             NotificationCenter.default.removeObserver(currentItemPlaybackStalledObserver)
             self.currentItemPlaybackStalledObserver = nil
+        }
+        if let currentItemFailedToPlayToEndObserver {
+            NotificationCenter.default.removeObserver(currentItemFailedToPlayToEndObserver)
+            self.currentItemFailedToPlayToEndObserver = nil
         }
         currentItemDurationObservation?.invalidate()
         currentItemDurationObservation = nil

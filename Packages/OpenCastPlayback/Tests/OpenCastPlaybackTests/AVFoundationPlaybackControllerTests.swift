@@ -340,6 +340,39 @@ struct AVFoundationPlaybackControllerTests {
         }
     }
 
+    @Test("An item that fails to play to its end fails playback instead of showing as playing")
+    func failedToPlayToEndFailsPlayback() async throws {
+        try await AVFoundationPlaybackTestGate.acquire()
+        defer { AVFoundationPlaybackTestGate.release() }
+        let localURL = try VoiceBoostAudioFixture.writeSine(
+            fileExtension: "m4a", settings: VoiceBoostAudioFixture.aacSettings(), duration: 8
+        )
+        defer { try? FileManager.default.removeItem(at: localURL) }
+        let controller = AVFoundationPlaybackController()
+        defer { controller.unload() }
+        var current = episode(duration: 8)
+        current.audioURL = localURL
+        try controller.load(current, startPosition: 0)
+        controller.play()
+        _ = try await waitForPlaybackState(in: controller) { $0 == .playing }
+        let item = try #require(controller.currentItemForTesting)
+
+        // The render pipeline error seen when the audio output fails to start.
+        NotificationCenter.default.post(
+            name: AVPlayerItem.failedToPlayToEndTimeNotification,
+            object: item,
+            userInfo: [AVPlayerItemFailedToPlayToEndTimeErrorKey: NSError(domain: AVFoundationErrorDomain, code: -11800)]
+        )
+
+        let state = try await waitForPlaybackState(in: controller) {
+            if case .failed = $0 { true } else { false }
+        }
+        guard case .failed = state else {
+            Issue.record("Expected failed playback state, got \(state).")
+            return
+        }
+    }
+
     @Test("A repeated media services reset failure before the new item is ready fails playback")
     func repeatedMediaServicesResetItemFailureFails() throws {
         let controller = AVFoundationPlaybackController()
