@@ -11,6 +11,11 @@ nonisolated struct UITestDelayedLocalLibraryCacheStore: LocalLibraryCacheStore {
         return try await base.loadLibrary(activePodcastIDs: activePodcastIDs)
     }
 
+    /// Undelayed: only the episode load is slow.
+    func loadLibraryShows(activePodcastIDs: Set<String>, releasedBy: Date) async throws -> LocalLibraryShowsSnapshot? {
+        try await base.loadLibraryShows(activePodcastIDs: activePodcastIDs, releasedBy: releasedBy)
+    }
+
     func allRefreshLogs() async throws -> [RefreshLogSnapshot] {
         try await base.allRefreshLogs()
     }

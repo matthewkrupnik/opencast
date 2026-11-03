@@ -10,6 +10,11 @@ nonisolated protocol LocalLibraryCacheStore: Sendable {
     /// (each feed's latest log, plus its latest success when the latest is a
     /// failure); the full retained history comes from `allRefreshLogs()`.
     func loadLibrary(activePodcastIDs: Set<String>) async throws -> LocalLibraryCacheSnapshot
+    /// The library without its episodes, plus each active feed's newest
+    /// episode released by `releasedBy`: enough to draw the Library's rows
+    /// in their order before `loadLibrary` reads every episode. Nil when the
+    /// store has no cheaper path than the full load.
+    func loadLibraryShows(activePodcastIDs: Set<String>, releasedBy: Date) async throws -> LocalLibraryShowsSnapshot?
     /// Full retained refresh-log history, newest first (diagnostics surface).
     func allRefreshLogs() async throws -> [RefreshLogSnapshot]
     func episodeDetail(episodeID: String) async throws -> EpisodeDetailSnapshot?
@@ -83,6 +88,10 @@ nonisolated protocol LocalLibraryCacheStore: Sendable {
 }
 
 extension LocalLibraryCacheStore {
+    func loadLibraryShows(activePodcastIDs: Set<String>, releasedBy: Date) async throws -> LocalLibraryShowsSnapshot? {
+        nil
+    }
+
     func upsertCache(from prepared: PreparedFeed, refreshedAt: Date) async throws {
         try await upsertCache(from: prepared.materialized(), refreshedAt: refreshedAt)
     }

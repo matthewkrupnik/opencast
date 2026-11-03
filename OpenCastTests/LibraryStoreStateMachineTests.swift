@@ -431,6 +431,57 @@ struct LibraryStoreStateMachineTests {
         #expect(store.refreshingFeedURLs.isEmpty)
     }
 
+    @Test("The initial load publishes the shows, in release order, before their episodes")
+    func initialLoadPublishesShowsBeforeEpisodes() async throws {
+        let container = try OpenCastModelContainerFactory.make(inMemory: true)
+        let context = ModelContext(container)
+        let older = "https://example.com/shows-first-older.xml"
+        let newer = "https://example.com/shows-first-newer.xml"
+        let sqlite = SQLiteLocalLibraryCacheStore.inMemory()
+        let olderRelease = Date(timeIntervalSince1970: 1_700_000_000)
+        let newerRelease = Date(timeIntervalSince1970: 1_700_100_000)
+        try await sqlite.upsertCache(
+            from: makeSnapshot(feedURL: older, episodeID: "shows-first-older", publishedAt: olderRelease),
+            refreshedAt: .now
+        )
+        try await sqlite.upsertCache(
+            from: makeSnapshot(feedURL: newer, episodeID: "shows-first-newer", publishedAt: newerRelease),
+            refreshedAt: .now
+        )
+        let gates = LoadLibraryGates()
+        let cache = GatedLoadLibraryCacheStore(wrapping: sqlite, gates: gates)
+        let store = LibraryStore(feedService: ScriptedFeedService(scripts: [:]), localCache: cache)
+        // Title order would put the older show first.
+        context.insert(SubscriptionRecord(feedURL: older, title: "Aardvark"))
+        context.insert(SubscriptionRecord(feedURL: newer, title: "Zebra"))
+        try context.save()
+
+        await gates.arm()
+        let loadTask = Task {
+            await store.load(modelContext: context)
+        }
+        await gates.reachedLoad.wait()
+
+        #expect(store.state == .loading)
+        #expect(store.episodes.isEmpty)
+        #expect(Set(store.subscriptions.map(\.feedURL)) == [older, newer])
+        #expect(store.podcastCache(for: newer)?.title == "State Machine Show")
+        #expect(store.latestReleasedEpisodeDate(forPodcastID: newer) == newerRelease)
+        let sorted = LibrarySortOrder.recentEpisodes.sorted(
+            store.subscriptions,
+            latestReleaseDate: store.latestReleasedEpisodeDate(forPodcastID:)
+        )
+        #expect(sorted.map(\.feedURL) == [newer, older])
+
+        await gates.loadRelease.release()
+        await loadTask.value
+
+        #expect(store.state == .idle)
+        #expect(store.episodes.count == 2)
+        #expect(store.preloadedLatestReleaseDateByPodcastID == nil)
+        #expect(store.latestReleasedEpisodeDate(forPodcastID: older) == olderRelease)
+    }
+
     // MARK: - Data nuke reset
 
     @Test("resetAfterDataNuke empties every facade-readable surface")
@@ -831,6 +882,10 @@ private struct GatedLoadLibraryCacheStore: LocalLibraryCacheStore {
             await gates.loadRelease.wait()
         }
         return try await wrapped.loadLibrary(activePodcastIDs: activePodcastIDs)
+    }
+
+    func loadLibraryShows(activePodcastIDs: Set<String>, releasedBy: Date) async throws -> LocalLibraryShowsSnapshot? {
+        try await wrapped.loadLibraryShows(activePodcastIDs: activePodcastIDs, releasedBy: releasedBy)
     }
 
     func allRefreshLogs() async throws -> [RefreshLogSnapshot] {

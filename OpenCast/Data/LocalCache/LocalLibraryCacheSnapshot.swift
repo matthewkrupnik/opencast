@@ -15,3 +15,9 @@ nonisolated struct LocalLibraryCacheSnapshot: Sendable {
         refreshLogs: []
     )
 }
+
+/// `LocalLibraryCacheStore.loadLibraryShows`: `library` carries no episodes.
+nonisolated struct LocalLibraryShowsSnapshot: Sendable {
+    let library: LocalLibraryCacheSnapshot
+    let latestReleaseDateByPodcastID: [String: Date]
+}

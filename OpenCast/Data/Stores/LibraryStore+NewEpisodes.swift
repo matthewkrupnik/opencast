@@ -46,6 +46,9 @@ extension LibraryStore {
     /// `newEpisodeReferenceDate`, regardless of played state; nil when the
     /// show has no dated, released episode.
     func latestReleasedEpisodeDate(forPodcastID podcastID: String) -> Date? {
+        if let preloadedLatestReleaseDateByPodcastID {
+            return preloadedLatestReleaseDateByPodcastID[podcastID]
+        }
         let episodes = episodes
         let asOf = newEpisodeReferenceDate
         return episodeReleaseOrderByPodcastID[podcastID]?

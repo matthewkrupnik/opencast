@@ -5164,6 +5164,31 @@ final class OpenCastUITests: XCTestCase {
         attachSmokeScreenshot(named: "playlists_library_rows_after_create")
     }
 
+    /// The shows and playlists draw while the episode load is still running,
+    /// instead of a spinner.
+    @MainActor
+    func testSeededLibraryDrawsRowsBeforeEpisodesLoad() throws {
+        // Long enough to outlast launch and navigation on a slow runner.
+        let loadDelay: TimeInterval = 20
+        let app = makeSeededApp(seedsPlaylists: true)
+        app.launchEnvironment["OPENCAST_UI_TEST_LIBRARY_LOAD_DELAY_MILLISECONDS"] = String(Int(loadDelay * 1000))
+        app.launch()
+
+        openLibrary(in: app)
+        let showRow = app.descendants(matching: .any)
+            .matching(identifier: Self.seededSubscriptionRowIdentifier).firstMatch
+        assertExists(showRow, named: "Seeded show row")
+        assertLibraryPlaylistCount(3, in: app)
+        // Playlist counts need the episodes, so their absence shows the
+        // rows drew before the delayed episode load finished.
+        let episodeCount = app.staticTexts.matching(NSPredicate(format: "label == %@", "1 episode")).firstMatch
+        XCTAssertFalse(episodeCount.exists, "The Library rows should draw before the episodes load")
+        attachSmokeScreenshot(named: "library_rows_before_episodes")
+
+        XCTAssertTrue(episodeCount.waitForExistence(timeout: loadDelay + 10), "Playlist counts should appear once the episodes load")
+        attachSmokeScreenshot(named: "library_rows_after_episodes")
+    }
+
     @MainActor
     func testSeededPlaylistsLightModeScreenshots() throws {
         let app = makeSeededApp(forcesDarkMode: false, forcesLightMode: true, seedsPlaylists: true)

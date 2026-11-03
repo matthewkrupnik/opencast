@@ -102,6 +102,8 @@ struct LibraryView: View {
         switch appModel.library.state {
         case .loading where subscriptions.isEmpty:
             List {
+                // Loaded before the library, so they draw at once.
+                playlistsSection
                 ProgressView()
             }
         case .failed(let message) where subscriptions.isEmpty:

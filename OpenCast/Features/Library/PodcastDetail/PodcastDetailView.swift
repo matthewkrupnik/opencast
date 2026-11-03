@@ -166,7 +166,12 @@ struct PodcastDetailView: View {
                     }
 
                     Section("Episodes") {
-                        if allEpisodes.isEmpty {
+                        if allEpisodes.isEmpty, appModel.library.state == .loading {
+                            // Opened from the Library's rows, which draw
+                            // before the episodes load.
+                            ProgressView()
+                                .frame(maxWidth: .infinity)
+                        } else if allEpisodes.isEmpty {
                             ContentUnavailableView(
                                 "No Episodes Yet",
                                 systemImage: "waveform",

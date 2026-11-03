@@ -187,6 +187,33 @@ actor SQLiteLocalLibraryCacheStore: LocalLibraryCacheStore {
         )
     }
 
+    func loadLibraryShows(activePodcastIDs: Set<String>, releasedBy: Date) throws -> LocalLibraryShowsSnapshot? {
+        let library = try loadLibrary(activePodcastIDs: [])
+        var latestReleaseDateByPodcastID: [String: Date] = [:]
+        if !activePodcastIDs.isEmpty {
+            let db = try database()
+            try query(
+                """
+                SELECT podcast_id, MAX(published_at)
+                FROM episode_cache
+                WHERE podcast_id IN (SELECT value FROM json_each(?)) AND published_at <= ?
+                GROUP BY podcast_id
+                """,
+                operation: "latest release load",
+                db: db,
+                bindings: { statement in
+                    try bind(jsonArray(activePodcastIDs), at: 1, statement: statement, db: db, operation: "latest release load")
+                    try bind(releasedBy, at: 2, statement: statement, db: db, operation: "latest release load")
+                }
+            ) { statement in
+                if let podcastID = columnText(statement, 0), let releasedAt = columnDate(statement, 1) {
+                    latestReleaseDateByPodcastID[podcastID] = releasedAt
+                }
+            }
+        }
+        return LocalLibraryShowsSnapshot(library: library, latestReleaseDateByPodcastID: latestReleaseDateByPodcastID)
+    }
+
     func allRefreshLogs() throws -> [RefreshLogSnapshot] {
         let db = try database()
         var refreshLogs: [RefreshLogSnapshot] = []

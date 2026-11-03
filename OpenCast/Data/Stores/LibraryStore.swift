@@ -172,6 +172,11 @@ final class LibraryStore {
     /// values: a refetch refreshes a live record's `subscribedAt` without an
     /// Observation notification, and the records compare equal by reference.
     private(set) var newEpisodeCutoffByFeedURL: [String: Date] = [:]
+    /// Each show's newest released episode date from the launch preload,
+    /// standing in for `episodes` until the first full load publishes them;
+    /// nil from then on. Keeps the Recent Episodes order steady as the
+    /// episodes arrive.
+    private(set) var preloadedLatestReleaseDateByPodcastID: [String: Date]?
     /// O(1) search-session invalidation token. Every publication that changes
     /// `episodes` rebuilds the lookup indexes and advances this revision.
     private(set) var episodeSearchCorpusRevision = 0
@@ -264,6 +269,7 @@ final class LibraryStore {
         state = .loading
         lastErrorMessage = nil
         await importLegacyCacheIfNeeded(modelContext: modelContext)
+        await publishShowsBeforeEpisodes(modelContext: modelContext)
         let didLoad: Bool
         do {
             try await reloadFromStore(modelContext: modelContext)
@@ -803,6 +809,7 @@ final class LibraryStore {
         lastSyncedProgressProbe = nil
         newEpisodeReferenceDate = now()
         newEpisodeCutoffByFeedURL.removeAll()
+        preloadedLatestReleaseDateByPodcastID = nil
         // Derived indexes rebuild from the now-empty sources.
         rebuildEpisodeIndexes()
         rebuildLatestRefreshLogByFeedURL()
@@ -1313,6 +1320,34 @@ final class LibraryStore {
         }
     }
 
+    /// Publishes the Library's rows before the full load, which reads every
+    /// cached episode: the shows, their podcast rows and refresh state, and
+    /// each show's newest release date. Episode-derived state (new-episode
+    /// badges, playlist contents) fills in with the full load. Best effort:
+    /// the full load reports any failure.
+    private func publishShowsBeforeEpisodes(modelContext: ModelContext) async {
+        let generation = reloadGeneration
+        guard let feedURLs = try? activeSubscriptionFeedURLs(modelContext: modelContext),
+              let shows = try? await localCache.loadLibraryShows(activePodcastIDs: feedURLs, releasedBy: now()),
+              generation == reloadGeneration,
+              episodes.isEmpty,
+              // Fetched after the suspension, like the full load's.
+              let activeSubscriptions = try? modelContext.fetch(activeSubscriptionsDescriptor())
+        else {
+            return
+        }
+        subscriptions = activeSubscriptions
+        activePodcastIDs = Set(activeSubscriptions.map(\.feedURL))
+        newEpisodeCutoffByFeedURL = Self.newEpisodeCutoffs(activeSubscriptions)
+        podcastCacheByFeedURL = shows.library.podcastsByFeedURL
+        refreshLogs = shows.library.refreshLogs
+        incompleteFeeds = shows.library.incompleteFeeds
+        processingRefreshPodcastIDs = shows.library.processingRefreshPodcastIDs
+        automaticRetryAfterByFeedURL = shows.library.automaticRetryAfterByFeedURL
+        preloadedLatestReleaseDateByPodcastID = shows.latestReleaseDateByPodcastID
+        rebuildLatestRefreshLogByFeedURL()
+    }
+
     private func loadAndPublishLibrary(modelContext: ModelContext, generation: Int) async throws {
         let cacheSnapshot = try await localCache.loadLibrary(
             activePodcastIDs: activeSubscriptionFeedURLs(modelContext: modelContext)
@@ -1384,6 +1419,7 @@ final class LibraryStore {
         indexes: LibraryEpisodeIndexes
     ) {
         self.episodes = episodes
+        preloadedLatestReleaseDateByPodcastID = nil
         visibleEpisodeIDs = indexes.visibleIDs
         podcastCacheByFeedURL = cacheSnapshot.podcastsByFeedURL
         refreshLogs = cacheSnapshot.refreshLogs
