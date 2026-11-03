@@ -183,7 +183,11 @@ struct LibraryView: View {
         if !playlists.isEmpty {
             Section {
                 ForEach(playlists) { summary in
-                    PlaylistRowView(summary: summary)
+                    PlaylistRowView(
+                        summary: summary,
+                        episodeCount: playlistEpisodeCount(for: summary),
+                        hasUnplayedEpisodes: playlistHasUnplayedEpisodes(summary)
+                    )
                         .modifier(PlaylistCollectionActionsModifier(summary: summary, onRename: requestRename))
                 }
             } header: {
@@ -202,7 +206,12 @@ struct LibraryView: View {
                 sectionTitle("Playlists")
                 LazyVGrid(columns: metrics.columns, spacing: metrics.rowSpacing) {
                     ForEach(playlists) { summary in
-                        LibraryPlaylistTileView(summary: summary, metrics: metrics)
+                        LibraryPlaylistTileView(
+                            summary: summary,
+                            metrics: metrics,
+                            episodeCount: playlistEpisodeCount(for: summary),
+                            hasUnplayedEpisodes: playlistHasUnplayedEpisodes(summary)
+                        )
                             .modifier(
                                 PlaylistCollectionActionsModifier(
                                     summary: summary,
@@ -216,6 +225,16 @@ struct LibraryView: View {
                 .padding(.vertical, 8)
             }
         }
+    }
+
+    /// Nil until the stores hydrate, when every playlist would read as empty.
+    private func playlistEpisodeCount(for summary: PlaylistSummary) -> Int? {
+        appModel.coreStoresHydrated ? appModel.playlistEpisodeCount(for: summary) : nil
+    }
+
+    /// True until the stores hydrate, so no playlist greys out while loading.
+    private func playlistHasUnplayedEpisodes(_ summary: PlaylistSummary) -> Bool {
+        !appModel.coreStoresHydrated || appModel.hasPlaylistPlaybackCandidates(summary.playlistID)
     }
 
     private func sectionTitle(_ title: LocalizedStringKey) -> some View {
