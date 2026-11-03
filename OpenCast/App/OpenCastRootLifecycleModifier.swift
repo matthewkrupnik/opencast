@@ -85,6 +85,7 @@ struct OpenCastRootLifecycleModifier: ViewModifier {
             appModel.setAutoDownloadsScene(autoDownloadSceneID, isActive: true)
             appModel.resumeEnvironmentalAdFreePassIfNeeded(modelContext: modelContext)
             appModel.resumeInterruptedTranscriptAnalyses(modelContext: modelContext)
+            appModel.retryFailedSmartSpeedPausePreparations()
             appModel.transcriptIntelligence.refreshAvailability()
             appModel.analysisUsage.refreshCurrentMonth()
             startForegroundSyncedDataRefresh()

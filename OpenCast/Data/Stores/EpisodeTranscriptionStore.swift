@@ -924,12 +924,13 @@ final class EpisodeTranscriptionStore {
                 attemptedComputeProfile: attemptedComputeProfile,
                 modelContext: modelContext
             )
-        case .environmentalStorage:
+        case .environmentalStorage, .environmentalSuspension:
             return handleEnvironmentalStorageFailure(
                 episodeID: episodeID,
                 relativePath: relativePath,
                 error: error,
                 engine: engine,
+                classification: classification,
                 modelContext: modelContext
             )
         case .failed:
@@ -945,12 +946,14 @@ final class EpisodeTranscriptionStore {
 
     /// Whisper-perf G2: disk exhaustion during the audio spill. A lower
     /// compute rung cannot free storage, so skip the retry ladder and
-    /// interrupt (resumable) directly.
+    /// interrupt (resumable) directly. A decode that timed out while the
+    /// app was suspended takes the same path.
     private func handleEnvironmentalStorageFailure(
         episodeID: String,
         relativePath: String?,
         error: any Error,
         engine: EpisodeTranscriptionEngine,
+        classification: TranscriptionFailureClassification,
         modelContext: ModelContext
     ) -> TranscriptionFailureAction {
         do {
@@ -959,7 +962,7 @@ final class EpisodeTranscriptionStore {
             }
             recordFailureDiagnostics(error: error, record: record)
             AdFreePassBackgroundRunLog.record(
-                "transcription environmental storage failure action=interrupted episodeID=\(episodeID) completed=\(record.completedDuration.backgroundLogSeconds) checkpoints=\(record.checkpointCount)"
+                "transcription environmental \(classification == .environmentalSuspension ? "suspension" : "storage") failure action=interrupted episodeID=\(episodeID) completed=\(record.completedDuration.backgroundLogSeconds) checkpoints=\(record.checkpointCount)"
             )
             markInterruptedAfterEnvironmentalFailure(
                 record: record,

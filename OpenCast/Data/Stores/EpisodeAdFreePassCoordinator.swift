@@ -836,8 +836,7 @@ final class EpisodeAdFreePassCoordinator {
                 let failedEntry = entries.removeFirst()
                 let message = failureMessage(for: failedEntry.item.episodeID)
                     ?? "Unable to save the ad detection request."
-                drainFailedCount += 1
-                drainOutcomes.append(AdFreePassQueueItemOutcome(
+                recordOutcome(AdFreePassQueueItemOutcome(
                     episodeID: failedEntry.item.episodeID,
                     episodeTitle: failedEntry.item.episode.title,
                     artworkURL: failedEntry.item.episode.artworkURL,
@@ -879,8 +878,7 @@ final class EpisodeAdFreePassCoordinator {
 
             switch outcome {
             case .completed(let zoneCount):
-                drainCompletedCount += 1
-                drainOutcomes.append(AdFreePassQueueItemOutcome(
+                recordOutcome(AdFreePassQueueItemOutcome(
                     episodeID: entry.item.episodeID,
                     episodeTitle: entry.item.episode.title,
                     artworkURL: entry.item.episode.artworkURL,
@@ -888,8 +886,7 @@ final class EpisodeAdFreePassCoordinator {
                 ))
                 removePersistedItem(episodeID: entry.item.episodeID, modelContext: entry.deps.modelContext)
             case .failed(let message):
-                drainFailedCount += 1
-                drainOutcomes.append(AdFreePassQueueItemOutcome(
+                recordOutcome(AdFreePassQueueItemOutcome(
                     episodeID: entry.item.episodeID,
                     episodeTitle: entry.item.episode.title,
                     artworkURL: entry.item.episode.artworkURL,
@@ -911,8 +908,7 @@ final class EpisodeAdFreePassCoordinator {
                 endDrain(state: entries.isEmpty ? .idle : .pausedInterrupted, terminal: .interrupted)
                 return
             case .keyRequired(let reason):
-                drainFailedCount += 1
-                drainOutcomes.append(AdFreePassQueueItemOutcome(
+                recordOutcome(AdFreePassQueueItemOutcome(
                     episodeID: entry.item.episodeID,
                     episodeTitle: entry.item.episode.title,
                     artworkURL: entry.item.episode.artworkURL,
@@ -1780,6 +1776,25 @@ final class EpisodeAdFreePassCoordinator {
             FailureMessage.transcriptCancelled
         default:
             FailureMessage.transcriptFailed
+        }
+    }
+
+    /// One row per episode: a retry's result replaces the earlier one,
+    /// so a success clears the failure it retried.
+    private func recordOutcome(_ outcome: AdFreePassQueueItemOutcome) {
+        if let index = drainOutcomes.firstIndex(where: { $0.episodeID == outcome.episodeID }) {
+            adjustDrainCount(for: drainOutcomes.remove(at: index).kind, by: -1)
+        }
+        drainOutcomes.append(outcome)
+        adjustDrainCount(for: outcome.kind, by: 1)
+    }
+
+    private func adjustDrainCount(for kind: AdFreePassQueueItemOutcome.Kind, by delta: Int) {
+        switch kind {
+        case .completed:
+            drainCompletedCount += delta
+        case .failed, .keyRequired:
+            drainFailedCount += delta
         }
     }
 

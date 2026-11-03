@@ -4,6 +4,7 @@ enum TranscriptionFailureClassification: Equatable {
     case cancelled
     case environmentalCompute
     case environmentalStorage
+    case environmentalSuspension
     case failed
 }
 
@@ -28,6 +29,13 @@ struct TranscriptionFailureClassifier {
             return .environmentalStorage
         }
 
+        // An app suspended mid-decode resumes to find the out-of-process
+        // audio converter timed out; the audio itself is fine, so the
+        // episode must interrupt (resumable), not fail terminally.
+        if isAudioDecoderTimeout(nsError) {
+            return .environmentalSuspension
+        }
+
         guard environment.isConstrained,
               isComputeDomain(nsError.domain)
         else {
@@ -49,6 +57,11 @@ struct TranscriptionFailureClassifier {
             return isStorageExhaustion(underlying)
         }
         return false
+    }
+
+    /// AVAudioFile's read error for the converter's '!tim' timeout.
+    private static func isAudioDecoderTimeout(_ error: NSError) -> Bool {
+        error.domain == "com.apple.coreaudio.avfaudio" && error.code == 0x2174_696D
     }
 
     private static func isCancellation(_ error: NSError) -> Bool {

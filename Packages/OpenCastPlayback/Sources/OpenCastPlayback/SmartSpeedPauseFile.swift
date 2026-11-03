@@ -1,4 +1,5 @@
 import Foundation
+import os
 
 /// The pauses found in a download, saved beside it as `<file>.smartspeed`.
 /// Finding them decodes the whole file (seconds for a long episode);
@@ -63,11 +64,32 @@ nonisolated enum SmartSpeedPauseFile {
 public actor SmartSpeedPausePreparer {
     public static let shared = SmartSpeedPausePreparer()
 
+    private static let logger = Logger(subsystem: "OpenCastPlayback", category: "SmartSpeedPausePreparer")
+
+    /// Files whose analysis failed, such as a decode cut off when iOS
+    /// suspended the app, kept for `retryFailedPreparations()`.
+    private var failedFileURLs: Set<URL> = []
+
     public func preparePauses(for fileURL: URL) {
         guard fileURL.isFileURL, SmartSpeedPauseFile.load(for: fileURL) == nil else {
             return
         }
-        _ = try? SmartSpeedPauseFile.analyzeAndSave(for: fileURL)
+        do {
+            _ = try SmartSpeedPauseFile.analyzeAndSave(for: fileURL)
+            failedFileURLs.remove(fileURL)
+        } catch {
+            failedFileURLs.insert(fileURL)
+            Self.logger.error("smart speed pause preparation failed file=\(fileURL.lastPathComponent, privacy: .public) error=\(String(describing: error), privacy: .public)")
+        }
+    }
+
+    /// Tries the failed files again, skipping any since deleted.
+    public func retryFailedPreparations() {
+        let fileURLs = failedFileURLs
+        failedFileURLs = []
+        for fileURL in fileURLs where FileManager.default.fileExists(atPath: fileURL.path) {
+            preparePauses(for: fileURL)
+        }
     }
 
     /// The saved pauses beside a download, for removal along with it.

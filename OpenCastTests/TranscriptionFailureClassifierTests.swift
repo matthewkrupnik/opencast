@@ -83,6 +83,21 @@ struct TranscriptionFailureClassifierTests {
         #expect(TranscriptionFailureClassifier.classify(wrapped, environment: .foreground) == .environmentalStorage)
     }
 
+    @Test("An audio decode timeout is an environmental suspension in any scene state")
+    func audioDecodeTimeoutClassifiesAsEnvironmentalSuspension() {
+        let background = EpisodeTranscriptionFailureEnvironment(
+            sceneState: .background,
+            isProtectedDataAvailable: true
+        )
+        // What SpeechAnalyzer threw after iOS suspended the app mid-decode.
+        let timeout = NSError(domain: "com.apple.coreaudio.avfaudio", code: 561_277_293)
+        let otherDecodeError = NSError(domain: "com.apple.coreaudio.avfaudio", code: 1_954_115_647)
+
+        #expect(TranscriptionFailureClassifier.classify(timeout, environment: background) == .environmentalSuspension)
+        #expect(TranscriptionFailureClassifier.classify(timeout, environment: .foreground) == .environmentalSuspension)
+        #expect(TranscriptionFailureClassifier.classify(otherDecodeError, environment: background) == .failed)
+    }
+
     private func classify(
         domain: String,
         environment: EpisodeTranscriptionFailureEnvironment

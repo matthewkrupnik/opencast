@@ -154,6 +154,45 @@ struct EpisodeAdFreePassCoordinatorTests {
         #expect(terminals == [.drained(completedCount: 2, failedCount: 1)])
     }
 
+    @Test("A retry that succeeds in the same drain replaces the episode's failed row")
+    func retryOutcomeReplacesEarlierFailure() async throws {
+        let analysisEnvironment = ScriptedAdAnalysisRunEnvironment()
+        analysisEnvironment.answerForRun = { run in
+            run == 1 ? .failure(.rejected(status: 400), status: 400, listener: .requestRejected) : nil
+        }
+        let downloader = GatedEpisodeAudioDownloader()
+        let fixture = try await makeFixture(downloader: downloader, analysisEnvironment: analysisEnvironment)
+        let retried = makeEpisode(episodeID: "queue-retry-1")
+        let other = makeEpisode(episodeID: "queue-retry-2")
+        var terminals: [AdFreePassQueueTerminalOutcome] = []
+        fixture.coordinator.onQueueTerminal = { terminals.append($0) }
+
+        fixture.enqueue(retried)
+        fixture.enqueue(other)
+        downloader.release(urlContaining: retried.episodeID)
+        #expect(await waitUntil {
+            fixture.coordinator.activeEpisodeID == other.episodeID
+        })
+        guard case .failed = fixture.coordinator.queueStatus(for: retried.episodeID) else {
+            Issue.record("expected the first attempt to fail")
+            return
+        }
+
+        // Retried while the drain is still busy with the other episode.
+        fixture.enqueue(retried)
+        downloader.release(urlContaining: other.episodeID)
+
+        #expect(await waitUntil {
+            fixture.coordinator.queueState == .idle && terminals.count == 1
+        })
+        #expect(fixture.coordinator.drainOutcomes.map(\.episodeID) == [other.episodeID, retried.episodeID])
+        guard case .completed = fixture.coordinator.queueStatus(for: retried.episodeID) else {
+            Issue.record("expected the retry's success to replace the failure")
+            return
+        }
+        #expect(terminals == [.drained(completedCount: 2, failedCount: 0)])
+    }
+
     @Test("hasCurrentCompletedAnalysis caches an off-main verdict keyed by record stamps")
     func hasCurrentCompletedAnalysisCachesOffMainVerdict() async throws {
         let fixture = try await makeFixture(

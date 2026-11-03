@@ -115,6 +115,24 @@ struct SmartSpeedPlaybackTests {
         #expect(controller.position > 2.95)
     }
 
+    @Test("A failed pause preparation is tried again on retry")
+    func failedPreparationRetries() async throws {
+        let fixture = try Self.writeFixture()
+        defer { Self.remove(fixture) }
+        let url = fixture.deletingLastPathComponent()
+            .appendingPathComponent("unreadable-\(UUID().uuidString).m4a")
+        defer { Self.remove(url) }
+        try Data("not audio".utf8).write(to: url)
+
+        await SmartSpeedPausePreparer.shared.preparePauses(for: url)
+        #expect(!SmartSpeedPauseFile.exists(for: url))
+
+        try FileManager.default.removeItem(at: url)
+        try FileManager.default.copyItem(at: fixture, to: url)
+        await SmartSpeedPausePreparer.shared.retryFailedPreparations()
+        #expect(SmartSpeedPauseFile.load(for: url) != nil)
+    }
+
     @Test("Unusable saved pauses fall back to playing the file while analyzing")
     func stalePauseFileDoesNotHoldPlayback() async throws {
         try await AVFoundationPlaybackTestGate.acquire()

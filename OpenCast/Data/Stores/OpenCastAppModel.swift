@@ -2936,6 +2936,17 @@ final class OpenCastAppModel {
         }
     }
 
+    /// Finds again the pauses a suspended background decode cut short.
+    func retryFailedSmartSpeedPausePreparations() {
+        guard playbackSettings.isSmartSpeedEnabled else {
+            return
+        }
+
+        Task(priority: .utility) {
+            await SmartSpeedPausePreparer.shared.retryFailedPreparations()
+        }
+    }
+
     /// A finished download of an auto-detect show queues its pass right
     /// away.
     private func autoDetectAdsOnDownloadIfQualified(
