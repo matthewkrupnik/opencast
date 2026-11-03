@@ -19,7 +19,8 @@ struct OpenCastTabRootView: View {
                         onOpenPlaylist: openPlaylist(on: .library),
                         onOpenAdDetectionQueue: {
                             navigationPaths[.library].append(.adDetectionQueue)
-                        }
+                        },
+                        onOpenNotes: { navigationPaths[.library].append(.notes) }
                     )
                     .withOpenCastDestinations(
                         onOpenEpisode: openEpisode(on: .library),

@@ -9,7 +9,12 @@ struct NowPlayingMoreMenu: View {
     let canShowShow: Bool
     /// The name of the playlist playback came from; nil when there is none.
     let playlistSourceName: String?
+    /// Whether Private Notes appears; follows the Playback setting that shows
+    /// the note circle, so a listener who hasn't opted in doesn't see it here
+    /// either. Adding a note is the circle's job, never the menu's.
+    let showsPrivateNotes: Bool
     let onTranscriptAction: () -> Void
+    let onShowNotes: () -> Void
     let onShowDescription: () -> Void
     let onShowShow: () -> Void
     let onShowPlaylist: () -> Void
@@ -28,6 +33,10 @@ struct NowPlayingMoreMenu: View {
                 systemImage: "text.quote",
                 action: onTranscriptAction
             )
+            if showsPrivateNotes {
+                Button("Private Notes", systemImage: "note.text", action: onShowNotes)
+                    .accessibilityIdentifier("Menu Private Notes")
+            }
             Button("Show Description", systemImage: "info.circle", action: onShowDescription)
                 .disabled(!canShowDescription)
             Button("Go to Show", systemImage: "rectangle.stack", action: onShowShow)

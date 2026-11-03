@@ -98,7 +98,7 @@ struct OpenCastModelTests {
         }
     }
 
-    @Test("Playlists live in the synced store and the full schema is the union of both stores")
+    @Test("Playlists are synced, private notes are local, and the full schema is the union of both stores")
     func playlistModelsLiveInTheSyncedStore() {
         let syncedNames = Set(OpenCastModelContainerFactory.syncedSchema.entities.map(\.name))
         let localNames = Set(OpenCastModelContainerFactory.localSchema.entities.map(\.name))
@@ -113,8 +113,11 @@ struct OpenCastModelTests {
         #expect(playlistNames.isSubset(of: syncedNames))
         #expect(localNames.isDisjoint(with: playlistNames))
         #expect(localNames.isDisjoint(with: syncedNames))
+        let noteName = String(describing: EpisodeNoteRecord.self)
+        #expect(localNames.contains(noteName))
+        #expect(!syncedNames.contains(noteName))
         #expect(fullNames == syncedNames.union(localNames))
-        #expect(fullNames.count == 17)
+        #expect(fullNames.count == 18)
     }
 
     @Test("The device-local store location names the local store file")

@@ -21,6 +21,8 @@ struct NowPlayingSkipZoneRail: View {
     /// Chapter start times, drawn as dots so they read like the stock
     /// slider's ticks without changing the slider itself.
     var chapterMarkers: [TimeInterval] = []
+    /// Private note times, drawn like chapter dots in the accent color.
+    var noteMarkers: [TimeInterval] = []
     /// Where the thumb sits, as a fraction of the track, so its area is left
     /// clear.
     var thumbFraction: Double = 0
@@ -34,6 +36,7 @@ struct NowPlayingSkipZoneRail: View {
             drawZones(displayOnlyZones, dimmed: true, in: &rail, size: size)
             drawZones(zones, dimmed: false, in: &rail, size: size)
             drawChapterMarkers(in: &rail, size: size)
+            drawNoteMarkers(in: &rail, size: size)
         }
         .allowsHitTesting(false)
         .accessibilityHidden(true)
@@ -75,15 +78,44 @@ struct NowPlayingSkipZoneRail: View {
 
         let diameter = min(Self.markerDiameter, Self.trackHeight)
         for marker in chapterMarkers {
-            let x = xPosition(for: marker, width: size.width)
-            let rect = CGRect(
-                x: (x - diameter / 2).clamped(to: 0...max(size.width - diameter, 0)),
-                y: (size.height - diameter) / 2,
-                width: diameter,
-                height: diameter
+            context.fill(
+                Path(ellipseIn: markerRect(for: marker, diameter: diameter, size: size)),
+                with: .color(.secondary)
             )
-            context.fill(Path(ellipseIn: rect), with: .color(.secondary))
         }
+    }
+
+    /// Without color, note dots become rings so they differ from chapter dots
+    /// by shape as well.
+    private func drawNoteMarkers(in context: inout GraphicsContext, size: CGSize) {
+        guard duration.isFinite, duration > 0, size.width > 0, size.height > 0 else {
+            return
+        }
+
+        let lineWidth: CGFloat = 1
+        let diameter = min(Self.markerDiameter + (differentiateWithoutColor ? 1 : 0), size.height)
+        for marker in noteMarkers {
+            let rect = markerRect(for: marker, diameter: diameter, size: size)
+            if differentiateWithoutColor {
+                context.stroke(
+                    Path(ellipseIn: rect.insetBy(dx: lineWidth / 2, dy: lineWidth / 2)),
+                    with: .color(.accentColor),
+                    lineWidth: lineWidth
+                )
+            } else {
+                context.fill(Path(ellipseIn: rect), with: .color(.accentColor))
+            }
+        }
+    }
+
+    private func markerRect(for time: TimeInterval, diameter: CGFloat, size: CGSize) -> CGRect {
+        let x = xPosition(for: time, width: size.width)
+        return CGRect(
+            x: (x - diameter / 2).clamped(to: 0...max(size.width - diameter, 0)),
+            y: (size.height - diameter) / 2,
+            width: diameter,
+            height: diameter
+        )
     }
 
     private func rect(for zone: PlaybackSkipZone, size: CGSize) -> CGRect? {
@@ -148,6 +180,7 @@ struct NowPlayingSkipZoneRail: View {
                     PlaybackSkipZone(id: 4, startTime: 470, endTime: 520)
                 ],
                 chapterMarkers: [90, 240, 420],
+                noteMarkers: [0, 200, 600],
                 thumbFraction: 86.0 / 600
             )
         }

@@ -10,6 +10,7 @@ struct NowPlayingProgressView: View {
     /// out of the slider itself: the stock tick initializer turns the control
     /// into a discrete slider that snaps to its ticks, which breaks scrubbing.
     var chapterBoundaries: [TimeInterval] = []
+    var noteTimestamps: [TimeInterval] = []
     @Binding var scrubPosition: TimeInterval
     let onEditingChanged: (Bool) -> Void
 
@@ -20,16 +21,19 @@ struct NowPlayingProgressView: View {
                 in: 0...sliderUpperBound,
                 onEditingChanged: onEditingChanged
             )
+            .accessibilityHint(noteTimestamps.isEmpty ? "" : "Notes marked at " + noteTimestamps.sorted().map { $0.formattedPlaybackDuration }.joined(separator: ", "))
             .accessibilityLabel("Playback Progress")
             .accessibilityIdentifier("Playback Progress")
             .accessibilityValue(progressAccessibilityValue)
             .overlay {
-                if !zones.isEmpty || !displayOnlyZones.isEmpty || !chapterMarkers.isEmpty {
+                let noteMarkers = Self.noteMarkers(duration: duration, timestamps: noteTimestamps)
+                if !zones.isEmpty || !displayOnlyZones.isEmpty || !chapterMarkers.isEmpty || !noteMarkers.isEmpty {
                     NowPlayingSkipZoneRail(
                         duration: sliderUpperBound,
                         zones: zones,
                         displayOnlyZones: displayOnlyZones,
                         chapterMarkers: chapterMarkers,
+                        noteMarkers: noteMarkers,
                         thumbFraction: scrubPosition / sliderUpperBound
                     )
                 }
@@ -61,6 +65,15 @@ struct NowPlayingProgressView: View {
             return []
         }
         return chapterBoundaries.filter { $0 > 0 && $0 < duration }
+    }
+
+    /// Unlike chapters, a note at 0 or at the very end keeps its marker; the
+    /// rail clamps those dots to its edges.
+    static func noteMarkers(duration: TimeInterval?, timestamps: [TimeInterval]) -> [TimeInterval] {
+        guard let duration, duration.isFinite, duration > 0 else {
+            return []
+        }
+        return timestamps.filter { $0.isFinite && $0 >= 0 && $0 <= duration }
     }
 
     private var remainingDurationText: String {

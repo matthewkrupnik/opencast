@@ -9,6 +9,9 @@ struct EpisodeMoreMenu: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(AnalysisKeyNoticeGate.self) private var noticeGate: AnalysisKeyNoticeGate?
 
+    @State private var noteDraft: EpisodeNoteDraft?
+    @State private var noteErrorMessage: String?
+
     let episode: EpisodeListItemSnapshot
     let isPlayed: Bool
     let hasProgressRecord: Bool
@@ -22,6 +25,8 @@ struct EpisodeMoreMenu: View {
                 EpisodeShareMenu(episode: episode)
             }
             progressActions
+            Button("Add Episode Note", systemImage: "square.and.pencil", action: addEpisodeNote)
+                .accessibilityIdentifier("Add Whole Episode Note")
             Divider()
             downloadActions
             transcriptActions
@@ -30,6 +35,22 @@ struct EpisodeMoreMenu: View {
             Button("Episode Diagnostics", systemImage: "stethoscope", action: onShowEpisodeDiagnostics)
         } label: {
             Label("Episode Actions", systemImage: "ellipsis.circle")
+        }
+        .sheet(item: $noteDraft) { draft in
+            AddEpisodeNoteSheet(draft: draft)
+        }
+        .alert("Couldn’t Open Episode Note", item: $noteErrorMessage) { _ in
+        } message: { message in
+            Text(message)
+        }
+    }
+
+    private func addEpisodeNote() {
+        do {
+            let existing = try EpisodeNoteStore.wholeEpisodeNote(for: episode.episodeID, in: modelContext)
+            noteDraft = .wholeEpisode(episode: episode, existing: existing)
+        } catch {
+            noteErrorMessage = error.localizedDescription
         }
     }
 

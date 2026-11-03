@@ -10,6 +10,8 @@ struct NowPlayingView: View {
     @Environment(\.modelContext) private var modelContext
     @State private var playPauseFeedback = 0
     @State private var skipFeedback = 0
+    @State private var notePlaybackSession: EpisodeNotePlaybackSession?
+    @State private var noteDraft: EpisodeNoteDraft?
     @State private var utilitySheet: PlayerUtilitySheet?
     @State private var isVoiceBoostEnabled = true
     @State private var noticeGate = AnalysisKeyNoticeGate()
@@ -91,7 +93,7 @@ struct NowPlayingView: View {
                         }
                         .layoutPriority(0)
 
-                        NowPlayingProgressSection(onShowChapters: { utilitySheet = .chapters })
+                        NowPlayingProgressSection(episodeID: episode.id.rawValue, onShowChapters: { utilitySheet = .chapters })
                             .padding(.top, 4)
                             .layoutPriority(2)
 
@@ -129,8 +131,10 @@ struct NowPlayingView: View {
 
                         NowPlayingUtilityControls(
                             rate: appModel.playback.rate,
+                            availableWidth: metrics.contentWidth,
                             onShowSpeed: { utilitySheet = .speed },
-                            onShowSleepTimer: { utilitySheet = .sleep }
+                            onShowSleepTimer: { utilitySheet = .sleep },
+                            onAddNote: addNoteAction
                         )
                         .padding(.top, utilityTopPadding)
                         .layoutPriority(1)
@@ -185,7 +189,9 @@ struct NowPlayingView: View {
                         canShowDescription: canOpenCurrentEpisode,
                         canShowShow: canOpenCurrentPodcast,
                         playlistSourceName: appModel.currentPlaylistSource?.name,
+                        showsPrivateNotes: appModel.playbackSettings.showsPrivateNoteButtons,
                         onTranscriptAction: performTranscriptAction,
+                        onShowNotes: { utilitySheet = .notes },
                         onShowDescription: openEpisode,
                         onShowShow: openPodcast,
                         onShowPlaylist: openPlaylist,
@@ -261,6 +267,10 @@ struct NowPlayingView: View {
             .accessibilityAction(.escape) {
                 onDismiss()
             }
+            .sheet(item: $noteDraft, onDismiss: resumePlaybackAfterNote) { draft in
+                AddEpisodeNoteSheet(draft: draft)
+                    .modelContext(modelContext)
+            }
             .sheet(item: $utilitySheet) { sheet in
                 switch sheet {
                 case .speed:
@@ -281,6 +291,23 @@ struct NowPlayingView: View {
                         .modelContext(modelContext)
                         .presentationDetents([.medium, .large])
                         .presentationDragIndicator(.visible)
+                case .notes:
+                    NavigationStack {
+                        if let episode = appModel.playback.currentEpisode {
+                            EpisodeNotesList(episode: EpisodeListItemSnapshot(episode: episode)) { timestamp in
+                                playNote(at: timestamp, episodeID: episode.id.rawValue)
+                            }
+                            .navigationTitle("Private Notes")
+                            .navigationSubtitle(episode.title)
+                            .navigationBarTitleDisplayMode(.inline)
+                            .accessibilityAction(.escape) { utilitySheet = nil }
+                        } else {
+                            ContentUnavailableView("Nothing Playing", systemImage: "play.circle")
+                        }
+                    }
+                    .modelContext(modelContext)
+                    .presentationDetents([.medium, .large])
+                    .presentationDragIndicator(.visible)
                 case .transcript:
                     NavigationStack {
                         if let currentEpisodeID {
@@ -323,6 +350,46 @@ struct NowPlayingView: View {
                 Text(message)
             }
         }
+    }
+
+    /// Nil hides the Now Playing note circle (the Playback setting is off).
+    private var addNoteAction: (() -> Void)? {
+        guard appModel.playbackSettings.showsPrivateNoteButtons else { return nil }
+        return addTimestampedNote
+    }
+
+    private func addTimestampedNote() {
+        guard let episode = appModel.playback.currentEpisode else { return }
+        beginNote(episode: EpisodeListItemSnapshot(episode: episode))
+    }
+
+    private func beginNote(episode: EpisodeListItemSnapshot) {
+        let session = EpisodeNotePlaybackSession(
+            episode: episode,
+            timestamp: appModel.playback.position,
+            state: appModel.playback.state, pause: appModel.playback.pause,
+            playbackIntentRevision: { appModel.playback.playbackIntentRevision }
+        )
+        notePlaybackSession = session
+        noteDraft = session.draft
+    }
+
+    private func playNote(at timestamp: TimeInterval, episodeID: String) {
+        guard appModel.playback.currentEpisode?.id.rawValue == episodeID else { return }
+        appModel.playback.seek(to: timestamp, intent: .scrub)
+        appModel.playback.play()
+        utilitySheet = nil
+    }
+
+    private func resumePlaybackAfterNote() {
+        let session = notePlaybackSession
+        notePlaybackSession = nil
+        session?.finish(
+            currentEpisodeID: appModel.playback.currentEpisode?.id.rawValue,
+            state: appModel.playback.state,
+            playbackIntentRevision: appModel.playback.playbackIntentRevision,
+            play: appModel.playback.play
+        )
     }
 
     private var showsPauseButton: Bool {

@@ -8,6 +8,68 @@ import Testing
 @MainActor
 @Suite
 struct AVFoundationPlaybackControllerTests {
+    @Test("Repeated pause requests invalidate temporary pause ownership", arguments: ["pause", "route", "interruption"])
+    func playbackIntentRevisionWhilePaused(source: String) throws {
+        let controller = AVFoundationPlaybackController()
+        defer { controller.unload() }
+        try controller.load(episode(duration: 240))
+        controller.pause()
+        let revision = controller.playbackIntentRevision
+        switch source {
+        case "route": controller.handleAudioSessionOldDeviceUnavailable()
+        case "interruption": controller.handleAudioSessionInterruptionBegan()
+        default: controller.pause()
+        }
+        #expect(controller.state == .paused)
+        #expect(controller.playbackIntentRevision > revision)
+    }
+
+    @Test(
+        "Explicit seeks invalidate temporary pause ownership; the ad skipper and position restore do not",
+        arguments: zip(
+            [PlaybackSeekIntent.scrub, .skipButton, .chapter, .autoSkip, .restore],
+            [true, true, true, false, false]
+        )
+    )
+    func playbackIntentRevisionFollowsExplicitSeeks(intent: PlaybackSeekIntent, supersedes: Bool) throws {
+        let controller = AVFoundationPlaybackController()
+        defer { controller.unload() }
+        try controller.load(episode(duration: 240))
+        controller.pause()
+        let revision = controller.playbackIntentRevision
+        controller.seek(to: 30, intent: intent)
+        #expect((controller.playbackIntentRevision > revision) == supersedes)
+    }
+
+    @Test("A skip invalidates temporary pause ownership")
+    func playbackIntentRevisionFollowsSkips() throws {
+        let controller = AVFoundationPlaybackController()
+        defer { controller.unload() }
+        try controller.load(episode(duration: 240))
+        controller.pause()
+        let revision = controller.playbackIntentRevision
+        controller.skip(by: 15)
+        #expect(controller.playbackIntentRevision > revision)
+    }
+
+    @Test("Play and same-episode replacement invalidate temporary pause ownership")
+    func playbackIntentRevisionTracksCommands() throws {
+        let controller = AVFoundationPlaybackController()
+        defer { controller.unload() }
+        let current = episode(duration: 240)
+        try controller.load(current)
+        var revision = controller.playbackIntentRevision
+        controller.play()
+        #expect(controller.playbackIntentRevision > revision)
+        controller.pause()
+        revision = controller.playbackIntentRevision
+        controller.unload()
+        #expect(controller.playbackIntentRevision > revision)
+        revision = controller.playbackIntentRevision
+        try controller.load(current)
+        #expect(controller.playbackIntentRevision > revision)
+    }
+
     @Test("Source and skip events are logged without opening playback diagnostics")
     func eventLogRecordsSourceAndSkip() throws {
         let controller = AVFoundationPlaybackController()
@@ -1026,10 +1088,12 @@ struct AVFoundationPlaybackControllerTests {
         }
         try controller.load(playbackEpisode(audioURL: fixtureURL))
         controller.setSleepTimer(mode: .duration(0.02))
+        let revision = controller.playbackIntentRevision
 
         try await waitUntil { controller.sleepTimerMode == .off }
 
         #expect(controller.snapshot.state == .paused)
+        #expect(controller.playbackIntentRevision > revision)
     }
 
     @Test

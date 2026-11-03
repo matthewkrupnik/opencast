@@ -18,6 +18,7 @@ struct EpisodeDetailView: View {
     @State private var adSection = EpisodeAdAnalysisSectionModel()
     @State private var chaptersSection = EpisodeChaptersSummarySectionModel()
     @State private var embeddedChapters: [EpisodeChapter] = []
+    @State private var privateNotes: [EpisodeNoteRecord] = []
     @State private var isConfirmingClearProgress = false
     @State private var isConfirmingGenerateDisclosure = false
     @State private var sheetDestination: SheetDestination?
@@ -105,6 +106,9 @@ struct EpisodeDetailView: View {
         }
         .task(id: adAnalysisContentIdentifier) {
             await adSection.load(appModel: appModel, episode: episode, key: adAnalysisContentIdentifier)
+        }
+        .task(id: EpisodeNotesFetchKey(episodeID: episodeID, revision: appModel.episodeNotes.revision(for: episodeID))) {
+            privateNotes = (try? modelContext.fetch(EpisodeNoteStore.notes(for: episodeID))) ?? []
         }
         .task(id: transcriptAnalysisContentIdentifier) {
             await chaptersSection.load(appModel: appModel, episode: episode, key: transcriptAnalysisContentIdentifier)
@@ -227,6 +231,10 @@ struct EpisodeDetailView: View {
                         zoneTiers: zoneTiers,
                         isStale: isStale
                     )
+                }
+
+                EpisodeNotesSection(notes: privateNotes, episode: episode) { timestamp in
+                    seekToTimestamp(timestamp, episode: episode)
                 }
 
                 // Chapter source priority: embedded in the audio file, then
@@ -601,21 +609,9 @@ struct EpisodeDetailView: View {
         }
     }
 
-    /// Show-notes timestamps are publisher-authored against the published
-    /// enclosure, so unlike chapters there is no transcript hash to align
-    /// against: a plain seek, or a plain start at that time, is the best
-    /// available answer.
     private func seekToTimestamp(_ seconds: TimeInterval, episode: EpisodeListItemSnapshot) {
-        if appModel.playback.currentEpisode?.id.rawValue == episode.episodeID {
-            appModel.playback.seek(to: seconds, intent: .scrub)
-            if appModel.playback.state != .playing {
-                appModel.playback.play()
-            }
-            return
-        }
-
         runPlaybackAction {
-            try appModel.playEpisode(episode, at: seconds, presentsNowPlaying: false, modelContext: modelContext)
+            try EpisodeTimestampPlayback.seek(to: seconds, episode: episode, appModel: appModel, modelContext: modelContext)
         }
     }
 

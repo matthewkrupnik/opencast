@@ -7,6 +7,7 @@ enum AppRoute: Hashable {
     case episodeTranscript(id: String)
     case adDetectionQueue
     case playlistDetail(id: String)
+    case notes
     case settings(SettingsRoute)
     case downloadSettings
     case downloadStorage

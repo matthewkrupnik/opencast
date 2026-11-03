@@ -34,6 +34,8 @@ final class OpenCastAppModel {
     @ObservationIgnored private let adFreePassEnqueueContext: AdFreePassEnqueueContext
     let adAnalyses: EpisodeAdAnalysisStore
     let transcriptAnalyses: EpisodeTranscriptAnalysisStore
+    /// Which episodes' Private Notes changed, for the views that fetch them.
+    let episodeNotes = EpisodeNotesChangeTracker()
     let transcriptIntelligence: TranscriptIntelligenceStore
     let analysisPolicy: AnalysisPolicySnapshotStore
     let analysisKeys: AnalysisProviderKeyStore
@@ -186,6 +188,7 @@ final class OpenCastAppModel {
     // Internal for the `+DownloadSettings` extension.
     @ObservationIgnored let downloadCleanup: DownloadCleanupCoordinator
     @ObservationIgnored let autoDownloads: PodcastAutoDownloadCoordinator
+    @ObservationIgnored private let appAttestSuspension: AppAttestSuspension
     @ObservationIgnored private let dataNuke: DataNukeRunner
     @ObservationIgnored private let siriMediaDiscovery: SiriMediaDiscovery
     @ObservationIgnored private var siriMediaUserContextObservationTask: Task<Void, Never>?
@@ -199,6 +202,7 @@ final class OpenCastAppModel {
     @ObservationIgnored private let playlistMigrationDefaults: UserDefaults
 
     init(
+        appAttestSuspension: AppAttestSuspension = .shared,
         cacheController: OpenCastCacheController = OpenCastCacheController(),
         httpClient: (any OpenCastHTTPClient)? = nil,
         helpContent: HelpContentStore? = nil,
@@ -267,6 +271,7 @@ final class OpenCastAppModel {
             )
         )
 
+        self.appAttestSuspension = appAttestSuspension
         self.cacheController = cacheController
         self.httpClient = resolvedHTTPClient
         self.helpContent = helpContent ?? HelpContentStore()
@@ -347,7 +352,9 @@ final class OpenCastAppModel {
         let playlists = PlaylistStore(saveSyncedStore: { [unowned resolvedLibrary] modelContext in
             try resolvedLibrary.saveSyncedStore(modelContext)
         })
-        resolvedLibrary.episodeSidecarMigrators = [downloads, transcriptions, adAnalyses, transcriptAnalyses, playlists]
+        // The notes tracker goes first: the applier re-keys notes before any
+        // migrator runs, so it must stage them before a later migrator can throw.
+        resolvedLibrary.episodeSidecarMigrators = [episodeNotes, downloads, transcriptions, adAnalyses, transcriptAnalyses, playlists]
         notificationSettings.feedHealthRecorder = { [weak resolvedLibrary] records in
             await resolvedLibrary?.recordNotificationFeedHealth(records)
         }
@@ -436,7 +443,8 @@ final class OpenCastAppModel {
             transcriptAnalyses: transcriptAnalyses,
             transcriptionModels: transcriptionModels,
             cacheController: cacheController,
-            siriMediaDiscovery: siriMediaDiscovery
+            siriMediaDiscovery: siriMediaDiscovery,
+            appAttestSuspension: appAttestSuspension
         )
         self.unsubscribeSidecarCleanupOverride = unsubscribeSidecarCleanupOverride
         self.transcriptions.onEpisodeStateChanged = { [weak self] episodeID in
@@ -486,6 +494,11 @@ final class OpenCastAppModel {
         }
         dataNuke.prepareRuntime = { [weak self] in
             await self?.prepareRuntimeForDataNuke()
+        }
+        // The fork registers with no analysis servers; Delete Data only
+        // holds App Attest admission closed while it runs.
+        dataNuke.deregisterServices = { [appAttestSuspension] in
+            appAttestSuspension.suspend()
         }
         dataNuke.resetRuntime = { [weak self] modelContext in
             await self?.resetRuntimeStateAfterDataNuke(modelContext: modelContext)
@@ -2708,6 +2721,10 @@ final class OpenCastAppModel {
         playbackSettings.setSleepTimerPreset(duration, at: index, modelContext: modelContext)
     }
 
+    @discardableResult
+    func setPrivateNoteButtonsEnabled(_ isEnabled: Bool, modelContext: ModelContext) -> Bool {
+        playbackSettings.setPrivateNoteButtonsEnabled(isEnabled, modelContext: modelContext)
+    }
     func runVoiceBoostDeviceProbeIfNeeded(modelContext: ModelContext) async {
         #if DEBUG
         guard runsVoiceBoostDeviceProbe, !hasRunVoiceBoostDeviceProbe else {
@@ -2821,6 +2838,7 @@ final class OpenCastAppModel {
         lastVoiceBoostDeviceProbeApplicationState = nil
         refreshVoiceBoostDeviceProbeReportStatus()
         #endif
+        appAttestSuspension.resume()
     }
 
     private func startSiriMediaUserContextObservation() {

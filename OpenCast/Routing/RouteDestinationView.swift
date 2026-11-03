@@ -25,6 +25,8 @@ struct RouteDestinationView: View {
                 playlistID: id,
                 onOpenEpisode: onOpenEpisode
             )
+        case .notes:
+            EpisodeNotesLibraryView(onOpenEpisode: onOpenEpisode)
         case .settings(let route):
             SettingsRouteDestinationView(route: route)
         case .downloadSettings:

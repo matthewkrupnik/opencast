@@ -18,10 +18,12 @@ struct LibraryView: View {
     /// Bumped each time the Library reappears, so a drain that finished
     /// while something was pushed still shows its brief finished state.
     @State private var adDetectionIndicatorAppearance = 0
+    @State private var notesCount: Int?
 
     let onAdd: () -> Void
     let onOpenPlaylist: (String) -> Void
     let onOpenAdDetectionQueue: () -> Void
+    let onOpenNotes: () -> Void
 
     private var displaySettings: LibraryDisplaySettingsStore {
         appModel.libraryDisplaySettings
@@ -95,6 +97,9 @@ struct LibraryView: View {
                     appModel.library.advanceNewEpisodeReferenceDate()
                 }
             }
+            .task(id: notesCountKey) {
+                loadNotesCount()
+            }
     }
 
     @ViewBuilder
@@ -120,6 +125,8 @@ struct LibraryView: View {
                     // Playlists outlive their shows, so they stay while
                     // there are no shows.
                     playlistsSection
+                    // Notes keeps its row here only while it holds a note.
+                    notesSection(showsWithoutNotes: false)
 
                     LibraryEmptyStateView(
                         syncActivity: appModel.syncStatus.libraryActivity,
@@ -138,6 +145,10 @@ struct LibraryView: View {
                         LibraryOfflineNotice()
                     }
                     playlistsGridHeader(metrics: metrics)
+                    if notesCount != nil {
+                        notesRow
+                            .padding(.vertical, 8)
+                    }
                     if !appModel.playlists.playlists.isEmpty {
                         sectionTitle("Shows")
                     }
@@ -148,6 +159,8 @@ struct LibraryView: View {
                     offlineNoticeSection
 
                     playlistsSection
+
+                    notesSection(showsWithoutNotes: true)
 
                     Section {
                         ForEach(subscriptions) { subscription in
@@ -196,6 +209,57 @@ struct LibraryView: View {
                 Text("Playlists")
             }
         }
+    }
+
+    /// Nil while Show Note Button is off, which hides the row.
+    @ViewBuilder
+    private func notesSection(showsWithoutNotes: Bool) -> some View {
+        if let notesCount, showsWithoutNotes || notesCount > 0 {
+            Section {
+                notesRow
+            }
+        }
+    }
+
+    /// A button rather than a NavigationLink, so it pushes Notes onto the
+    /// Library's own path.
+    private var notesRow: some View {
+        Button(action: onOpenNotes) {
+            HStack {
+                Label("Notes", systemImage: "note.text")
+                Spacer()
+                if let notesCount, notesCount > 0 {
+                    Text(notesCount, format: .number)
+                        .foregroundStyle(.secondary)
+                }
+                Image(systemName: "chevron.forward")
+                    .font(.footnote.weight(.semibold))
+                    .foregroundStyle(.tertiary)
+            }
+            .contentShape(.rect)
+        }
+        .buttonStyle(.plain)
+        .accessibilityValue((notesCount ?? 0) > 0 ? (notesCount ?? 0).formatted() : "")
+        .accessibilityIdentifier("Library Notes Row")
+    }
+
+    /// With Show Note Button off this reads no notes revision, so note
+    /// changes never reach the Library and nothing is counted.
+    private var notesCountKey: LibraryNotesCountKey {
+        let isEnabled = appModel.playbackSettings.showsPrivateNoteButtons
+        return LibraryNotesCountKey(
+            isEnabled: isEnabled,
+            revision: isEnabled ? appModel.episodeNotes.allNotesRevision : 0
+        )
+    }
+
+    private func loadNotesCount() {
+        guard appModel.playbackSettings.showsPrivateNoteButtons else {
+            notesCount = nil
+            return
+        }
+        // A count that fails to load still shows the row, without a number.
+        notesCount = (try? EpisodeNoteStore.noteCount(in: modelContext)) ?? 0
     }
 
     /// The grid has no list sections, so the playlists sit above the shows
