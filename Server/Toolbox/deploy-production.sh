@@ -79,8 +79,8 @@ cd "$notifications_dir"
 # order); migration files are immutable, so a deploy only checks it is there.
 step "PostgreSQL schema"
 schema_tables="$(pg_owner -At -c "SELECT count(*) FROM pg_tables WHERE schemaname = 'opencast'")"
-if [[ "$schema_tables" != 32 ]]; then
-  echo "Expected 32 tables in schema opencast, found $schema_tables. Apply Server/NotificationsWorker/postgres first." >&2
+if [[ "$schema_tables" != 31 ]]; then
+  echo "Expected 31 tables in schema opencast, found $schema_tables. Apply Server/NotificationsWorker/postgres first." >&2
   exit 1
 fi
 
