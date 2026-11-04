@@ -267,7 +267,7 @@ final class CarPlayInterfaceCoordinator {
             playlists: CarPlayBrowseModelBuilder.playlists(
                 appModel.playlists.playlists,
                 // Playlists publish before the library they count over.
-                episodeCount: { appModel.coreStoresHydrated ? appModel.playlistEpisodeCount(for: $0) : nil },
+                episodeCount: { appModel.playlistDisplayedEpisodeCount(for: $0) },
                 currentEpisode: currentEpisode,
                 downloadRecords: downloadRecords,
                 nowPlaying: nowPlaying,

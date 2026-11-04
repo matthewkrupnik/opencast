@@ -129,6 +129,11 @@ final class OpenCastAppModel {
     /// for list views to derive cross-store state without observing partial
     /// startup data.
     private(set) var coreStoresHydrated = false
+    /// The library's episodes and progress have loaded, which is all most
+    /// playlist counts read; set ahead of `coreStoresHydrated`.
+    private(set) var libraryEpisodesLoaded = false
+    /// The download records have loaded, which Downloaded Only counts read.
+    private(set) var downloadRecordsLoaded = false
     /// Unsubscribe outcome surface, presented by the removal confirmation
     /// surfaces; unsubscribe failures never route through the playback error.
     var lastUnsubscribeErrorMessage: String?
@@ -202,6 +207,7 @@ final class OpenCastAppModel {
     /// store by the first `ensureCoreStoresLoaded` and then dropped.
     @ObservationIgnored private var pendingLegacyLocalPlaylists: LegacyLocalPlaylistSnapshot?
     @ObservationIgnored private let playlistMigrationDefaults: UserDefaults
+    @ObservationIgnored private let playlistCountSnapshots: PlaylistCountSnapshotStore
 
     init(
         appAttestSuspension: AppAttestSuspension = .shared,
@@ -260,7 +266,8 @@ final class OpenCastAppModel {
         siriMediaDiscovery: SiriMediaDiscovery = SiriMediaDiscovery(),
         unsubscribeSidecarCleanupOverride: ((String, [String], ModelContext) throws -> Void)? = nil,
         legacyLocalPlaylists: LegacyLocalPlaylistSnapshot? = nil,
-        playlistMigrationDefaults: UserDefaults = .standard
+        playlistMigrationDefaults: UserDefaults = .standard,
+        playlistCountDefaults: UserDefaults = .standard
     ) {
         // Before any session configuration is built: configurations capture
         // the user agent at creation time.
@@ -372,6 +379,7 @@ final class OpenCastAppModel {
         self.playlists = playlists
         pendingLegacyLocalPlaylists = legacyLocalPlaylists
         self.playlistMigrationDefaults = playlistMigrationDefaults
+        playlistCountSnapshots = PlaylistCountSnapshotStore(defaults: playlistCountDefaults)
         self.playlistDisplaySettings = playlistDisplaySettings
         self.adFreePassBackgroundSession = adFreePassBackgroundSession
         self.transcriptGenerationBackgroundSession = transcriptGenerationBackgroundSession
@@ -614,6 +622,8 @@ final class OpenCastAppModel {
         }
 
         coreStoresHydrated = false
+        libraryEpisodesLoaded = false
+        downloadRecordsLoaded = false
         let task = Task {
             // Before the library publishes, so a stored layout doesn't
             // flash the default container first, and a stored Inbox filter
@@ -632,7 +642,9 @@ final class OpenCastAppModel {
             analysisUsage.load(modelContext: modelContext)
             analysisKeyNotice.load(modelContext: modelContext)
             let didLoadLibrary = await library.load(modelContext: modelContext)
+            libraryEpisodesLoaded = true
             await downloads.load(modelContext: modelContext)
+            downloadRecordsLoaded = true
             listeningHistory.load(modelContext: modelContext)
             downloadSettings.load(modelContext: modelContext)
             migrateLegacyAutoDownloadPreferences(modelContext: modelContext)
@@ -1432,6 +1444,53 @@ final class OpenCastAppModel {
     /// The count a collection row shows: the playlist's memoized evaluation.
     func playlistEpisodeCount(for summary: PlaylistSummary) -> Int {
         smartPlaylistEvaluation(for: summary).count
+    }
+
+    /// Whether the stores a playlist's rule reads have loaded, so its
+    /// evaluation is not an empty startup result.
+    func playlistEvaluationInputsLoaded(for summary: PlaylistSummary) -> Bool {
+        libraryEpisodesLoaded && (summary.rule?.downloadedOnly != true || downloadRecordsLoaded)
+    }
+
+    /// The count a collection row shows: the live count once the rule's
+    /// inputs load, until then the count from the last launch, else nil.
+    func playlistDisplayedEpisodeCount(for summary: PlaylistSummary) -> Int? {
+        if let snapshot = liveOrRecordedPlaylistSnapshot(for: summary) {
+            return snapshot.count
+        }
+        return playlistCountSnapshots.snapshot(for: summary.playlistID, ruleJSON: snapshotRuleJSON(summary))?.count
+    }
+
+    /// Whether a collection row draws as playable; true while nothing is
+    /// known, so no playlist greys out while loading.
+    func playlistDisplayedHasUnplayedEpisodes(_ summary: PlaylistSummary) -> Bool {
+        if let snapshot = liveOrRecordedPlaylistSnapshot(for: summary) {
+            return snapshot.hasUnplayedEpisodes
+        }
+        return playlistCountSnapshots.snapshot(for: summary.playlistID, ruleJSON: snapshotRuleJSON(summary))?
+            .hasUnplayedEpisodes ?? true
+    }
+
+    /// The live figures, saved for the next launch; nil until they're known.
+    private func liveOrRecordedPlaylistSnapshot(for summary: PlaylistSummary) -> PlaylistCountSnapshotStore.Snapshot? {
+        guard playlistEvaluationInputsLoaded(for: summary) else {
+            return nil
+        }
+        let snapshot = PlaylistCountSnapshotStore.Snapshot(
+            ruleJSON: snapshotRuleJSON(summary),
+            count: playlistEpisodeCount(for: summary),
+            hasUnplayedEpisodes: hasPlaylistPlaybackCandidates(summary.playlistID)
+        )
+        playlistCountSnapshots.record(
+            snapshot,
+            for: summary.playlistID,
+            listedPlaylistIDs: Set(playlists.playlists.map(\.playlistID))
+        )
+        return snapshot
+    }
+
+    private func snapshotRuleJSON(_ summary: PlaylistSummary) -> String {
+        summary.ruleJSON ?? summary.rule?.encodedJSON() ?? ""
     }
 
     /// The Episodes chip's definition of unplayed, which also counts a
@@ -2848,6 +2907,8 @@ final class OpenCastAppModel {
         dismissNowPlayingAndDiscardFinishedPlayback()
         playback.unload()
         coreStoresHydrated = false
+        libraryEpisodesLoaded = false
+        downloadRecordsLoaded = false
         lastPlaybackError = nil
         lastPlaylistError = nil
         lastUnsubscribeErrorMessage = nil
@@ -2871,6 +2932,7 @@ final class OpenCastAppModel {
         adFreePass.reset()
         upNextQueue.resetAfterDataNuke()
         playlists.resetAfterDataNuke()
+        playlistCountSnapshots.removeAll()
         // The wipe took every playlist with it. A legacy copy that had not
         // finished (a failed read or save leaves the flag unset) must not be
         // retried on the next launch and bring those playlists back.
@@ -2897,6 +2959,8 @@ final class OpenCastAppModel {
         playbackSettings.load(modelContext: modelContext, playback: playback)
         notificationSettings.resetAfterDataNuke()
         onboardingState.load(modelContext: modelContext)
+        libraryEpisodesLoaded = true
+        downloadRecordsLoaded = true
         coreStoresHydrated = true
         #if DEBUG
         try? FileManager.default.removeItem(at: VoiceBoostDeviceProbe.reportURL)

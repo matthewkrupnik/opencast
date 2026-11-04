@@ -562,13 +562,22 @@ struct DataNukeTests {
         // whose copy failed (or never ran) is in when Delete Data runs.
         let appModel = try makeAvailableAppModel(
             legacyLocalPlaylists: legacySnapshot,
-            playlistMigrationDefaults: defaults
+            playlistMigrationDefaults: defaults,
+            playlistCountDefaults: defaults
         )
         context.insert(PlaylistRecord(playlistID: "nuke-synced-playlist", name: "Synced Playlist"))
         try context.save()
         await appModel.library.load(modelContext: context)
+        PlaylistCountSnapshotStore(defaults: defaults).record(
+            .init(ruleJSON: "", count: 3, hasUnplayedEpisodes: true),
+            for: "nuke-synced-playlist",
+            listedPlaylistIDs: ["nuke-synced-playlist"]
+        )
 
         try await appModel.nukeAllData(modelContext: context)
+
+        // The saved playlist counts go with the playlists.
+        #expect(defaults.object(forKey: PlaylistCountSnapshotStore.defaultsKey) == nil)
 
         #expect(defaults.bool(forKey: PlaylistLocalStoreMigration.completedDefaultsKey))
         #expect(try context.fetch(FetchDescriptor<PlaylistRecord>()).isEmpty)
@@ -590,7 +599,8 @@ struct DataNukeTests {
 
     private func makeAvailableAppModel(
         legacyLocalPlaylists: LegacyLocalPlaylistSnapshot? = nil,
-        playlistMigrationDefaults: UserDefaults = .standard
+        playlistMigrationDefaults: UserDefaults = .standard,
+        playlistCountDefaults: UserDefaults = .standard
     ) throws -> OpenCastAppModel {
         let temporaryDirectory = try makeTemporaryDirectory()
         let fileStore = EpisodeDownloadFileStore(
@@ -607,7 +617,8 @@ struct DataNukeTests {
             ),
             allowsAutomaticFeedRefresh: false,
             legacyLocalPlaylists: legacyLocalPlaylists,
-            playlistMigrationDefaults: playlistMigrationDefaults
+            playlistMigrationDefaults: playlistMigrationDefaults,
+            playlistCountDefaults: playlistCountDefaults
         )
     }
 

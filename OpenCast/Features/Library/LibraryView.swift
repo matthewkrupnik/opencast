@@ -293,14 +293,14 @@ struct LibraryView: View {
         }
     }
 
-    /// Nil until the stores hydrate, when every playlist would read as empty.
+    /// The last launch's count until the rule's stores load, when every
+    /// playlist would read as empty.
     private func playlistEpisodeCount(for summary: PlaylistSummary) -> Int? {
-        appModel.coreStoresHydrated ? appModel.playlistEpisodeCount(for: summary) : nil
+        appModel.playlistDisplayedEpisodeCount(for: summary)
     }
 
-    /// True until the stores hydrate, so no playlist greys out while loading.
     private func playlistHasUnplayedEpisodes(_ summary: PlaylistSummary) -> Bool {
-        !appModel.coreStoresHydrated || appModel.hasPlaylistPlaybackCandidates(summary.playlistID)
+        appModel.playlistDisplayedHasUnplayedEpisodes(summary)
     }
 
     private func sectionTitle(_ title: LocalizedStringKey) -> some View {

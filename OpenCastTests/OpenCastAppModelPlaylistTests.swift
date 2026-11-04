@@ -1468,13 +1468,72 @@ struct OpenCastAppModelPlaylistTests {
         #expect(appModel.lastPlaylistError == nil)
     }
 
+    @Test("A launch shows the last launch's playlist counts until the library loads")
+    func playlistCountsCarryAcrossLaunches() async throws {
+        let suiteName = "OpenCastAppModelPlaylistTests-\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suiteName))
+        defer {
+            defaults.removePersistentDomain(forName: suiteName)
+        }
+        let fixture = try await makeFixture(playlistCountDefaults: defaults)
+        let commute = try playlistSummary(Self.commuteID, appModel: fixture.appModel)
+        let liveCount = fixture.appModel.playlistDisplayedEpisodeCount(for: commute)
+        let liveHasUnplayed = fixture.appModel.playlistDisplayedHasUnplayedEpisodes(commute)
+        #expect(liveCount == 2)
+
+        let relaunched = try makeAppModel(
+            library: LibraryStore(localCache: fixture.cache),
+            playlistCountDefaults: defaults
+        )
+        // Playlist rows publish ahead of the library.
+        relaunched.playlists.load(modelContext: fixture.context)
+        let stored = try playlistSummary(Self.commuteID, appModel: relaunched)
+
+        #expect(!relaunched.libraryEpisodesLoaded)
+        #expect(relaunched.playlistDisplayedEpisodeCount(for: stored) == liveCount)
+        #expect(relaunched.playlistDisplayedHasUnplayedEpisodes(stored) == liveHasUnplayed)
+
+        var edited = stored
+        var editedRule = try #require(stored.rule)
+        editedRule.limit = 1
+        edited.rule = editedRule
+        edited.ruleJSON = editedRule.encodedJSON()
+        // A snapshot from another rule isn't shown.
+        #expect(relaunched.playlistDisplayedEpisodeCount(for: edited) == nil)
+        #expect(relaunched.playlistDisplayedHasUnplayedEpisodes(edited))
+
+        await relaunched.ensureCoreStoresLoaded(modelContext: fixture.context)
+        #expect(relaunched.libraryEpisodesLoaded)
+        #expect(relaunched.playlistDisplayedEpisodeCount(for: stored) == 2)
+    }
+
+    @Test("Playlist counts stay hidden before the library loads when nothing is saved")
+    func playlistCountsHiddenWithoutSnapshot() async throws {
+        let suiteName = "OpenCastAppModelPlaylistTests-\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suiteName))
+        defer {
+            defaults.removePersistentDomain(forName: suiteName)
+        }
+        let fixture = try await makeFixture(playlistCountDefaults: defaults)
+        let relaunched = try makeAppModel(
+            library: LibraryStore(localCache: fixture.cache),
+            playlistCountDefaults: defaults
+        )
+        relaunched.playlists.load(modelContext: fixture.context)
+        let commute = try playlistSummary(Self.commuteID, appModel: relaunched)
+
+        #expect(relaunched.playlistDisplayedEpisodeCount(for: commute) == nil)
+        #expect(relaunched.playlistDisplayedHasUnplayedEpisodes(commute))
+    }
+
     private func makeFixture(
         upNextQueue: UpNextQueueStore = UpNextQueueStore(),
         playlistDisplaySettings: PlaylistDisplaySettingsStore = PlaylistDisplaySettingsStore(),
         downloads: DownloadStore? = nil,
         libraryNow: @escaping () -> Date = { .now },
         librarySave: @escaping (ModelContext) throws -> Void = { try $0.save() },
-        siriMediaDiscovery: SiriMediaDiscovery = SiriMediaDiscovery()
+        siriMediaDiscovery: SiriMediaDiscovery = SiriMediaDiscovery(),
+        playlistCountDefaults: UserDefaults = .standard
     ) async throws -> (
         appModel: OpenCastAppModel,
         context: ModelContext,
@@ -1498,7 +1557,8 @@ struct OpenCastAppModelPlaylistTests {
             upNextQueue: upNextQueue,
             playlistDisplaySettings: playlistDisplaySettings,
             downloads: downloads,
-            siriMediaDiscovery: siriMediaDiscovery
+            siriMediaDiscovery: siriMediaDiscovery,
+            playlistCountDefaults: playlistCountDefaults
         )
         await appModel.ensureCoreStoresLoaded(modelContext: context)
         return (appModel, context, container, cache)
@@ -1511,7 +1571,8 @@ struct OpenCastAppModelPlaylistTests {
         downloads: DownloadStore? = nil,
         siriMediaDiscovery: SiriMediaDiscovery = SiriMediaDiscovery(),
         legacyLocalPlaylists: LegacyLocalPlaylistSnapshot? = nil,
-        playlistMigrationDefaults: UserDefaults = .standard
+        playlistMigrationDefaults: UserDefaults = .standard,
+        playlistCountDefaults: UserDefaults = .standard
     ) throws -> OpenCastAppModel {
         let temporaryDirectory = try makeTemporaryDirectory()
         let applicationSupportDirectory = temporaryDirectory.appending(
@@ -1537,7 +1598,8 @@ struct OpenCastAppModelPlaylistTests {
             allowsAutomaticFeedRefresh: false,
             siriMediaDiscovery: siriMediaDiscovery,
             legacyLocalPlaylists: legacyLocalPlaylists,
-            playlistMigrationDefaults: playlistMigrationDefaults
+            playlistMigrationDefaults: playlistMigrationDefaults,
+            playlistCountDefaults: playlistCountDefaults
         )
     }
 
