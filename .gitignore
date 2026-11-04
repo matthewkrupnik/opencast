@@ -30,3 +30,5 @@ Server/Toolbox/cloudflare.env
 Server/*/wrangler.production.*
 Server/Toolbox/apns/
 Server/Toolbox/prod-ca-2021.crt
+# Local Claude Code settings
+.claude/settings.local.json
