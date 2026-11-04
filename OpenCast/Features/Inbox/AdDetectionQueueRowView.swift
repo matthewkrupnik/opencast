@@ -2,6 +2,7 @@ import SwiftUI
 
 struct AdDetectionQueueRowView: View {
     let row: AdDetectionQueuePresentation.Row
+    var onRetry: (() -> Void)?
 
     var body: some View {
         HStack(alignment: .center, spacing: 12) {
@@ -24,11 +25,23 @@ struct AdDetectionQueueRowView: View {
             .frame(maxWidth: .infinity, alignment: .leading)
 
             statusIcon
+
+            if row.canRetry, let onRetry {
+                Button("Retry", action: onRetry)
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+                    .accessibilityIdentifier("ad-detection-queue-retry-\(row.episodeID)")
+            }
         }
         .padding(.vertical, 4)
         .animation(.easeOut(duration: 0.2), value: row.status)
         .accessibilityElement(children: .combine)
         .accessibilityIdentifier("ad-detection-queue-row-\(row.episodeID)")
+        .accessibilityActions {
+            if row.canRetry, let onRetry {
+                Button("Retry", action: onRetry)
+            }
+        }
     }
 
     @ViewBuilder

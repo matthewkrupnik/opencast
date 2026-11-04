@@ -31,6 +31,9 @@ struct AdDetectionQueuePresentation: Equatable {
         let episodeTitle: String
         let artworkURL: String?
         let status: Status
+        /// A finished item that failed for a reason other than a missing
+        /// key, so queueing it again may succeed.
+        var canRetry = false
 
         var id: String {
             episodeID
@@ -68,6 +71,10 @@ struct AdDetectionQueuePresentation: Equatable {
 
     var isEmpty: Bool {
         rows.isEmpty && finishedRows.isEmpty
+    }
+
+    var retryableEpisodeIDs: [String] {
+        finishedRows.filter(\.canRetry).map(\.episodeID)
     }
 
     init(snapshot: AdFreePassQueueSnapshot, isBackgroundSessionArmed: Bool) {
@@ -147,6 +154,12 @@ struct AdDetectionQueuePresentation: Equatable {
                             for: EpisodeAnalysisFailureKind(keyRequired: reason)
                         ))
                     }
+                }(),
+                canRetry: {
+                    if case .failed = outcome.kind {
+                        return true
+                    }
+                    return false
                 }()
             )
         }

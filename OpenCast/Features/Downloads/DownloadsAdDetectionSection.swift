@@ -5,6 +5,7 @@ import SwiftUI
 /// section alone, never the downloads list around it.
 struct DownloadsAdDetectionSection: View {
     @Environment(OpenCastAppModel.self) private var appModel
+    @Environment(\.modelContext) private var modelContext
 
     var body: some View {
         let presentation = AdDetectionQueuePresentation(
@@ -21,12 +22,23 @@ struct DownloadsAdDetectionSection: View {
                     AdDetectionQueueRowView(row: row)
                 }
                 ForEach(presentation.finishedRows) { row in
-                    AdDetectionQueueRowView(row: row)
+                    AdDetectionQueueRowView(row: row) {
+                        retry([row.episodeID])
+                    }
+                }
+                if presentation.retryableEpisodeIDs.count > 1 {
+                    Button("Retry Failed", systemImage: "arrow.clockwise") {
+                        retry(presentation.retryableEpisodeIDs)
+                    }
                 }
                 NavigationLink(value: AppRoute.adDetectionQueue) {
                     Text("Show Queue")
                 }
             }
         }
+    }
+
+    private func retry(_ episodeIDs: [String]) {
+        appModel.retryFailedAdFreePasses(episodeIDs: episodeIDs, modelContext: modelContext)
     }
 }

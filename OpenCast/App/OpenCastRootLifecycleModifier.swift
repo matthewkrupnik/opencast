@@ -84,6 +84,7 @@ struct OpenCastRootLifecycleModifier: ViewModifier {
             hasFlushedProgressForLifecycleExit = false
             appModel.setAutoDownloadsScene(autoDownloadSceneID, isActive: true)
             appModel.resumeEnvironmentalAdFreePassIfNeeded(modelContext: modelContext)
+            appModel.retryTransientAdDetectionFailures(modelContext: modelContext)
             appModel.resumeInterruptedTranscriptAnalyses(modelContext: modelContext)
             appModel.retryFailedSmartSpeedPausePreparations()
             appModel.transcriptIntelligence.refreshAvailability()

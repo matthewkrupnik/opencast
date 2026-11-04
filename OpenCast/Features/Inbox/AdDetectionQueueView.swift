@@ -48,7 +48,14 @@ struct AdDetectionQueueView: View {
                 if !presentation.finishedRows.isEmpty {
                     Section("Finished") {
                         ForEach(presentation.finishedRows) { row in
-                            AdDetectionQueueRowView(row: row)
+                            AdDetectionQueueRowView(row: row) {
+                                retry([row.episodeID])
+                            }
+                        }
+                        if presentation.retryableEpisodeIDs.count > 1 {
+                            Button("Retry Failed", systemImage: "arrow.clockwise") {
+                                retry(presentation.retryableEpisodeIDs)
+                            }
                         }
                     }
                 }
@@ -80,6 +87,10 @@ struct AdDetectionQueueView: View {
 
     private func continueInBackground() {
         appModel.armBackgroundContinuationForActiveQueue()
+    }
+
+    private func retry(_ episodeIDs: [String]) {
+        appModel.retryFailedAdFreePasses(episodeIDs: episodeIDs, modelContext: modelContext)
     }
 
     private func resumeQueue() {

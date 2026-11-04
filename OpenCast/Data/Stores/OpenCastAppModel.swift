@@ -164,6 +164,8 @@ final class OpenCastAppModel {
     #endif
     @ObservationIgnored private var coreStoresLoadTask: Task<Void, Never>?
     @ObservationIgnored private var playbackDependenciesLoadTask: Task<Void, Never>?
+    /// Automatic ad detection retries this launch, by episode ID.
+    @ObservationIgnored private var automaticAdDetectionRetries: [String: Int] = [:]
     @ObservationIgnored private var playbackSurfaceHydrationTask: Task<Void, Never>?
     /// Flips in the same turn that loads the restorable episode, so the
     /// queue accessory can key off it without ever preceding a restore.
@@ -1947,6 +1949,70 @@ final class OpenCastAppModel {
                 await self?.skipZones.zoneCountAfterPass(for: episode) ?? 0
             }
         )
+    }
+
+    /// Queues again the passes a finished drain listed as failed.
+    func retryFailedAdFreePasses(episodeIDs: [String], modelContext: ModelContext) {
+        for episodeID in episodeIDs {
+            guard let episode = episodeSnapshot(for: episodeID) else {
+                continue
+            }
+            startAdFreePass(for: episode, modelContext: modelContext)
+        }
+    }
+
+    /// Queues again, when nothing else is queued, ad detection that failed
+    /// within the last day for a reason a later attempt can fix (a timeout,
+    /// an unreachable provider, an interrupted run): at most twice per
+    /// episode per launch, so a lasting failure can't spend the key's quota.
+    func retryTransientAdDetectionFailures(modelContext: ModelContext) {
+        Task { [weak self] in
+            await self?.ensurePlaybackDependenciesLoaded(modelContext: modelContext)
+            self?.enqueueTransientAdDetectionRetries(modelContext: modelContext)
+        }
+    }
+
+    private static let transientAdDetectionFailures: Set<EpisodeAnalysisFailureKind> = [
+        .timedOut, .serviceUnavailable, .providerUnavailable, .interrupted
+    ]
+    private static let maximumAutomaticAdDetectionRetries = 2
+
+    private func enqueueTransientAdDetectionRetries(modelContext: ModelContext) {
+        guard adFreePass.queueState == .idle,
+              adFreePass.activeEpisodeID == nil,
+              adFreePass.queueItems.isEmpty
+        else {
+            return
+        }
+
+        let cutoff = Date.now.addingTimeInterval(-86_400)
+        for record in adAnalyses.records where record.state == .failed && record.updatedAt > cutoff {
+            guard let kind = record.failureKind,
+                  Self.transientAdDetectionFailures.contains(kind)
+            else {
+                continue
+            }
+            let retries = automaticAdDetectionRetries[record.episodeID, default: 0]
+            guard retries < Self.maximumAutomaticAdDetectionRetries,
+                  let episode = episodeSnapshot(for: record.episodeID)
+            else {
+                continue
+            }
+            automaticAdDetectionRetries[record.episodeID] = retries + 1
+            AutoDetectAdsLog.record(
+                "retrying transient failure episodeID=\(record.episodeID) kind=\(kind.rawValue) retry=\(retries + 1)"
+            )
+            adFreePass.enqueue(
+                episode: episode,
+                origin: .auto,
+                context: adFreePassEnqueueContext,
+                modelContext: modelContext,
+                podcastLanguageCode: podcastLanguageCode(forPodcastID: episode.podcastID),
+                refreshSkipZones: { [weak self] in
+                    await self?.skipZones.zoneCountAfterPass(for: episode) ?? 0
+                }
+            )
+        }
     }
 
     func cancelAdFreePass(for episode: EpisodeListItemSnapshot, modelContext: ModelContext) {

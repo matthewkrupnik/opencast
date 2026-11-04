@@ -121,6 +121,28 @@ struct AdDetectionQueuePresentationTests {
         #expect(makePresentation(state: .idle).isEmpty)
     }
 
+    @Test("Only failed rows that a key wouldn't fix can be retried")
+    func retryableFinishedRows() {
+        let presentation = makePresentation(
+            state: .idle,
+            completedCount: 1,
+            failedCount: 3,
+            outcomes: [
+                completedOutcome(episodeID: "done"),
+                failedOutcome(episodeID: "timed-out", message: "Ad detection took too long. Try again."),
+                AdFreePassQueueItemOutcome(
+                    episodeID: "needs-key",
+                    episodeTitle: "Episode needs-key",
+                    artworkURL: nil,
+                    kind: .keyRequired(.noKey)
+                ),
+                failedOutcome(episodeID: "broken")
+            ]
+        )
+        #expect(presentation.finishedRows.map(\.canRetry) == [false, true, false, true])
+        #expect(presentation.retryableEpisodeIDs == ["timed-out", "broken"])
+    }
+
     @Test("Stage status text matches the per-episode presentation copy")
     func stageStatusTextTable() {
         #expect(AdDetectionQueuePresentation.statusText(for: nil) == "Preparing...")
