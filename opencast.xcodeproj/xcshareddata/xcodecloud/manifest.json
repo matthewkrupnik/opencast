@@ -1,0 +1,9 @@
+{
+  "id" : "3df94c04-413e-45d4-adef-f5ddb7543c11",
+  "targets" : [
+    {
+      "id" : "5208dce7-4356-4dd7-b2a1-668134d730bb",
+      "name" : "OpenCast"
+    }
+  ]
+}
