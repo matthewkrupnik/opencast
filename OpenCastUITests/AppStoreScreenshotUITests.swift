@@ -175,7 +175,7 @@ final class AppStoreScreenshotUITests: XCTestCase {
         assertExists(nowPlayingSoundLab(in: app), named: "pinned mid-slide Sound Lab panel")
         attachAppStoreScreenshot(named: "bakeoff_sound_lab_mid")
 
-        // Ad Detection queue screen with one running and two pending items.
+        // Ad Detection queue in Downloads with one running and two pending items.
         app.launchEnvironment.removeValue(forKey: "OPENCAST_PIN_APP_STORE_SOUND_LAB_REVEAL")
         app.launchEnvironment[Self.queueOverrideEnvironmentKey] =
             "transcribing:\(Self.pipelineEpisodeID)|app-store-kitchen-table-episode-2|app-store-half-time-episode-2"
@@ -185,7 +185,7 @@ final class AppStoreScreenshotUITests: XCTestCase {
         let indicator = app.buttons["Ad Detection Queue"].firstMatch
         assertHittable(indicator, named: "Library ad detection indicator")
         indicator.tap()
-        assertExists(app.navigationBars["Ad Detection"], named: "Ad Detection queue screen")
+        assertExists(app.navigationBars["Downloads"], named: "Downloads with the Ad Detection queue")
         assertExists(app.staticTexts["The Quiet Season on the Sun"], named: "running queue row")
         attachAppStoreScreenshot(named: "bakeoff_queue_screen")
     }

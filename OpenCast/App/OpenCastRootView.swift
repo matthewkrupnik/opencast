@@ -760,7 +760,7 @@ struct OpenCastRootView: View {
             appModel.library.episode(with: id) == nil && appModel.downloads.record(for: id) == nil
         case .playlistDetail(let id):
             !appModel.playlists.playlists.contains { $0.playlistID == id }
-        case .adDetectionQueue, .notes, .settings, .downloadSettings, .downloadStorage:
+        case .notes, .settings, .downloadSettings, .downloadStorage:
             false
         }
     }

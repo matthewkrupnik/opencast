@@ -18,8 +18,6 @@ struct RouteDestinationView: View {
             EpisodeArtworkZoomView(episodeID: id)
         case .episodeTranscript(let id):
             EpisodeTranscriptView(episodeID: id)
-        case .adDetectionQueue:
-            AdDetectionQueueView()
         case .playlistDetail(let id):
             PlaylistDetailView(
                 playlistID: id,

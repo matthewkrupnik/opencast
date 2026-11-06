@@ -72,7 +72,7 @@ final class AnalysisRoutingUITests: XCTestCase {
         notNow.tap()
         assertDoesNotExist(notNow, named: "key screen after Not now", timeout: 5)
 
-        openQueueScreenOnceParked(in: app)
+        openAdDetectionOnceParked(in: app)
         assertExists(app.staticTexts[Self.keyRequiredQueueNotice], named: "key-required banner", timeout: 10)
         let outcome = queueRow(Self.transcriptEpisodeID, in: app)
         assertExists(outcome, named: "key-required outcome row")
@@ -276,22 +276,11 @@ final class AnalysisRoutingUITests: XCTestCase {
         )
     }
 
-    /// Opens the queue screen from the Inbox indicator and waits there until
-    /// the second item has parked at model consent. The indicator's value
-    /// never reaches XCUI from the toolbar, so the screen itself says when.
+    /// Opens Downloads, whose Ad Detection section shows the queue, and waits
+    /// there until the second item has parked at model consent.
     @MainActor
-    private func openQueueScreenOnceParked(in app: XCUIApplication, file: StaticString = #filePath, line: UInt = #line) {
-        openSection("Inbox", in: app, file: file, line: line)
-        let indicator = app.buttons["Ad Detection Queue Indicator"]
-        let queueScreen = app.navigationBars["Ad Detection"]
-        assertExists(indicator, named: "queue indicator", timeout: 10, file: file, line: line)
-        for _ in 0..<3 where !queueScreen.exists {
-            if indicator.exists {
-                indicator.tap()
-            }
-            _ = queueScreen.waitForExistence(timeout: 3)
-        }
-        assertExists(queueScreen, named: "queue screen", file: file, line: line)
+    private func openAdDetectionOnceParked(in app: XCUIApplication, file: StaticString = #filePath, line: UInt = #line) {
+        openSection("Downloads", in: app, file: file, line: line)
         let consent = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Download Model")).firstMatch
         assertExists(consent, named: "model consent affordance of the parked item", timeout: 60, file: file, line: line)
     }

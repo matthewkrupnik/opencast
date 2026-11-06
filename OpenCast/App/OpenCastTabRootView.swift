@@ -17,9 +17,7 @@ struct OpenCastTabRootView: View {
                     LibraryView(
                         onAdd: onAdd,
                         onOpenPlaylist: openPlaylist(on: .library),
-                        onOpenAdDetectionQueue: {
-                            navigationPaths[.library].append(.adDetectionQueue)
-                        },
+                        onOpenAdDetectionQueue: openAdDetection,
                         onOpenNotes: { navigationPaths[.library].append(.notes) }
                     )
                     .withOpenCastDestinations(
@@ -99,6 +97,12 @@ struct OpenCastTabRootView: View {
     private func openDownloadSettings() {
         selectedTab = .downloads
         navigationPaths[.downloads] = [.downloadSettings]
+    }
+
+    /// The Ad Detection queue lives in its section at the root of Downloads.
+    private func openAdDetection() {
+        selectedTab = .downloads
+        navigationPaths[.downloads] = []
     }
 
     private func openEpisode(on section: AppSection) -> (String) -> Void {

@@ -2477,7 +2477,7 @@ final class OpenCastUITests: XCTestCase {
     }
 
     @MainActor
-    func testSeededAdDetectionIndicatorOpensQueueScreenWithConsentAffordance() throws {
+    func testSeededAdDetectionIndicatorOpensDownloadsWithConsentAffordance() throws {
         let app = makeSeededApp()
         app.launch()
 
@@ -2500,7 +2500,8 @@ final class OpenCastUITests: XCTestCase {
         attachSmokeScreenshot(named: "adqueue_indicator_paused_consent")
         indicator.tap()
 
-        assertExists(app.navigationBars["Ad Detection"], named: "queue screen title")
+        assertExists(app.navigationBars["Downloads"], named: "Downloads root")
+        assertExists(app.staticTexts["Ad Detection"], named: "Ad Detection section header")
         let consentButton = app.buttons.matching(
             NSPredicate(format: "label BEGINSWITH %@", "Download Model")
         ).firstMatch
@@ -2509,7 +2510,7 @@ final class OpenCastUITests: XCTestCase {
             app.buttons["Continue in Background"],
             named: "Continue in Background while paused for consent"
         )
-        attachSmokeScreenshot(named: "adqueue_screen_consent")
+        attachSmokeScreenshot(named: "adqueue_downloads_consent")
     }
 
     @MainActor
@@ -2558,17 +2559,19 @@ final class OpenCastUITests: XCTestCase {
         let indicator = app.buttons["Ad Detection Queue Indicator"]
         assertExists(indicator, named: "finished indicator", timeout: 10)
         attachSmokeScreenshot(named: "adqueue_indicator_finished_tinted")
-        indicator.tap()
 
-        assertExists(app.navigationBars["Ad Detection"], named: "queue screen title")
-        assertExists(app.staticTexts["Finished"], named: "finished section header", timeout: 10)
+        // The finished indicator hides itself after a few seconds, so open
+        // Downloads directly; its Ad Detection section keeps the outcomes.
+        openSection("Downloads", in: app)
+        assertExists(app.navigationBars["Downloads"], named: "Downloads root")
         assertExists(
             app.descendants(matching: .any)
                 .matching(identifier: "ad-detection-queue-row-ui-test-episode-1")
                 .firstMatch,
-            named: "failed episode outcome row"
+            named: "failed episode outcome row",
+            timeout: 10
         )
-        attachSmokeScreenshot(named: "adqueue_screen_finished_failure")
+        attachSmokeScreenshot(named: "adqueue_downloads_finished_failure")
     }
 
     @MainActor
