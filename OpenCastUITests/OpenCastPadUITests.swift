@@ -5,6 +5,10 @@ final class OpenCastPadUITests: XCTestCase {
     private static let seededEpisodeRowIdentifier = "episode-row-ui-test-episode-1"
     private static let seededSubscriptionRowIdentifier = "subscription-row-https://example.com/ui-test-feed.xml"
     private static let hierarchyProbeEnvironmentKey = "OPENCAST_RUN_PAD_HIERARCHY_PROBE"
+    /// `AppSection.playlists.systemImage`: the iPad floating tab bar identifies its Playlists button by it.
+    private static let playlistsSymbol = "list.bullet.rectangle"
+    /// `AppSection.library.systemImage`.
+    private static let librarySymbol = "books.vertical"
 
     override func setUpWithError() throws {
         continueAfterFailure = false
@@ -47,13 +51,13 @@ final class OpenCastPadUITests: XCTestCase {
         assertExists(tabButton("Settings", in: app), named: "Settings tab button")
 
         openLibrary(in: app)
-        assertExists(app.navigationBars["Library"], named: "Library navigation title")
+        assertScreen("Library", named: "Library navigation title", in: app)
 
         openSettings(in: app)
-        assertExists(app.navigationBars["Settings"], named: "Settings navigation title")
+        assertScreen("Settings", named: "Settings navigation title", in: app)
 
         tabButton("Downloads", in: app).tap()
-        assertExists(app.navigationBars["Downloads"], named: "Downloads navigation title")
+        assertScreen("Downloads", named: "Downloads navigation title", in: app)
 
         // Playlists live in the Library, not a tab of their own.
         XCTAssertFalse(tabButton("Playlists", in: app).exists, "There should be no Playlists tab")
@@ -187,24 +191,31 @@ final class OpenCastPadUITests: XCTestCase {
 
         let originalWidth = app.windows.firstMatch.frame.width
         let window = narrowWindow(of: app)
-        XCTAssertLessThan(window.frame.width, 700, "The app window itself must be narrow, not just the Simulator scale")
+        XCTAssertTrue(
+            waitForNavigationItem("Playlists", symbol: Self.playlistsSymbol, toExist: false, in: app),
+            "The app window itself must be narrow, not just the Simulator scale: Playlists, offered only at regular width, should be gone"
+        )
+        XCTAssertTrue(
+            navigationItemExists("Library", symbol: Self.librarySymbol, in: app)
+                && !navigationItemExists("Playlists", symbol: Self.playlistsSymbol, in: app),
+            "The narrow window's navigation should be up, offering Library, with Playlists still gone"
+        )
 
         openLibrary(in: app)
         app.swipeUp()
-        assertHittable(app.navigationBars["Library"].buttons["Add"], named: "pinned Add in narrow Library")
+        assertHittable(toolbarButton("Add", in: "Library", of: app), named: "pinned Add in narrow Library")
         attachSmokeScreenshot(named: "ipad_narrow_library_toolbar")
 
         openSection("Downloads", in: app)
-        let toolbar = app.navigationBars["Downloads"]
-        assertHittable(toolbar.buttons["Search"], named: "prioritized Search in narrow Downloads")
-        assertHittable(toolbar.buttons["Edit"], named: "pinned Edit in narrow Downloads")
-        toolbar.buttons["Edit"].tap()
+        assertHittable(toolbarButton("Search", in: "Downloads", of: app), named: "prioritized Search in narrow Downloads")
+        assertHittable(toolbarButton("Edit", in: "Downloads", of: app), named: "pinned Edit in narrow Downloads")
+        toolbarButton("Edit", in: "Downloads", of: app).tap()
         app.swipeUp()
-        assertHittable(toolbar.buttons["Done"], named: "Done remains available after scrolling while editing")
+        assertHittable(toolbarButton("Done", in: "Downloads", of: app), named: "Done remains available after scrolling while editing")
         attachSmokeScreenshot(named: "ipad_narrow_downloads_editing")
-        toolbar.buttons["Done"].tap()
+        toolbarButton("Done", in: "Downloads", of: app).tap()
 
-        toolbar.buttons["Search"].tap()
+        toolbarButton("Search", in: "Downloads", of: app).tap()
         assertHittable(app.searchFields["Downloaded episodes"], named: "narrow Downloads search field")
         app.swipeUp()
         assertExists(app.searchFields["Downloaded episodes"], named: "search stays presented after scrolling")
@@ -230,7 +241,7 @@ final class OpenCastPadUITests: XCTestCase {
         assertExists(list, named: "Library list after choosing List")
         assertDoesNotExist(grid, named: "Library grid after choosing List", timeout: 5)
         assertExists(seededSubscriptionTile(in: app), named: "seeded library row")
-        assertHittable(app.navigationBars["Library"].buttons["Add"], named: "pinned Add beside View Options")
+        assertHittable(toolbarButton("Add", in: "Library", of: app), named: "pinned Add beside View Options")
         attachSmokeScreenshot(named: "ipad_library_list")
 
         chooseLibraryViewOption("Grid", in: app)
@@ -243,8 +254,20 @@ final class OpenCastPadUITests: XCTestCase {
 
         // Automatic follows the window: narrowing it to compact width swaps
         // in the list with no further choice.
-        let window = narrowWindow(of: app)
-        XCTAssertLessThan(window.frame.width, 700, "The app window itself must be narrow, not just the Simulator scale")
+        XCTAssertTrue(
+            waitForNavigationItem("Playlists", symbol: Self.playlistsSymbol, toExist: true, in: app),
+            "Playlists, offered only at regular width, should exist before the window resize"
+        )
+        _ = narrowWindow(of: app)
+        XCTAssertTrue(
+            waitForNavigationItem("Playlists", symbol: Self.playlistsSymbol, toExist: false, in: app),
+            "The app window itself must be narrow, not just the Simulator scale: Playlists, offered only at regular width, should be gone"
+        )
+        XCTAssertTrue(
+            navigationItemExists("Library", symbol: Self.librarySymbol, in: app)
+                && !navigationItemExists("Playlists", symbol: Self.playlistsSymbol, in: app),
+            "The narrow window's navigation should be up, offering Library, with Playlists still gone"
+        )
         assertExists(list, named: "Library list under Automatic in a narrow window")
         assertDoesNotExist(grid, named: "Library grid under Automatic in a narrow window", timeout: 5)
         attachSmokeScreenshot(named: "ipad_library_narrow_automatic_list")
@@ -350,7 +373,7 @@ final class OpenCastPadUITests: XCTestCase {
         assertExists(diagnosticsEntry, named: "Episode Diagnostics menu entry")
         diagnosticsEntry.tap()
 
-        assertExists(app.navigationBars["Episode Diagnostics"].firstMatch, named: "diagnostics sheet on iPad")
+        assertScreen("Episode Diagnostics", named: "diagnostics sheet on iPad", in: app, firstMatch: true)
         attachSmokeScreenshot(named: "ipad_episode_diagnostics")
 
         let shareButton = app.buttons["Download & Share Audio"].firstMatch
@@ -423,7 +446,7 @@ final class OpenCastPadUITests: XCTestCase {
         }
         assertExists(readTranscript, named: "Read Transcript button")
         readTranscript.tap()
-        assertExists(app.navigationBars["Transcript"], named: "Transcript route", timeout: 10)
+        assertScreen("Transcript", named: "Transcript route", in: app, timeout: 10)
 
         let recapList = app.descendants(matching: .any).matching(identifier: "Transcript Recap List").firstMatch
 
@@ -456,7 +479,7 @@ final class OpenCastPadUITests: XCTestCase {
             app.navigationBars["Recap"].absentOrWait(timeout: 5),
             "tapping a citation should dismiss the recap sheet"
         )
-        assertExists(app.navigationBars["Transcript"], named: "transcript route after seeking", timeout: 5)
+        assertScreen("Transcript", named: "transcript route after seeking", in: app, timeout: 5)
         sleep(2)
         attachSmokeScreenshot(named: "ipad_recap_after_seek_\(appearance)")
         let seekNote = XCTAttachment(string: "tapped \(chipLabel)")
@@ -518,7 +541,7 @@ final class OpenCastPadUITests: XCTestCase {
         }
         assertExists(readTranscript, named: "Read Transcript button")
         readTranscript.tap()
-        assertExists(app.navigationBars["Transcript"], named: "Transcript route", timeout: 10)
+        assertScreen("Transcript", named: "Transcript route", in: app, timeout: 10)
 
         openDeviceIntelligenceSheet(entry: "Ask About This Episode", navigationTitle: "Ask", in: app)
         let continueButton = app.buttons["Continue"].firstMatch
@@ -561,7 +584,7 @@ final class OpenCastPadUITests: XCTestCase {
             app.navigationBars["Ask"].absentOrWait(timeout: 5),
             "tapping a citation should dismiss the ask sheet"
         )
-        assertExists(app.navigationBars["Transcript"], named: "transcript route after seeking", timeout: 5)
+        assertScreen("Transcript", named: "transcript route after seeking", in: app, timeout: 5)
         sleep(2)
         attachSmokeScreenshot(named: "ipad_ask_after_seek_\(appearance)")
         let seekNote = XCTAttachment(string: "tapped \(chipLabel)")
@@ -618,7 +641,7 @@ final class OpenCastPadUITests: XCTestCase {
             }
             entry.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
         }
-        assertExists(app.navigationBars[navigationTitle], named: "\(navigationTitle.lowercased()) sheet for \(title)", timeout: 8)
+        assertScreen(navigationTitle, named: "\(navigationTitle.lowercased()) sheet for \(title)", in: app, timeout: 8)
     }
 
     /// Narrows the app window by dragging its bottom-right corner. The window
@@ -754,7 +777,7 @@ final class OpenCastPadUITests: XCTestCase {
     @MainActor
     private func openPadSection(_ title: String, in app: XCUIApplication) {
         let sidebarEntry = app.cells.matching(NSPredicate(format: "label == %@", title)).firstMatch
-        if !app.tabBars.buttons[title].exists,
+        if !sectionItem(title, in: app).exists,
            sidebarEntry.waitForExistence(timeout: 2),
            sidebarEntry.isHittable {
             sidebarEntry.tap()
@@ -840,11 +863,6 @@ final class OpenCastPadUITests: XCTestCase {
         detailsAction.tap()
         assertExists(app.buttons["Play Episode"], named: "\(name) episode detail", file: file, line: line)
         assertDoesNotExist(nowPlayingOverlay(in: app), named: "\(name) Now Playing overlay", file: file, line: line)
-    }
-
-    @MainActor
-    private func tapBackButton(in app: XCUIApplication) {
-        app.navigationBars.buttons.firstMatch.tap()
     }
 
     @MainActor

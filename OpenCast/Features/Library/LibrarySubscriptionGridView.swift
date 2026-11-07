@@ -27,8 +27,9 @@ struct LibrarySubscriptionGridView<Header: View>: View {
         // already has its final column count.
         GeometryReader { proxy in
             let metrics = LibraryGridMetrics.resolve(
-                containerWidth: proxy.size.width,
-                isCompact: horizontalSizeClass == .compact || verticalSizeClass == .compact,
+                in: proxy,
+                horizontalSizeClass: horizontalSizeClass,
+                verticalSizeClass: verticalSizeClass,
                 isAccessibilitySize: dynamicTypeSize.isAccessibilitySize
             )
 
@@ -45,13 +46,14 @@ struct LibrarySubscriptionGridView<Header: View>: View {
                             )
                         }
                     }
+                    .libraryGridPlacement(metrics)
                     .padding(.vertical, 8)
                 }
             }
             .swipeActionsContainer()
             .accessibilityIdentifier("Library Grid")
             .contentMargins(.horizontal, metrics.horizontalMargin, for: .scrollContent)
-            .contentMargins(.bottom, 72, for: .scrollContent)
+            .tabAccessoryBottomClearance(rowSpacing: metrics.rowSpacing)
         }
     }
 }

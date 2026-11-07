@@ -232,11 +232,7 @@ final class OpenCastUITests: XCTestCase {
         assertExists(diagnosticsEntry, named: "Episode Diagnostics menu entry")
         diagnosticsEntry.tap()
 
-        assertExists(
-            app.navigationBars["Episode Diagnostics"].firstMatch,
-            named: "diagnostics sheet",
-            timeout: 8
-        )
+        assertScreen("Episode Diagnostics", named: "diagnostics sheet", in: app, timeout: 8, firstMatch: true)
         assertExists(app.buttons["Refresh Diagnostics"].firstMatch, named: "refresh diagnostics action")
         assertExists(app.buttons["Copy Report"].firstMatch, named: "copy report action")
         assertExists(app.buttons["Share Report"].firstMatch, named: "share report action")
@@ -285,11 +281,7 @@ final class OpenCastUITests: XCTestCase {
         let diagnosticsEntry = app.buttons["Episode Diagnostics"].firstMatch
         assertExists(diagnosticsEntry, named: "Episode Diagnostics menu entry")
         diagnosticsEntry.tap()
-        assertExists(
-            app.navigationBars["Episode Diagnostics"].firstMatch,
-            named: "diagnostics sheet",
-            timeout: 8
-        )
+        assertScreen("Episode Diagnostics", named: "diagnostics sheet", in: app, timeout: 8, firstMatch: true)
 
         let shareButton = app.buttons["Download & Share Audio"].firstMatch
         assertExists(shareButton, named: "download and share audio action")
@@ -436,7 +428,7 @@ final class OpenCastUITests: XCTestCase {
         app.terminate()
         app.launch()
         openSection("Downloads", in: app)
-        let downloadSearch = app.navigationBars["Downloads"].buttons["Search"]
+        let downloadSearch = toolbarButton("Search", in: "Downloads", of: app)
         assertExists(downloadSearch, named: "downloads search button")
         downloadSearch.tap()
         searchField = presentedSearchField(
@@ -996,7 +988,7 @@ final class OpenCastUITests: XCTestCase {
         attachSmokeScreenshot(named: "notes-library-row")
         notesRow.tap()
         let notesBar = app.navigationBars["Notes"]
-        assertExists(notesBar, named: "Notes screen")
+        assertScreen("Notes", named: "Notes screen", in: app)
         assertExists(notesBar.buttons["Library"], named: "Notes screen's back button to the Library")
         assertDoesNotExist(notesBar.buttons["Playlists"], named: "Playlists collection behind Notes")
         let notesList = libraryContainer("Notes Library List", in: app)
@@ -1044,7 +1036,7 @@ final class OpenCastUITests: XCTestCase {
         header.tap()
         assertExists(app.buttons["Episode Actions"], named: "episode detail opened from the Notes header")
         tapBackButton(in: app)
-        assertExists(app.navigationBars["Notes"], named: "Notes screen after leaving episode detail")
+        assertScreen("Notes", named: "Notes screen after leaving episode detail", in: app)
         tapBackButton(in: app)
         assertExists(notesRow, named: "Library Notes row after leaving Notes")
 
@@ -1121,7 +1113,15 @@ final class OpenCastUITests: XCTestCase {
         assertExists(toggle, named: "Private Notes toggle", file: file, line: line)
         scrollClearOfMiniPlayer(toggle, in: app)
         toggle.coordinate(withNormalizedOffset: CGVector(dx: 0.9, dy: 0.5)).tap()
-        XCTAssertEqual(toggle.value as? String, isEnabled ? "1" : "0", file: file, line: line)
+        // The switch reports its new value once its binding updates, not in
+        // the tap's instant, so wait for it (3 s, far past one main-actor
+        // turn) before asserting; never tap again, which would toggle it back.
+        let expected = isEnabled ? "1" : "0"
+        _ = XCTWaiter.wait(
+            for: [XCTNSPredicateExpectation(predicate: NSPredicate(format: "value == %@", expected), object: toggle)],
+            timeout: 3
+        )
+        XCTAssertEqual(toggle.value as? String, expected, file: file, line: line)
     }
 
     /// While something plays, the mini player can sit over an element and
@@ -1173,7 +1173,7 @@ final class OpenCastUITests: XCTestCase {
         let menuNotes = app.buttons["Menu Private Notes"]
         assertExists(menuNotes, named: "Private Notes menu action", file: file, line: line)
         menuNotes.tap()
-        assertExists(app.navigationBars["Private Notes"], named: "Private Notes sheet", file: file, line: line)
+        assertScreen("Private Notes", named: "Private Notes sheet", in: app, file: file, line: line)
     }
 
     /// With the Playback note button setting off, the More menu has no
@@ -1380,7 +1380,7 @@ final class OpenCastUITests: XCTestCase {
         )
         app.launch()
 
-        assertExists(app.tabBars.buttons["Library"], named: "Library tab")
+        assertSectionItemExists("Library", named: "Library tab", in: app)
         waitForExternalTraceIfRequested(environmentKey: Self.manyArtworkTraceArmingSecondsEnvironmentKey)
         openAllPlaylist(in: app)
 
@@ -1650,7 +1650,7 @@ final class OpenCastUITests: XCTestCase {
 
         openSeededNowPlaying(in: app)
         let overlay = nowPlayingOverlay(in: app)
-        holdNowPlayingDismissDrag(in: app, endY: 0.32, holdDuration: 10)
+        holdNowPlayingDismissDrag(in: app, travelling: 0.08, holdDuration: 10)
 
         let finished = finishedPlayback(in: overlay)
         assertHittable(finished, named: "Finished card after cancelled completion drag", timeout: 5)
@@ -1680,14 +1680,14 @@ final class OpenCastUITests: XCTestCase {
 
         openSeededNowPlaying(in: app)
         let overlay = nowPlayingOverlay(in: app)
-        holdNowPlayingDismissDrag(in: app, endY: 0.58, holdDuration: 10)
+        holdNowPlayingDismissDrag(in: app, travelling: 0.34, holdDuration: 10)
 
         XCTAssertTrue(
             overlay.absentOrWait(timeout: 5),
             "A completion drag above threshold should finish dismissal."
         )
         assertDoesNotExist(finishedPlayback(in: app), named: "Finished card after completed dismissal")
-        assertHittable(app.tabBars.buttons["Library"], named: "interactive Library tab after completion dismissal")
+        assertHittable(sectionItem("Library", in: app), named: "interactive Library tab after completion dismissal")
         let summary = captureFramePacingSummary(
             in: app,
             expectedSessions: 1,
@@ -1711,7 +1711,7 @@ final class OpenCastUITests: XCTestCase {
         let overlay = nowPlayingOverlay(in: app)
         holdNowPlayingDismissDrag(
             in: app,
-            endY: 0.58,
+            travelling: 0.34,
             holdDuration: 0.05,
             velocity: .fast
         )
@@ -1746,7 +1746,7 @@ final class OpenCastUITests: XCTestCase {
         let app = makeSeededApp(extraFeedCount: 12)
         app.launch()
 
-        assertExists(app.tabBars.buttons["Library"], named: "Library tab")
+        assertSectionItemExists("Library", named: "Library tab", in: app)
         enableTabBarMinimizeOnScroll(in: app)
         openAllPlaylist(in: app)
 
@@ -1777,7 +1777,7 @@ final class OpenCastUITests: XCTestCase {
 
         scrollBackUpUntilExists(expanded, in: app, named: "expanded player restored on upward scroll")
 
-        app.tabBars.buttons["Search"].tap()
+        openSection("Search", in: app)
         assertExists(app.searchFields.firstMatch, named: "Search tab search field")
         openAllPlaylist(in: app)
         miniPlayer.tap()
@@ -1836,7 +1836,7 @@ final class OpenCastUITests: XCTestCase {
         let app = makeSeededApp(seedsEpisodeProgress: true)
         app.launch()
 
-        assertExists(app.tabBars.buttons["Library"], named: "Library tab")
+        assertSectionItemExists("Library", named: "Library tab", in: app)
         let miniPlayer = app.buttons["Open Now Playing"]
         assertExists(miniPlayer, named: "restored mini-player")
         miniPlayer.tap()
@@ -1921,7 +1921,7 @@ final class OpenCastUITests: XCTestCase {
         let app = makeSeededApp(seedsEpisodeProgress: true)
         app.launch()
 
-        assertExists(app.tabBars.buttons["Library"], named: "Library tab")
+        assertSectionItemExists("Library", named: "Library tab", in: app)
         assertExists(app.buttons["Open Now Playing"], named: "restored mini-player")
 
         openAllPlaylist(in: app)
@@ -1930,7 +1930,7 @@ final class OpenCastUITests: XCTestCase {
         assertExists(app.staticTexts["2m left"], named: "remaining time row label")
         attachSmokeScreenshot(named: "inbox_episode_progress")
 
-        app.tabBars.buttons["Library"].tap()
+        openSection("Library", in: app)
         let libraryPodcast = seededSubscriptionRow(in: app)
         assertExists(libraryPodcast, named: "seeded library podcast")
         libraryPodcast.tap()
@@ -2313,8 +2313,8 @@ final class OpenCastUITests: XCTestCase {
         let navigationBar = app.navigationBars["Playback Settings"]
         let introField = app.textFields["Skip Intro Duration"]
         let outroField = app.textFields["Skip Outro Duration"]
-        assertExists(navigationBar.buttons["Cancel"], named: "playback settings cancel action")
-        assertExists(navigationBar.buttons["Save"], named: "playback settings save action")
+        assertExists(toolbarButton("Cancel", in: "Playback Settings", of: app), named: "playback settings cancel action")
+        assertExists(toolbarButton("Save", in: "Playback Settings", of: app), named: "playback settings save action")
         assertExists(introField, named: "skip intro duration field")
         assertExists(outroField, named: "skip outro duration field")
         XCTAssertTrue(introField.label.contains("Skip Intro duration"))
@@ -2335,22 +2335,22 @@ final class OpenCastUITests: XCTestCase {
         decreaseIntro.tap()
         XCTAssertEqual(introField.value as? String, "0:00")
 
-        replaceText(in: introField, with: "1:99")
-        navigationBar.buttons["Save"].tap()
+        replaceText(in: introField, with: "1:99", app: app)
+        toolbarButton("Save", in: "Playback Settings", of: app).tap()
         assertExists(
             app.staticTexts["Podcast Playback Settings Error"],
             named: "invalid playback duration error"
         )
 
-        replaceText(in: introField, with: "1:05")
+        replaceText(in: introField, with: "1:05", app: app)
         assertDoesNotExist(
             app.staticTexts["Podcast Playback Settings Error"],
             named: "stale validation error after editing"
         )
-        replaceText(in: outroField, with: "0:30")
+        replaceText(in: outroField, with: "0:30", app: app)
         XCTAssertEqual(introField.value as? String, "1:05")
         XCTAssertEqual(outroField.value as? String, "0:30")
-        navigationBar.buttons["Save"].tap()
+        toolbarButton("Save", in: "Playback Settings", of: app).tap()
         assertDoesNotExist(navigationBar, named: "playback settings after save")
 
         openPodcastPlaybackSettings(in: app)
@@ -2366,7 +2366,7 @@ final class OpenCastUITests: XCTestCase {
         resetBoth.tap()
         XCTAssertEqual(reopenedIntroField.value as? String, "0:00")
         XCTAssertEqual(reopenedOutroField.value as? String, "0:00")
-        reopenedNavigationBar.buttons["Save"].tap()
+        toolbarButton("Save", in: "Playback Settings", of: app).tap()
         assertDoesNotExist(reopenedNavigationBar, named: "playback settings after reset save")
 
         openPodcastPlaybackSettings(in: app)
@@ -2425,7 +2425,7 @@ final class OpenCastUITests: XCTestCase {
         assertHittable(oneTwentyFive, named: "1.25x speed choice")
         oneTwentyFive.tap()
         let navigationBar = app.navigationBars["Playback Settings"]
-        navigationBar.buttons["Save"].tap()
+        toolbarButton("Save", in: "Playback Settings", of: app).tap()
         assertDoesNotExist(navigationBar, named: "playback settings after save")
 
         let miniPlayer = app.buttons["Open Now Playing"]
@@ -2804,6 +2804,14 @@ final class OpenCastUITests: XCTestCase {
         assertNowPlayingOverlay(in: app)
         assertExists(nowPlayingSoundLabPanel(in: app), named: "Now Playing Sound Lab panel")
         assertExists(app.switches["Voice Boost"], named: "Voice Boost Sound Lab toggle")
+
+        // Only the hidden square's 1 pt offset keeps this order under a legacy panel.
+        let identifiers = nowPlayingOverlay(in: app)
+            .descendants(matching: .any)
+            .allElementsBoundByIndex.map(\.identifier)
+        let artworkIndex = try XCTUnwrap(identifiers.firstIndex(of: "Now Playing Artwork"))
+        let panelIndex = try XCTUnwrap(identifiers.firstIndex(of: "Now Playing Sound Lab"))
+        XCTAssertLessThan(artworkIndex, panelIndex)
     }
 
     @MainActor
@@ -3501,8 +3509,8 @@ final class OpenCastUITests: XCTestCase {
         scrollUntilHittable(downloadsRow, in: app)
         assertExists(elementContaining(label: "1 episode,", in: app), named: "Storage downloads summary")
         downloadsRow.tap()
-        assertExists(app.navigationBars["Download Settings"], named: "Download Settings from Storage")
-        XCTAssertTrue(app.tabBars.buttons["Downloads"].isSelected, "Storage should switch to the Downloads tab")
+        assertScreen("Download Settings", named: "Download Settings from Storage", in: app)
+        XCTAssertTrue(sectionItem("Downloads", in: app).isSelected, "Storage should switch to the Downloads tab")
         let deleteAllDownloadsButton = app.buttons["Delete All Downloads"]
         scrollUntilHittable(deleteAllDownloadsButton, in: app)
         assertExists(deleteAllDownloadsButton, named: "Delete All Downloads button")
@@ -3518,11 +3526,12 @@ final class OpenCastUITests: XCTestCase {
         )
         app.launch()
 
-        let downloadsTab = app.tabBars.buttons["Downloads"]
+        assertSectionItemExists("Downloads", named: "Downloads tab", in: app)
+        let downloadsTab = sectionItem("Downloads", in: app)
         assertHittable(downloadsTab, named: "Downloads tab")
         downloadsTab.tap()
 
-        assertExists(app.navigationBars["Downloads"], named: "Downloads navigation bar")
+        assertScreen("Downloads", named: "Downloads navigation bar", in: app)
         assertExists(app.staticTexts["Downloaded"], named: "Downloaded section")
         let options = app.navigationBars["Downloads"].buttons["Download Options"]
         assertHittable(options, named: "Download Options menu")
@@ -3530,7 +3539,7 @@ final class OpenCastUITests: XCTestCase {
         let storageButton = app.buttons["Storage"].firstMatch
         assertHittable(storageButton, named: "Downloads Storage menu item")
         storageButton.tap()
-        assertExists(app.navigationBars["Storage"], named: "Downloads Storage screen")
+        assertScreen("Storage", named: "Downloads Storage screen", in: app)
         assertExists(
             app.descendants(matching: .any)["downloads-storage-graph"],
             named: "Downloads storage graph"
@@ -3541,11 +3550,11 @@ final class OpenCastUITests: XCTestCase {
         // One tap pushes the show's download settings once, so one Back
         // returns to Storage.
         legendRow.tap()
-        assertExists(app.navigationBars["UI Test Show"], named: "show download settings from the legend")
+        assertScreen("UI Test Show", named: "show download settings from the legend", in: app)
         tapBackButton(in: app)
-        assertExists(app.navigationBars["Storage"], named: "Storage after the show's settings")
+        assertScreen("Storage", named: "Storage after the show's settings", in: app)
         tapBackButton(in: app)
-        assertExists(app.navigationBars["Downloads"], named: "Downloads after Storage")
+        assertScreen("Downloads", named: "Downloads after Storage", in: app)
 
         let downloadedRowButton = app.buttons.matching(identifier: Self.seededEpisodeRowIdentifier).firstMatch
         scrollUntilHittable(downloadedRowButton, in: app)
@@ -3559,7 +3568,7 @@ final class OpenCastUITests: XCTestCase {
         let miniPlayer = app.buttons["Open Now Playing"]
         assertExists(miniPlayer, named: "mini-player after local playback")
 
-        let editButton = app.navigationBars["Downloads"].buttons["Edit"]
+        let editButton = toolbarButton("Edit", in: "Downloads", of: app)
         assertHittable(editButton, named: "Downloads Edit button")
         editButton.tap()
 
@@ -3595,7 +3604,7 @@ final class OpenCastUITests: XCTestCase {
 
         assertExists(app.staticTexts["No Downloads"], named: "Downloads empty state after bulk deletion")
         assertDoesNotExist(
-            app.navigationBars["Downloads"].buttons["Done"],
+            toolbarButton("Done", in: "Downloads", of: app),
             named: "Done button after deleting the final completed download",
             timeout: 5
         )
@@ -3616,7 +3625,7 @@ final class OpenCastUITests: XCTestCase {
         assertHittable(settingsButton, named: "Download Settings menu item")
         settingsButton.tap()
 
-        assertExists(app.navigationBars["Download Settings"], named: "Download Settings screen")
+        assertScreen("Download Settings", named: "Download Settings screen", in: app)
         let wifiOnly = app.switches["download-settings-wifi-only-toggle"]
         assertExists(wifiOnly, named: "Wi-Fi Only toggle")
         XCTAssertEqual(wifiOnly.value as? String, "1", "Wi-Fi Only for Automatic Downloads ships on")
@@ -3636,7 +3645,7 @@ final class OpenCastUITests: XCTestCase {
         attachSmokeScreenshot(named: "download_settings_screen")
         showRow.tap()
 
-        assertExists(app.navigationBars["UI Test Show"], named: "show download settings")
+        assertScreen("UI Test Show", named: "show download settings", in: app)
         let autoDownload = app.switches["podcast-download-settings-auto-download-toggle"]
         assertExists(autoDownload, named: "Download New Episodes toggle")
         XCTAssertEqual(autoDownload.value as? String, "0", "Download New Episodes ships off")
@@ -3657,7 +3666,7 @@ final class OpenCastUITests: XCTestCase {
         attachSmokeScreenshot(named: "podcast_download_settings_pushed")
 
         tapBackButton(in: app)
-        assertExists(app.navigationBars["Download Settings"], named: "Download Settings after the show")
+        assertScreen("Download Settings", named: "Download Settings after the show", in: app)
         assertExists(
             elementContaining(label: "Downloads new episodes · Keep 3", in: app),
             named: "show row summary after the changes"
@@ -3675,15 +3684,14 @@ final class OpenCastUITests: XCTestCase {
         attachSmokeScreenshot(named: "podcast_actions_download_settings")
         menuEntry.tap()
 
-        let sheetBar = app.navigationBars["UI Test Show"]
-        assertExists(sheetBar, named: "show download settings sheet")
+        assertScreen("UI Test Show", named: "show download settings sheet", in: app)
         assertExists(
             app.switches["podcast-download-settings-auto-download-toggle"],
             named: "Download New Episodes toggle in the sheet"
         )
         assertExists(elementContaining(label: "3 Episodes", in: app), named: "sheet showing the saved limit")
         attachSmokeScreenshot(named: "podcast_download_settings_sheet")
-        let doneButton = sheetBar.buttons["Done"]
+        let doneButton = toolbarButton("Done", in: "UI Test Show", of: app)
         assertHittable(doneButton, named: "sheet Done button")
         doneButton.tap()
         // The show's own screen shares the sheet's title, so the sheet's
@@ -3698,11 +3706,10 @@ final class OpenCastUITests: XCTestCase {
         app.launch()
 
         openSection("Downloads", in: app)
-        let downloadsBar = app.navigationBars["Downloads"]
-        assertExists(downloadsBar, named: "Downloads navigation bar")
+        assertScreen("Downloads", named: "Downloads navigation bar", in: app)
         assertExists(app.staticTexts["Downloaded"], named: "flat Downloaded section")
 
-        let options = downloadsBar.buttons["Download Options"]
+        let options = toolbarButton("Download Options", in: "Downloads", of: app)
         assertHittable(options, named: "Download Options menu")
         options.tap()
         let groupByShow = app.buttons["Group by Show"].firstMatch
@@ -3739,9 +3746,9 @@ final class OpenCastUITests: XCTestCase {
         assertExists(row, named: "download row after expanding")
 
         chip.tap()
-        assertExists(app.navigationBars["UI Test Show"], named: "show download settings from the chip")
+        assertScreen("UI Test Show", named: "show download settings from the chip", in: app)
         tapBackButton(in: app)
-        assertExists(downloadsBar, named: "Downloads after the show's settings")
+        assertScreen("Downloads", named: "Downloads after the show's settings", in: app)
 
         options.tap()
         assertHittable(groupByShow, named: "Group by Show toggle to turn off")
@@ -4133,7 +4140,7 @@ final class OpenCastUITests: XCTestCase {
 
         // Delete All lives in Download Settings, in the Downloads tab.
         downloadsRow.tap()
-        assertExists(app.navigationBars["Download Settings"], named: "Download Settings from Storage")
+        assertScreen("Download Settings", named: "Download Settings from Storage", in: app)
         let deleteAllDownloadsButton = app.buttons["Delete All Downloads"]
         scrollUntilHittable(deleteAllDownloadsButton, in: app)
         deleteAllDownloadsButton.tap()
@@ -4141,7 +4148,7 @@ final class OpenCastUITests: XCTestCase {
         assertDoesNotExist(deleteAllDownloadsButton, named: "Delete All Downloads after deleting downloads", timeout: 5)
 
         openSettings(in: app)
-        assertExists(app.navigationBars["Storage"], named: "Storage kept in the Settings tab")
+        assertScreen("Storage", named: "Storage kept in the Settings tab", in: app)
         assertExists(elementContaining(label: "None", in: app), named: "Downloads summary after deleting downloads")
         assertExists(app.staticTexts["Feed Cache"], named: "Feed Cache row after deleting downloads")
         assertExists(app.staticTexts["Artwork Cache"], named: "Artwork Cache row after deleting downloads")
@@ -4787,7 +4794,7 @@ final class OpenCastUITests: XCTestCase {
         assertExists(currentChapter, named: "chapter bar")
         currentChapter.tap()
 
-        assertExists(app.navigationBars["Chapters"], named: "Chapters sheet")
+        assertScreen("Chapters", named: "Chapters sheet", in: app)
         for title in Self.seededChapterTitles {
             assertExists(app.staticTexts[title].firstMatch, named: "chapter row \(title)")
         }
@@ -4844,7 +4851,7 @@ final class OpenCastUITests: XCTestCase {
         XCTAssertEqual(elapsed, 60, accuracy: 1.5, "Previous should restart Main Topic at 1:00")
 
         app.descendants(matching: .any)["Now Playing Current Chapter"].firstMatch.tap()
-        assertExists(app.navigationBars["Chapters"], named: "Chapters sheet from the chapter bar")
+        assertScreen("Chapters", named: "Chapters sheet from the chapter bar", in: app)
         app.staticTexts[Self.seededChapterTitles[2]].firstMatch.tap()
         XCTAssertTrue(
             app.navigationBars["Chapters"].waitForNonExistence(timeout: 5),
@@ -5176,7 +5183,7 @@ final class OpenCastUITests: XCTestCase {
         let appIconRow = app.buttons["Settings Row App Icon"].firstMatch
         assertHittable(appIconRow, named: "App Icon row in Look & Feel")
         appIconRow.tap()
-        assertExists(app.navigationBars["App Icon"], named: "App Icon screen")
+        assertScreen("App Icon", named: "App Icon screen", in: app)
     }
 
     @MainActor
@@ -5282,7 +5289,7 @@ final class OpenCastUITests: XCTestCase {
         let recap = app.buttons[Self.recapLastFiveMinutesTitle]
         assertExists(recap, named: "recap entry with the host's Apple Intelligence")
         recap.tap()
-        assertExists(app.navigationBars["Recap"], named: "recap sheet")
+        assertScreen("Recap", named: "recap sheet", in: app)
         let continueButton = app.buttons["Continue"].firstMatch
         if continueButton.existsOrWait(timeout: 5) {
             continueButton.tap()
@@ -5314,12 +5321,12 @@ final class OpenCastUITests: XCTestCase {
         assertDoesNotExist(app.buttons[Self.recapSoFarTitle], named: "recap-so-far entry below fifteen minutes")
         recap.tap()
 
-        assertExists(app.navigationBars["Recap"], named: "recap sheet")
+        assertScreen("Recap", named: "recap sheet", in: app)
         assertExists(app.staticTexts["Turn On Apple Intelligence"], named: "unavailable state title")
         assertDoesNotExist(app.buttons["Continue"], named: "disclosure while unavailable")
         attachSmokeScreenshot(named: "transcript_recap_unavailable")
         app.buttons["Done"].firstMatch.tap()
-        assertExists(app.navigationBars["Transcript"], named: "transcript route after dismissing the recap sheet")
+        assertScreen("Transcript", named: "transcript route after dismissing the recap sheet", in: app)
     }
 
     /// Available: the first request passes through the one-time disclosure,
@@ -5338,7 +5345,7 @@ final class OpenCastUITests: XCTestCase {
         assertExists(recap, named: "recap entry")
         recap.tap()
 
-        assertExists(app.navigationBars["Recap"], named: "recap sheet")
+        assertScreen("Recap", named: "recap sheet", in: app)
         assertExists(app.staticTexts["Use Apple Intelligence?"], named: "one-time disclosure title")
         attachSmokeScreenshot(named: "transcript_recap_disclosure")
         let continueButton = app.buttons["Continue"].firstMatch
@@ -5358,7 +5365,7 @@ final class OpenCastUITests: XCTestCase {
             app.navigationBars["Recap"].absentOrWait(timeout: 5),
             "tapping a citation should dismiss the recap sheet"
         )
-        assertExists(app.navigationBars["Transcript"], named: "transcript route after seeking")
+        assertScreen("Transcript", named: "transcript route after seeking", in: app)
 
         // Seeking from the recap starts playback without presenting Now
         // Playing; the mini player is the way in to read the landed position.
@@ -5389,13 +5396,13 @@ final class OpenCastUITests: XCTestCase {
         assertExists(ask, named: "Ask entry with Apple Intelligence off")
         ask.tap()
 
-        assertExists(app.navigationBars["Ask"], named: "ask sheet")
+        assertScreen("Ask", named: "ask sheet", in: app)
         assertExists(app.staticTexts["Turn On Apple Intelligence"], named: "unavailable state title")
         assertDoesNotExist(app.buttons["Continue"], named: "disclosure while unavailable")
         assertDoesNotExist(app.textFields["Transcript Ask Composer"], named: "composer while unavailable")
         attachSmokeScreenshot(named: "transcript_ask_unavailable")
         app.buttons["Done"].firstMatch.tap()
-        assertExists(app.navigationBars["Transcript"], named: "transcript route after dismissing the ask sheet")
+        assertScreen("Transcript", named: "transcript route after dismissing the ask sheet", in: app)
     }
 
     /// Available: the first open passes through the one-time disclosure, a
@@ -5415,7 +5422,7 @@ final class OpenCastUITests: XCTestCase {
         assertExists(ask, named: "Ask entry")
         ask.tap()
 
-        assertExists(app.navigationBars["Ask"], named: "ask sheet")
+        assertScreen("Ask", named: "ask sheet", in: app)
         assertExists(app.staticTexts["Use Apple Intelligence?"], named: "one-time disclosure title")
         attachSmokeScreenshot(named: "transcript_ask_disclosure")
         let continueButton = app.buttons["Continue"].firstMatch
@@ -5446,7 +5453,7 @@ final class OpenCastUITests: XCTestCase {
             app.navigationBars["Ask"].absentOrWait(timeout: 5),
             "tapping a citation should dismiss the ask sheet"
         )
-        assertExists(app.navigationBars["Transcript"], named: "transcript route after seeking")
+        assertScreen("Transcript", named: "transcript route after seeking", in: app)
         let openNowPlaying = app.buttons["Open Now Playing"]
         assertExists(openNowPlaying, named: "mini player after seeking from an answer")
         openNowPlaying.tap()
@@ -5471,7 +5478,7 @@ final class OpenCastUITests: XCTestCase {
         openSeededTranscriptRouteFromAllPlaylist(in: app)
         openTranscriptOptionsMenu(in: app)
         app.buttons[Self.askTitle].tap()
-        assertExists(app.navigationBars["Ask"], named: "ask sheet")
+        assertScreen("Ask", named: "ask sheet", in: app)
         let continueButton = app.buttons["Continue"].firstMatch
         if continueButton.existsOrWait(timeout: 5) {
             continueButton.tap()
@@ -5533,7 +5540,7 @@ final class OpenCastUITests: XCTestCase {
         let ask = app.buttons[Self.askTitle]
         assertExists(ask, named: "Ask entry with the host's Apple Intelligence")
         ask.tap()
-        assertExists(app.navigationBars["Ask"], named: "ask sheet")
+        assertScreen("Ask", named: "ask sheet", in: app)
         let continueButton = app.buttons["Continue"].firstMatch
         if continueButton.existsOrWait(timeout: 5) {
             continueButton.tap()
@@ -5580,7 +5587,7 @@ final class OpenCastUITests: XCTestCase {
         openLibrary(in: app)
         assertLibraryPlaylistCount(3, in: app)
 
-        let addMenu = app.navigationBars["Library"].buttons["Add"]
+        let addMenu = toolbarButton("Add", in: "Library", of: app)
         assertHittable(addMenu, named: "Library Add menu")
         addMenu.tap()
         // A toolbar menu item may not carry its identifier, so the label counts too.
@@ -5760,10 +5767,11 @@ final class OpenCastUITests: XCTestCase {
         assertDoesNotExist(confirm, named: "Download All confirmation after confirming", timeout: 5)
         XCTAssertFalse(app.alerts["Playlist Error"].exists, "Download All should not report a playlist error")
 
-        let downloadsTab = app.tabBars.buttons["Downloads"]
+        assertSectionItemExists("Downloads", named: "Downloads tab", in: app)
+        let downloadsTab = sectionItem("Downloads", in: app)
         assertHittable(downloadsTab, named: "Downloads tab")
         downloadsTab.tap()
-        assertExists(app.navigationBars["Downloads"], named: "Downloads navigation bar")
+        assertScreen("Downloads", named: "Downloads navigation bar", in: app)
 
         // The seeded audio is a local file, so each download is a quick copy.
         // The Ad Detection section pushes the last downloaded row below the
@@ -5779,7 +5787,7 @@ final class OpenCastUITests: XCTestCase {
         let storageButton = app.buttons["Storage"].firstMatch
         assertHittable(storageButton, named: "Downloads Storage menu item")
         storageButton.tap()
-        assertExists(app.navigationBars["Storage"], named: "Downloads Storage screen")
+        assertScreen("Storage", named: "Downloads Storage screen", in: app)
         assertExists(
             elementContaining(label: "4 episodes,", in: app),
             named: "four completed downloads in the storage summary",
@@ -5827,7 +5835,7 @@ final class OpenCastUITests: XCTestCase {
             nowPlayingOverlay(in: app).absentOrWait(timeout: 5),
             "Show Seeded Commute should dismiss Now Playing"
         )
-        assertExists(app.navigationBars["Seeded Commute"], named: "Seeded Commute detail from the More menu")
+        assertScreen("Seeded Commute", named: "Seeded Commute detail from the More menu", in: app)
     }
 
     /// Seeded Unplayed runs the default rule over the library. With the queue
@@ -6070,7 +6078,7 @@ final class OpenCastUITests: XCTestCase {
         scrollUntilHittable(readTranscriptButton, in: app)
         assertExists(readTranscriptButton, named: "Read Transcript button")
         readTranscriptButton.tap()
-        assertExists(app.navigationBars["Transcript"], named: "Transcript route")
+        assertScreen("Transcript", named: "Transcript route", in: app)
     }
 
     @MainActor
@@ -6738,11 +6746,6 @@ final class OpenCastUITests: XCTestCase {
             .first(where: { !$0.isEmpty })
     }
 
-    @MainActor
-    private func tapBackButton(in app: XCUIApplication) {
-        app.navigationBars.buttons.firstMatch.tap()
-    }
-
     /// On the iOS 27.2 simulator UIKit cancels about one complete interactive
     /// pop in twenty for the same touch input, so a cancelled swipe is tried
     /// again, three swipes in all. It is retried only while the pushed
@@ -6757,7 +6760,7 @@ final class OpenCastUITests: XCTestCase {
     ) {
         let start = app.coordinate(withNormalizedOffset: CGVector(dx: 0.01, dy: 0.5))
         let end = app.coordinate(withNormalizedOffset: CGVector(dx: 0.82, dy: 0.5))
-        let backButton = app.navigationBars.buttons["BackButton"]
+        let backButton = isSectionRail(in: app) ? app.buttons["BackButton"] : app.navigationBars.buttons["BackButton"]
         start.press(forDuration: 0.05, thenDragTo: end)
         var attempt = 1
         while attempt < 3, !destination.waitForExistence(timeout: 5), backButton.exists {
@@ -6793,12 +6796,7 @@ final class OpenCastUITests: XCTestCase {
         line: UInt = #line
     ) {
         let transcriptNavigationBar = app.navigationBars["Transcript"]
-        assertExists(
-            transcriptNavigationBar,
-            named: "transcript sheet navigation bar",
-            file: file,
-            line: line
-        )
+        assertScreen("Transcript", named: "transcript sheet navigation bar", in: app, file: file, line: line)
         let dismissalStart = app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.07))
         let dismissalEnd = app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.78))
         dismissalStart.press(forDuration: 0.05, thenDragTo: dismissalEnd)
@@ -6843,10 +6841,7 @@ final class OpenCastUITests: XCTestCase {
         let playbackSettings = app.buttons["Playback Settings…"]
         assertHittable(playbackSettings, named: "Playback Settings menu action")
         playbackSettings.tap()
-        assertExists(
-            app.navigationBars["Playback Settings"],
-            named: "podcast playback settings sheet"
-        )
+        assertScreen("Playback Settings", named: "podcast playback settings sheet", in: app)
     }
 
     /// A swipe on the sheet is a flick whose detent UIKit reads from the
@@ -6874,8 +6869,9 @@ final class OpenCastUITests: XCTestCase {
     }
 
     @MainActor
-    private func replaceText(in field: XCUIElement, with replacement: String) {
+    private func replaceText(in field: XCUIElement, with replacement: String, app: XCUIApplication) {
         assertHittable(field, named: "duration field to replace")
+        bringClear(field, tapPoint: CGVector(dx: 0.99, dy: 0.5), in: app)
         field.coordinate(withNormalizedOffset: CGVector(dx: 0.99, dy: 0.5)).tap()
         let existingValue = (field.value as? String) ?? ""
         field.typeText(String(
@@ -7106,32 +7102,27 @@ final class OpenCastUITests: XCTestCase {
         }
     }
 
+    /// Travels the half window its window-normalized form did (0.24 to 0.74).
     @MainActor
     private func dragDismissNowPlayingOverlay(in app: XCUIApplication) {
-        dragDismissNowPlayingOverlay(in: app, startY: 0.24)
+        dragNowPlayingCard(nowPlayingOverlay(in: app), travelling: 0.50)
     }
 
-    @MainActor
-    private func dragDismissNowPlayingOverlay(in app: XCUIApplication, startY: CGFloat) {
-        let start = app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: startY))
-        let end = app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.74))
-        start.press(forDuration: 0.05, thenDragTo: end)
-    }
-
+    /// `windowFraction` is the travel of the window-normalized drag this
+    /// replaces, which started at 0.24: to 0.32 is 0.08, to 0.58 is 0.34. It
+    /// is now a fraction of the card's height, the window's on compact.
     @MainActor
     private func holdNowPlayingDismissDrag(
         in app: XCUIApplication,
-        endY: CGFloat,
+        travelling windowFraction: CGFloat,
         holdDuration: TimeInterval,
         velocity: XCUIGestureVelocity = .slow
     ) {
-        let start = app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.24))
-        let end = app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: endY))
-        start.press(
-            forDuration: 0.05,
-            thenDragTo: end,
-            withVelocity: velocity,
-            thenHoldForDuration: holdDuration
+        dragNowPlayingCard(
+            nowPlayingOverlay(in: app),
+            travelling: windowFraction,
+            velocity: velocity,
+            holdDuration: holdDuration
         )
     }
 
@@ -7139,8 +7130,10 @@ final class OpenCastUITests: XCTestCase {
     private func dragDismissNowPlayingOverlayFromArtwork(in app: XCUIApplication) {
         let artwork = nowPlayingArtwork(in: app)
         assertExists(artwork, named: "Now Playing artwork before dismissal")
+        // Still starts on the artwork; the end is the card's own point, which
+        // on the compact full-window card is the window point it was.
         let start = artwork.coordinate(withNormalizedOffset: CGVector(dx: 0.52, dy: 0.42))
-        let end = app.coordinate(withNormalizedOffset: CGVector(dx: 0.52, dy: 0.74))
+        let end = nowPlayingOverlay(in: app).coordinate(withNormalizedOffset: CGVector(dx: 0.52, dy: 0.74))
         start.press(forDuration: 0.05, thenDragTo: end)
     }
 
@@ -7401,7 +7394,7 @@ final class OpenCastUITests: XCTestCase {
         line: UInt = #line
     ) -> XCUIElement {
         let searchField = app.searchFields.firstMatch
-        if app.navigationBars["Search"].exists, searchField.exists {
+        if waitForScreen("Search", in: app, timeout: 0), searchField.exists {
             return searchField
         }
 
@@ -7426,13 +7419,17 @@ final class OpenCastUITests: XCTestCase {
             let searchButtons = app.navigationBars[navigationBarTitle].buttons.matching(
                 NSPredicate(format: "label == %@", "Search")
             )
+            // A rail holds the screen's toolbar Search above the Search section.
+            let railSearch = searchButtons.firstMatch.exists || !isSectionRail(in: app)
+                ? nil
+                : toolbarButton("Search", in: navigationBarTitle, of: app)
             assertExists(
-                searchButtons.firstMatch,
+                railSearch ?? searchButtons.firstMatch,
                 named: "search presentation button",
                 file: file,
                 line: line
             )
-            let searchButton = searchButtons.allElementsBoundByIndex
+            let searchButton = railSearch ?? searchButtons.allElementsBoundByIndex
                 .filter(\.isHittable)
                 .max { $0.frame.minX < $1.frame.minX }
                 ?? searchButtons.firstMatch
@@ -7454,7 +7451,7 @@ final class OpenCastUITests: XCTestCase {
         line: UInt = #line
     ) {
         let addButtons = [
-            app.navigationBars["Library"].buttons["Add"],
+            toolbarButton("Add", in: "Library", of: app),
             app.navigationBars["opencast"].buttons["Add"],
             app.buttons["Add"].firstMatch
         ]
@@ -7739,6 +7736,7 @@ final class OpenCastUITests: XCTestCase {
 
         XCTAssertTrue(element.existsOrWait(timeout: 5), file: file, line: line)
         XCTAssertTrue(element.isHittable, file: file, line: line)
+        bringFrameClear(element, in: app)
     }
 
     @MainActor
@@ -7959,7 +7957,7 @@ final class OpenCastUITests: XCTestCase {
         line: UInt = #line
     ) {
         let picker = app.navigationBars["Shows"]
-        let done = picker.buttons["Done"]
+        let done = toolbarButton("Done", in: "Shows", of: app)
         assertHittable(done, named: "Shows picker Done button", file: file, line: line)
         done.tap()
         XCTAssertTrue(picker.absentOrWait(timeout: 5), "The Shows picker should close on Done", file: file, line: line)

@@ -2474,7 +2474,7 @@ public final class AVFoundationPlaybackController {
     func rearmExpiredSleepTimerIfNeeded(now: Date) {
         guard let mode = expiredSleepTimerMode,
               let deadline = sleepTimerRearmDeadline,
-              now <= deadline
+              now.timeIntervalSinceReferenceDate <= deadline.timeIntervalSinceReferenceDate
         else {
             clearExpiredSleepTimerRearm()
             return

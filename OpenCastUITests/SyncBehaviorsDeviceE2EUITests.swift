@@ -627,14 +627,14 @@ final class SyncBehaviorsDeviceE2EUITests: XCTestCase {
     /// the iPad keeps a selected top-bar Search button.
     @MainActor
     private func hasArrived(at title: String, in app: XCUIApplication) -> Bool {
-        if app.navigationBars[title].exists {
+        if waitForScreen(title, in: app, timeout: 0) {
             return true
         }
         if title == "Search" {
             if app.searchFields.firstMatch.exists {
                 return true
             }
-            let tabButton = app.tabBars.buttons[title].firstMatch
+            let tabButton = sectionItem(title, in: app).firstMatch
             if app.tabBars.firstMatch.exists, !tabButton.exists {
                 return true
             }
@@ -762,7 +762,7 @@ final class SyncBehaviorsDeviceE2EUITests: XCTestCase {
         // Coordinate tap: the glass toolbar button's AX frame can miss the
         // real hit target on device, making element taps silent no-ops.
         let candidates = [
-            app.navigationBars["Library"].buttons["Add"].firstMatch,
+            toolbarButton("Add", in: "Library", of: app).firstMatch,
             app.navigationBars["opencast"].buttons["Add"].firstMatch,
             app.buttons["Add"].firstMatch
         ]

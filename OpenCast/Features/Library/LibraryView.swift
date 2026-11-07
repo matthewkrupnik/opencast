@@ -10,6 +10,7 @@ struct LibraryView: View {
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @Environment(\.modelContext) private var modelContext
     @Environment(\.scenePhase) private var scenePhase
+    @Environment(SceneLibraryLayouts.self) private var sceneLibraryLayouts: SceneLibraryLayouts?
     @State private var sampleSubscriptionErrorMessage: String?
     @State private var isSubscribingSample = false
     @State private var namePromptRequest: PlaylistNamePromptRequest?
@@ -30,7 +31,10 @@ struct LibraryView: View {
     }
 
     private var layout: LibraryLayout {
-        displaySettings.layout.resolved(isRegularWidth: horizontalSizeClass == .regular)
+        let preference = displaySettings.layout
+        let isRegularWidth = horizontalSizeClass == .regular
+        return sceneLibraryLayouts?.layout(of: .library, for: preference, isRegularWidth: isRegularWidth)
+            ?? preference.resolved(isRegularWidth: isRegularWidth)
     }
 
     var body: some View {
@@ -91,6 +95,9 @@ struct LibraryView: View {
             .onAppear {
                 appModel.library.advanceNewEpisodeReferenceDate()
                 adDetectionIndicatorAppearance += 1
+            }
+            .onChange(of: displaySettings.layout, initial: true) { _, preference in
+                sceneLibraryLayouts?.observe(preference, on: .library, isRegularWidth: horizontalSizeClass == .regular)
             }
             .onChange(of: scenePhase) { _, scenePhase in
                 if scenePhase == .active {
@@ -239,6 +246,7 @@ struct LibraryView: View {
             .contentShape(.rect)
         }
         .buttonStyle(.plain)
+        .twoPaneRootSelection(.notes, style: .inline)
         .accessibilityValue((notesCount ?? 0) > 0 ? (notesCount ?? 0).formatted() : "")
         .accessibilityIdentifier("Library Notes Row")
     }

@@ -26,7 +26,7 @@ enum AppSection: String, CaseIterable, Identifiable {
         case .library:
             "books.vertical"
         case .downloads:
-            "arrow.down.circle"
+            "square.and.arrow.down"
         case .settings:
             "gearshape"
         case .search:

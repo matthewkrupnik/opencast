@@ -4,7 +4,6 @@ import SwiftUI
 struct DownloadsView: View {
     @Environment(OpenCastAppModel.self) private var appModel
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @Environment(\.modelContext) private var modelContext
 
     @State private var searchQuery = ""
@@ -152,7 +151,7 @@ struct DownloadsView: View {
             }
         }
         .scrollDismissesKeyboard(.immediately)
-        .contentMargins(.horizontal, horizontalSizeClass == .regular ? 32 : nil, for: .scrollContent)
+        .safeAreaHorizontalContentMargins(regular: 32)
         .navigationTitle("Downloads")
         .toolbarMinimizationBehavior(
             editMode.isEditing || isSearchVisible ? .never : .onScrollDown,

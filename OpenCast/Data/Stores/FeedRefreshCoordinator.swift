@@ -578,7 +578,7 @@ final class FeedRefreshCoordinator {
         guard let retryAfter = host.automaticRetryAfterByFeedURL[canonicalFeedURL] else {
             return true
         }
-        return retryAfter <= now
+        return retryAfter.timeIntervalSinceReferenceDate <= now.timeIntervalSinceReferenceDate
     }
 
     private func recordRetryFailure(feedURL: String, generation: Int) async throws {

@@ -7,6 +7,14 @@ struct SheetDestinationView: View {
     let onDismiss: () -> Void
 
     var body: some View {
+        // A sheet inherits its presenter's environment but is never beneath
+        // the tab accessory, so its scroll views take no clearance for it.
+        content
+            .environment(nil as TabAccessoryGeometryStore?)
+    }
+
+    @ViewBuilder
+    private var content: some View {
         switch destination {
         case .addPodcast:
             AddPodcastView(
