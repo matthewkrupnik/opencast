@@ -230,12 +230,12 @@ enum SmartSpeedAudioFixture {
             AVLinearPCMIsNonInterleaved: false,
             AVLinearPCMIsBigEndianKey: false
         ])
-        reader.add(output)
-        try #require(reader.startReading())
+        let provider = reader.outputProvider(for: output)
+        try reader.start()
 
         var frames = 0
-        while let sample = output.copyNextSampleBuffer() {
-            frames += CMSampleBufferGetNumSamples(sample)
+        while let sample = try await provider.next() {
+            frames += sample.sampleCount
         }
         try #require(reader.status == .completed, "reader: \(String(describing: reader.error))")
         return Double(frames) / sampleRate

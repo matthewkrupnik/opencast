@@ -6,6 +6,8 @@ enum AVFoundationPlaybackDiagnosticsFormatter {
         snapshot: PlaybackSnapshot,
         player: AVPlayer,
         item: AVPlayerItem?,
+        errorLog: AVPlayerItemErrorLog?,
+        accessLog: AVPlayerItemAccessLog?,
         isPlaybackRequested: Bool,
         isAudioSessionActive: Bool,
         protectedPlaybackPosition: TimeInterval?,
@@ -55,8 +57,8 @@ enum AVFoundationPlaybackDiagnosticsFormatter {
 
         appendTimeRanges(item?.loadedTimeRanges ?? [], title: "item.loadedTimeRanges", to: &lines)
         appendTimeRanges(item?.seekableTimeRanges ?? [], title: "item.seekableTimeRanges", to: &lines)
-        appendErrorLog(item?.errorLog(), to: &lines)
-        appendAccessLog(item?.accessLog(), to: &lines)
+        appendErrorLog(errorLog, to: &lines)
+        appendAccessLog(accessLog, to: &lines)
 
         lines.append("")
         lines.append("events:")

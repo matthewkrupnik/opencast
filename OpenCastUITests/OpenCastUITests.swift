@@ -1080,6 +1080,7 @@ final class OpenCastUITests: XCTestCase {
 
     /// The fork's Library lists playlists under a Playlists section rather
     /// than upstream's collection row.
+    @MainActor
     private func libraryPlaylistsRow(in app: XCUIApplication) -> XCUIElement {
         app.staticTexts["Playlists"].firstMatch
     }

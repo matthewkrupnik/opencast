@@ -389,7 +389,7 @@ struct AVFoundationPlaybackControllerTests {
         }
         let originalPlayer = controller.playerIdentityForTesting
 
-        controller.handleCurrentItemFailed(error: mediaServicesResetError)
+        await controller.handleCurrentItemFailed(error: mediaServicesResetError)
 
         #expect(controller.playerIdentityForTesting != originalPlayer)
         let expected: PlaybackState = wasPlaying ? .playing : .paused
@@ -436,13 +436,13 @@ struct AVFoundationPlaybackControllerTests {
     }
 
     @Test("A repeated media services reset failure before the new item is ready fails playback")
-    func repeatedMediaServicesResetItemFailureFails() throws {
+    func repeatedMediaServicesResetItemFailureFails() async throws {
         let controller = AVFoundationPlaybackController()
         defer { controller.unload() }
         try controller.load(episode(duration: 240), startPosition: 30)
 
-        controller.handleCurrentItemFailed(error: mediaServicesResetError)
-        controller.handleCurrentItemFailed(error: mediaServicesResetError)
+        await controller.handleCurrentItemFailed(error: mediaServicesResetError)
+        await controller.handleCurrentItemFailed(error: mediaServicesResetError)
 
         guard case .failed = controller.state else {
             Issue.record("Expected failed playback state, got \(controller.state).")

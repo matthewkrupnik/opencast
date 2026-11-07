@@ -11,7 +11,7 @@ let package = Package(
     name: "OpenCastCore",
     platforms: [
         .iOS(.v27),
-        .macOS(.v15)
+        .macOS(.v27)
     ],
     products: [
         .library(name: "OpenCastCore", targets: ["OpenCastCore"])

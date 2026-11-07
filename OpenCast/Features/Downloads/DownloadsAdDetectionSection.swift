@@ -1,3 +1,4 @@
+import SwiftData
 import SwiftUI
 
 /// Always-visible Ad Detection status on the Downloads list: live per-episode

@@ -327,7 +327,8 @@ struct EpisodeAdFreePassBackgroundSessionTests {
         var previous = start
         for _ in 1...3 {
             currentDate += 2
-            #expect(await waitUntil { handle.progress.completedUnitCount > previous })
+            let floor = previous
+            #expect(await waitUntil { handle.progress.completedUnitCount > floor })
             previous = handle.progress.completedUnitCount
         }
         #expect(handle.adFreeUnits == start / subunits)
@@ -336,7 +337,8 @@ struct EpisodeAdFreePassBackgroundSessionTests {
         // the step's end.
         currentDate += 230
         for _ in 1...2 {
-            #expect(await waitUntil { handle.progress.completedUnitCount > previous })
+            let floor = previous
+            #expect(await waitUntil { handle.progress.completedUnitCount > floor })
             previous = handle.progress.completedUnitCount
             #expect(previous < stepEnd)
             currentDate += 2

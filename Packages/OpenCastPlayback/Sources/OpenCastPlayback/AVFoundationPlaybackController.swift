@@ -62,12 +62,16 @@ public final class AVFoundationPlaybackController {
     @ObservationIgnored private var currentItemEndObserver: NSObjectProtocol?
     @ObservationIgnored private var currentItemPlaybackStalledObserver: NSObjectProtocol?
     @ObservationIgnored private var currentItemFailedToPlayToEndObserver: NSObjectProtocol?
+    @ObservationIgnored private var currentItemLogEntryObservers: [NSObjectProtocol] = []
+    @ObservationIgnored private var currentItemErrorLog: AVPlayerItemErrorLog?
+    @ObservationIgnored private var currentItemAccessLog: AVPlayerItemAccessLog?
     @ObservationIgnored private var currentItemDurationObservation: NSKeyValueObservation?
     @ObservationIgnored private var currentItemStatusObservation: NSKeyValueObservation?
     @ObservationIgnored private var currentItemLikelyToKeepUpObservation: NSKeyValueObservation?
     @ObservationIgnored private var currentItemBufferEmptyObservation: NSKeyValueObservation?
     @ObservationIgnored private var playerTimeControlStatusObservation: NSKeyValueObservation?
-    @ObservationIgnored private var audioSessionInterruptionObserver: NSObjectProtocol?
+    @ObservationIgnored private var audioSessionDeactivationObserver: NSObjectProtocol?
+    @ObservationIgnored private var audioSessionResumptionObserver: NSObjectProtocol?
     @ObservationIgnored private var audioSessionRouteChangeObserver: NSObjectProtocol?
     @ObservationIgnored private var audioSessionMediaServicesResetObserver: NSObjectProtocol?
     @ObservationIgnored private var audioSessionSecondaryAudioObserver: NSObjectProtocol?
@@ -588,6 +592,12 @@ public final class AVFoundationPlaybackController {
         isPlaybackDiagnosticsEnabled = isEnabled
         if isEnabled {
             refreshPlaybackDiagnosticsText()
+            if let playerItem = player.currentItem {
+                let generation = currentItemObservationGeneration
+                Task { [weak self] in
+                    await self?.refreshCurrentItemLogs(playerItem, generation: generation)
+                }
+            }
         } else if !playbackDiagnosticsText.isEmpty {
             playbackDiagnosticsText = ""
         }
@@ -1126,15 +1136,33 @@ public final class AVFoundationPlaybackController {
 
     private func installAudioSessionObservers() {
         #if os(iOS) || os(tvOS) || os(visionOS)
-        audioSessionInterruptionObserver = NotificationCenter.default.addObserver(
-            forName: AVAudioSession.interruptionNotification,
+        // Only a system deactivation is an interruption: the app's own
+        // deactivation posts the same notification.
+        audioSessionDeactivationObserver = NotificationCenter.default.addObserver(
+            forName: AVAudioSession.didBecomeInactiveNotification,
             object: AVAudioSession.sharedInstance(),
             queue: .main
         ) { [weak self] notification in
-            let rawType = notification.userInfo?[AVAudioSessionInterruptionTypeKey] as? UInt
-            let rawOptions = notification.userInfo?[AVAudioSessionInterruptionOptionKey] as? UInt
+            let context = notification.userInfo?[AVAudioSession.deactivationContextKey]
+                as? AVAudioSession.DeactivationContext
+            guard context?.source == .system else {
+                return
+            }
             Task { @MainActor [weak self] in
-                self?.handleAudioSessionInterruption(rawType: rawType, rawOptions: rawOptions)
+                self?.handleAudioSessionInterruptionBegan()
+            }
+        }
+
+        audioSessionResumptionObserver = NotificationCenter.default.addObserver(
+            forName: AVAudioSession.resumptionRecommendationNotification,
+            object: AVAudioSession.sharedInstance(),
+            queue: .main
+        ) { [weak self] notification in
+            let context = notification.userInfo?[AVAudioSession.resumptionContextKey]
+                as? AVAudioSession.ResumptionContext
+            let shouldResume = context?.recommendation == .shouldResume
+            Task { @MainActor [weak self] in
+                self?.handleAudioSessionInterruptionEnded(shouldResume: shouldResume)
             }
         }
 
@@ -1193,9 +1221,13 @@ public final class AVFoundationPlaybackController {
     }
 
     private func removeAudioSessionObservers() {
-        if let audioSessionInterruptionObserver {
-            NotificationCenter.default.removeObserver(audioSessionInterruptionObserver)
-            self.audioSessionInterruptionObserver = nil
+        if let audioSessionDeactivationObserver {
+            NotificationCenter.default.removeObserver(audioSessionDeactivationObserver)
+            self.audioSessionDeactivationObserver = nil
+        }
+        if let audioSessionResumptionObserver {
+            NotificationCenter.default.removeObserver(audioSessionResumptionObserver)
+            self.audioSessionResumptionObserver = nil
         }
         if let audioSessionRouteChangeObserver {
             NotificationCenter.default.removeObserver(audioSessionRouteChangeObserver)
@@ -1211,26 +1243,6 @@ public final class AVFoundationPlaybackController {
         }
         audioSessionOutputVolumeObservation?.invalidate()
         audioSessionOutputVolumeObservation = nil
-    }
-
-    private func handleAudioSessionInterruption(rawType: UInt?, rawOptions: UInt?) {
-        #if os(iOS) || os(tvOS) || os(visionOS)
-        guard let rawType,
-              let type = AVAudioSession.InterruptionType(rawValue: rawType)
-        else {
-            return
-        }
-
-        switch type {
-        case .began:
-            handleAudioSessionInterruptionBegan()
-        case .ended:
-            let options = AVAudioSession.InterruptionOptions(rawValue: rawOptions ?? 0)
-            handleAudioSessionInterruptionEnded(shouldResume: options.contains(.shouldResume))
-        @unknown default:
-            break
-        }
-        #endif
     }
 
     func handleAudioSessionMediaServicesWereReset() {
@@ -1477,6 +1489,7 @@ public final class AVFoundationPlaybackController {
         installPeriodicTimeObserver(for: playerItem, generation: generation)
         observeEnd(of: playerItem, generation: generation)
         observeFailureToPlayToEnd(of: playerItem, generation: generation)
+        observeLogEntries(of: playerItem, generation: generation)
         observePlaybackStall(of: playerItem, generation: generation)
         observeDuration(of: playerItem, generation: generation)
         observeStatus(of: playerItem, generation: generation)
@@ -1520,6 +1533,41 @@ public final class AVFoundationPlaybackController {
                 handleFailedCurrentItem(playerItem, error: error)
             }
         }
+    }
+
+    /// The item's logs are only readable asynchronously, so diagnostics keep
+    /// the latest copy, refreshed whenever the item adds an entry.
+    private func observeLogEntries(of playerItem: AVPlayerItem, generation: Int) {
+        currentItemLogEntryObservers = [
+            AVPlayerItem.newErrorLogEntryNotification,
+            AVPlayerItem.newAccessLogEntryNotification
+        ].map { name in
+            NotificationCenter.default.addObserver(
+                forName: name,
+                object: playerItem,
+                queue: .main
+            ) { [weak self] _ in
+                Task { @MainActor [weak self] in
+                    await self?.refreshCurrentItemLogs(playerItem, generation: generation)
+                }
+            }
+        }
+    }
+
+    private func refreshCurrentItemLogs(_ playerItem: AVPlayerItem, generation: Int) async {
+        guard isPlaybackDiagnosticsEnabled else {
+            return
+        }
+
+        let errorLog = await playerItem.errorLog
+        let accessLog = await playerItem.accessLog
+        guard isCurrentItemCallback(playerItem, generation: generation) else {
+            return
+        }
+
+        currentItemErrorLog = errorLog
+        currentItemAccessLog = accessLog
+        refreshPlaybackDiagnosticsText()
     }
 
     private func observePlaybackStall(of playerItem: AVPlayerItem, generation: Int) {
@@ -1621,6 +1669,12 @@ public final class AVFoundationPlaybackController {
             NotificationCenter.default.removeObserver(currentItemFailedToPlayToEndObserver)
             self.currentItemFailedToPlayToEndObserver = nil
         }
+        for observer in currentItemLogEntryObservers {
+            NotificationCenter.default.removeObserver(observer)
+        }
+        currentItemLogEntryObservers = []
+        currentItemErrorLog = nil
+        currentItemAccessLog = nil
         currentItemDurationObservation?.invalidate()
         currentItemDurationObservation = nil
         currentItemStatusObservation?.invalidate()
@@ -1827,22 +1881,41 @@ public final class AVFoundationPlaybackController {
         handleFailedCurrentItem(playerItem, error: playerItem.error)
     }
 
-    func handleCurrentItemFailed(error: (any Error)?) {
+    func handleCurrentItemFailed(error: (any Error)?) async {
         guard let playerItem = player.currentItem else {
             return
         }
 
-        handleFailedCurrentItem(playerItem, error: error)
+        await handleFailedItem(playerItem, error: error, generation: currentItemObservationGeneration)
     }
 
     private func handleFailedCurrentItem(_ playerItem: AVPlayerItem, error: (any Error)?) {
+        let generation = currentItemObservationGeneration
+        Task { [weak self] in
+            await self?.handleFailedItem(playerItem, error: error, generation: generation)
+        }
+    }
+
+    /// The item's logs are only readable asynchronously; once they arrive,
+    /// the failure is handled only if the item is still the current one.
+    private func handleFailedItem(_ playerItem: AVPlayerItem, error: (any Error)?, generation: Int) async {
+        let errorLog = await playerItem.errorLog
+        let accessLog = await playerItem.accessLog
+        guard generation == currentItemObservationGeneration,
+              player.currentItem === playerItem
+        else {
+            return
+        }
+
+        currentItemErrorLog = errorLog
+        currentItemAccessLog = accessLog
         if recoverFromFailedCurrentItemIfNeeded(playerItem) {
             return
         }
         if recoverFromMediaServicesResetIfNeeded(error: error) {
             return
         }
-        failPlayback(error: error, failedItem: playerItem)
+        failPlayback(error: error)
     }
 
     /// The media server can die under a paused item (seen during a phone
@@ -1887,13 +1960,13 @@ public final class AVFoundationPlaybackController {
               isPlaybackRequested,
               playbackFailureRecoveryPolicy.shouldAttemptAutomaticRetry(
                 error: playerItem.error,
-                errorLog: playerItem.errorLog()
+                errorLog: currentItemErrorLog
               )
         else {
             return false
         }
 
-        recordFailedItemDiagnostics(playerItem, error: playerItem.error, prefix: "transient failure")
+        recordFailedItemDiagnostics(error: playerItem.error, prefix: "transient failure")
         recordDiagnosticsEvent(
             "automatic transient playback retry attempt=\(playbackFailureRecoveryPolicy.automaticTransientFailureRetryCount) at \(diagnosticsTime(snapshot.position))"
         )
@@ -1906,8 +1979,8 @@ public final class AVFoundationPlaybackController {
         return true
     }
 
-    private func failPlayback(error: (any Error)?, failedItem: AVPlayerItem? = nil) {
-        recordFailedItemDiagnostics(failedItem, error: error, prefix: "terminal failure")
+    private func failPlayback(error: (any Error)?) {
+        recordFailedItemDiagnostics(error: error, prefix: "terminal failure")
         let message = error?.localizedDescription.trimmingCharacters(in: .whitespacesAndNewlines)
         if let message, !message.isEmpty {
             failPlayback(message: "This episode could not be played. \(message)")
@@ -1934,17 +2007,16 @@ public final class AVFoundationPlaybackController {
     }
 
     private func recordFailedItemDiagnostics(
-        _ playerItem: AVPlayerItem?,
         error: (any Error)?,
         prefix: String
     ) {
         recordDiagnosticsEvent("\(prefix) error=\(AVFoundationPlaybackDiagnosticsFormatter.errorSummary(for: error))")
-        if let event = playerItem?.errorLog()?.events.last {
+        if let event = currentItemErrorLog?.events.last {
             recordDiagnosticsEvent(
                 "\(prefix) errorLog=\(AVFoundationPlaybackDiagnosticsFormatter.errorLogSummary(for: event))"
             )
         }
-        if let event = playerItem?.accessLog()?.events.last {
+        if let event = currentItemAccessLog?.events.last {
             recordDiagnosticsEvent(
                 "\(prefix) accessLog=\(AVFoundationPlaybackDiagnosticsFormatter.accessLogSummary(for: event))"
             )
@@ -2480,6 +2552,8 @@ public final class AVFoundationPlaybackController {
             snapshot: snapshot,
             player: player,
             item: player.currentItem,
+            errorLog: currentItemErrorLog,
+            accessLog: currentItemAccessLog,
             isPlaybackRequested: isPlaybackRequested,
             isAudioSessionActive: isAudioSessionActive,
             protectedPlaybackPosition: playbackPositionProtection.position,

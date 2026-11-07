@@ -13,7 +13,8 @@ struct CarPlayTemplateNavigatorTests {
 
         harness.navigator.pushNowPlayingList(list) { success, _ in succeeded = success }
 
-        #expect(harness.stack.elementsEqual(originalStack, by: ===))
+        let stackUnchanged = harness.stack.elementsEqual(originalStack, by: ===)
+        #expect(stackUnchanged)
         #expect(harness.pendingCount == 1)
         harness.completeNext()
         #expect(harness.stack.elementsEqual(originalStack.prefix(3), by: ===))

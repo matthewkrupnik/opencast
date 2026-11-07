@@ -50,8 +50,10 @@ struct EpisodeProgressIndexTests {
         // Array order only: apply's latest-per-episode indexing assumes each
         // applied record is its episode's newest write, which a reversed
         // replay deliberately violates.
-        #expect(incremental.records.elementsEqual(fetched, by: ===))
-        #expect(incremental.records.elementsEqual(refetched.records, by: ===))
+        let matchesFetched = incremental.records.elementsEqual(fetched, by: ===)
+        let matchesRefetched = incremental.records.elementsEqual(refetched.records, by: ===)
+        #expect(matchesFetched)
+        #expect(matchesRefetched)
     }
 
     @Test("Re-applying an indexed record neither duplicates nor reports change")

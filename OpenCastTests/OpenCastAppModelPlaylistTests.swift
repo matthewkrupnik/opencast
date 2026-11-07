@@ -440,7 +440,6 @@ struct OpenCastAppModelPlaylistTests {
             context: context
         )
         let playedEpisodes = appModel.smartPlaylistEvaluation(for: played).episodes
-        let everyEpisode = appModel.smartPlaylistEvaluation(for: everything).episodes
 
         #expect(playedEpisodes.map(\.episodeID) == ["second", "fourth"])
         #expect(appModel.playlistDownloadAllCandidates(played.playlistID).isEmpty)

@@ -6,7 +6,7 @@ let package = Package(
     name: "OpenCastTranscription",
     platforms: [
         .iOS(.v27),
-        .macOS(.v15)
+        .macOS(.v27)
     ],
     products: [
         .library(name: "OpenCastTranscription", targets: ["OpenCastTranscription"]),

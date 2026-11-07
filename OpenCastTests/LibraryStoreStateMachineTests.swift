@@ -474,7 +474,7 @@ struct LibraryStoreStateMachineTests {
         #expect(sorted.map(\.feedURL) == [newer, older])
 
         await gates.loadRelease.release()
-        await loadTask.value
+        _ = await loadTask.value
 
         #expect(store.state == .idle)
         #expect(store.episodes.count == 2)

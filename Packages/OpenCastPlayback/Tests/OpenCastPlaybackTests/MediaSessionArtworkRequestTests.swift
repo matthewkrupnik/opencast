@@ -64,8 +64,9 @@ struct MediaSessionArtworkRequestTests {
             if let previous {
                 await #expect(throws: CancellationError.self) { try await previous.image() }
             }
-            previous = try #require(adapter.artworkRequest)
-            _ = try await previous?.image()
+            let request = try #require(adapter.artworkRequest)
+            previous = request
+            _ = try await request.image()
         }
         adapter.publish(PlaybackSnapshot(currentEpisode: episode(duration: 300)), resolvedDuration: nil)
         #expect(adapter.artworkRequest == nil)
