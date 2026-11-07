@@ -33,7 +33,7 @@ struct AnalysisRunsExportTests {
         #expect(runs.count == 2)
         #expect(Set(runs[0].keys) == [
             "run_id", "feature", "route", "provider", "model_id", "bundle_version", "policy_source",
-            "policy_revision", "state", "background", "outcome_code", "listener_failure", "windows", "sends",
+            "policy_revision", "state", "background", "outcome_code", "listener_failure", "last_provider_error", "windows", "sends",
             "input_tokens", "output_tokens", "paced_seconds", "exchange_seconds", "started_at", "finished_at",
         ])
         #expect(Set(runs[1].keys) == Set(runs[0].keys))
@@ -145,6 +145,36 @@ struct AnalysisRunsExportTests {
 
         let empty = EpisodeDiagnosticsModel.analysisRunsSection(records: [elsewhere], episodeID: "export-episode")
         #expect(empty.rows.map(\.value) == ["No analysis runs for this episode."])
+    }
+
+    @Test("The last provider error exports its codes; only the episode report shows the message")
+    func providerError() throws {
+        let message = "The input token count exceeds the maximum number of tokens allowed."
+        let failed = Self.record(id: UUID().uuidString, feature: .adDetection, route: .direct) { record in
+            record.state = .failed
+            record.lastProviderError = .init(
+                purpose: "ad_window_2",
+                httpStatus: 400,
+                failure: "request_rejected",
+                detail: .init(errorStatus: "INVALID_ARGUMENT", reasons: ["unknown", "bad reason!"], message: message)
+            )
+        }
+        let data = try AnalysisRunsExport.data(entries: [AnalysisRunsExportEntry(failed)], generatedAt: Self.startedAt)
+        let json = try #require(JSONSerialization.jsonObject(with: data) as? [String: Any])
+        let run = try #require((json["analysis_runs"] as? [[String: Any]])?.first)
+        let error = try #require(run["last_provider_error"] as? [String: Any])
+        #expect(error["purpose"] as? String == "ad_window_2")
+        #expect(error["http_status"] as? Int == 400)
+        #expect(error["failure"] as? String == "request_rejected")
+        #expect(error["error_status"] as? String == "INVALID_ARGUMENT")
+        #expect(error["reasons"] as? [String] == ["unknown", "invalid"])
+        #expect(!String(decoding: data, as: UTF8.self).contains("token count"))
+
+        let section = EpisodeDiagnosticsModel.analysisRunsSection(records: [failed], episodeID: "export-episode")
+        let rows = Dictionary(uniqueKeysWithValues: section.rows.map { ($0.label, $0.value) })
+        #expect(rows["Ad Detection · Provider Error"] == "HTTP 400 · INVALID_ARGUMENT · unknown, invalid")
+        #expect(rows["Ad Detection · Provider Error Send"] == "ad_window_2 (request_rejected)")
+        #expect(rows["Ad Detection · Provider Message"] == message)
     }
 
     static func record(

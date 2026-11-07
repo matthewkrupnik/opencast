@@ -14,6 +14,41 @@ nonisolated struct AnalysisRunsExportEntry: Encodable, Sendable, Equatable {
         let failed: Int
     }
 
+    /// The run's latest failed send, closed values only: the provider's
+    /// message stays on the device.
+    struct ProviderError: Encodable, Sendable, Equatable {
+        let purpose: String
+        let httpStatus: Int?
+        let failure: String
+        let errorStatus: String?
+        let reasons: [String]
+
+        init(_ error: AnalysisRunRecord.ProviderError) {
+            purpose = AnalysisRunsExportGrammar.identifier(error.purpose, maximumLength: 64)
+            httpStatus = error.httpStatus
+            failure = AnalysisProviderFailure(rawValue: error.failure)?.rawValue ?? AnalysisRunsExportGrammar.invalid
+            errorStatus = error.detail?.errorStatus.map { AnalysisRunsExportGrammar.identifier($0, maximumLength: 64) }
+            reasons = (error.detail?.reasons ?? []).map { AnalysisRunsExportGrammar.identifier($0, maximumLength: 64) }
+        }
+
+        enum CodingKeys: String, CodingKey {
+            case purpose
+            case httpStatus = "http_status"
+            case failure
+            case errorStatus = "error_status"
+            case reasons
+        }
+
+        func encode(to encoder: any Encoder) throws {
+            var container = encoder.container(keyedBy: CodingKeys.self)
+            try container.encode(purpose, forKey: .purpose)
+            try container.encode(httpStatus, forKey: .httpStatus)
+            try container.encode(failure, forKey: .failure)
+            try container.encode(errorStatus, forKey: .errorStatus)
+            try container.encode(reasons, forKey: .reasons)
+        }
+    }
+
     let runID: String
     let feature: String
     let route: String
@@ -26,6 +61,7 @@ nonisolated struct AnalysisRunsExportEntry: Encodable, Sendable, Equatable {
     let background: Bool?
     let outcomeCode: String?
     let listenerFailure: String?
+    let lastProviderError: ProviderError?
     let windows: Windows
     let sends: Int
     let inputTokens: UInt64
@@ -50,6 +86,7 @@ nonisolated struct AnalysisRunsExportEntry: Encodable, Sendable, Equatable {
         listenerFailure = record.listenerFailure.map { raw in
             AnalysisProviderFailure(rawValue: raw)?.rawValue ?? AnalysisRunsExportGrammar.invalid
         }
+        lastProviderError = record.lastProviderError.map(ProviderError.init)
         let verdicts = record.windows.values
         windows = Windows(
             total: verdicts.count,
@@ -90,6 +127,7 @@ nonisolated struct AnalysisRunsExportEntry: Encodable, Sendable, Equatable {
         case background
         case outcomeCode = "outcome_code"
         case listenerFailure = "listener_failure"
+        case lastProviderError = "last_provider_error"
         case windows
         case sends
         case inputTokens = "input_tokens"
@@ -115,6 +153,7 @@ nonisolated struct AnalysisRunsExportEntry: Encodable, Sendable, Equatable {
         try container.encode(background, forKey: .background)
         try container.encode(outcomeCode, forKey: .outcomeCode)
         try container.encode(listenerFailure, forKey: .listenerFailure)
+        try container.encode(lastProviderError, forKey: .lastProviderError)
         try container.encode(windows, forKey: .windows)
         try container.encode(sends, forKey: .sends)
         try container.encode(inputTokens, forKey: .inputTokens)

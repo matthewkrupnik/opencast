@@ -144,6 +144,26 @@ struct AnalysisRunRecordStoreTests {
         #expect(relaunched.record(id: "missing-run") == nil)
     }
 
+    @Test("A failed send the provider answered is kept as the last provider error; a cancelled one is not")
+    func lastProviderError() throws {
+        let directory = Directory()
+        let store = directory.store()
+        let record = Self.record()
+        try store.begin(record)
+        let observer = store.observer(runID: record.id)
+        var rejected = Self.send(.adWindow(index: 1), failure: .requestRejected)
+        rejected.status = 400
+        rejected.providerError = .init(errorStatus: "INVALID_ARGUMENT", reasons: [], message: "Request contains an invalid argument.")
+        observer.record(rejected)
+        observer.record(Self.send(.adWindow(index: 2), cancelled: true))
+        observer.record(Self.send(.adWindow(index: 3)))
+
+        let relaunched = directory.store()
+        let error = try #require(relaunched.records(limit: 10).first { $0.id == record.id }?.lastProviderError)
+        #expect(error == .init(purpose: "ad_window_1", httpStatus: 400, failure: "request_rejected", detail: rejected.providerError))
+        #expect(try directory.text("\(record.id).json").contains(#""last_provider_error":{"#))
+    }
+
     @Test("A finished run marks every window accepted and drops its replies")
     func finishSuccess() async throws {
         let directory = Directory()

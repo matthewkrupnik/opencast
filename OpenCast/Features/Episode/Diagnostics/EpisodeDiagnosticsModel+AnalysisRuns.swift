@@ -36,6 +36,24 @@ extension EpisodeDiagnosticsModel {
                 ("\(prefix) · Background", entry.background.map(EpisodeDiagnosticsFormatting.bool) ?? "—"),
                 ("\(prefix) · Outcome", EpisodeDiagnosticsFormatting.value(entry.outcomeCode)),
                 ("\(prefix) · Listener Failure", EpisodeDiagnosticsFormatting.value(entry.listenerFailure)),
+            ]
+            if let error = entry.lastProviderError {
+                rows += [
+                    (
+                        "\(prefix) · Provider Error",
+                        [
+                            error.httpStatus.map { "HTTP \($0)" } ?? "No response",
+                            error.errorStatus,
+                            error.reasons.isEmpty ? nil : error.reasons.joined(separator: ", "),
+                        ].compactMap { $0 }.joined(separator: " · ")
+                    ),
+                    ("\(prefix) · Provider Error Send", "\(error.purpose) (\(error.failure))"),
+                ]
+                if let message = record.lastProviderError?.detail?.message {
+                    rows.append(("\(prefix) · Provider Message", message))
+                }
+            }
+            rows += [
                 (
                     "\(prefix) · Windows",
                     "\(entry.windows.total) total, \(entry.windows.accepted) accepted, \(entry.windows.failed) failed"
@@ -53,7 +71,7 @@ extension EpisodeDiagnosticsModel {
         }
         return EpisodeDiagnosticsSection(
             rows: rows,
-            footnote: "Run records hold ids, outcomes and counts only; no transcript, key or address."
+            footnote: "Run records hold ids, outcomes and counts, plus the provider's error message once it passes the key check; no transcript, key or address. The message is never exported."
         )
     }
 

@@ -303,6 +303,14 @@ nonisolated struct AnalysisRunRecordSendObserver: AnalysisProviderSendObserver {
                 window.verdict = isRepair ? .repairing : .dispatched
             }
             record.windows[key] = window
+            if let failure = send.failure, !send.cancelled {
+                record.lastProviderError = .init(
+                    purpose: send.purpose.logName,
+                    httpStatus: send.status,
+                    failure: failure.rawValue,
+                    detail: send.providerError
+                )
+            }
             if let usage = send.usage {
                 record.inputTokens = record.inputTokens.addingReportingOverflow(usage.input).overflow
                     ? .max : record.inputTokens + usage.input

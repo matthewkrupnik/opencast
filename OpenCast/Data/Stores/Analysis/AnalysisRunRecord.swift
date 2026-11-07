@@ -1,10 +1,13 @@
 import CryptoKit
 import Foundation
 import OpenCastAnalysis
+import OpenCastAnalysisProviders
 
 /// The durable record of one analysis run, written before the run's first
 /// dispatch and updated at every send and at the end. It holds ids, closed
-/// values and numbers only: no key, no transcript or provider text, no URL.
+/// values and numbers only: no key, no transcript, no URL. The one provider
+/// text is ``lastProviderError``'s key-checked message, which stays on the
+/// device and out of the export.
 /// A run killed after dispatch resumes under the same id, so the trial
 /// service counts it once.
 nonisolated struct AnalysisRunRecord: Codable, Sendable, Hashable, Identifiable {
@@ -50,6 +53,25 @@ nonisolated struct AnalysisRunRecord: Codable, Sendable, Hashable, Identifiable 
         var sends: Int
     }
 
+    /// The latest failed send the provider answered or refused, for
+    /// troubleshooting.
+    struct ProviderError: Codable, Sendable, Hashable {
+        /// The send's purpose (`ad_window_2`, `chapters_attempt_0`).
+        var purpose: String
+        /// The HTTP status, when a response arrived.
+        var httpStatus: Int?
+        /// The listener-facing failure (`AnalysisProviderFailure` raw value).
+        var failure: String
+        var detail: AnalysisProviderErrorDetail?
+
+        enum CodingKeys: String, CodingKey {
+            case purpose
+            case httpStatus = "http_status"
+            case failure
+            case detail
+        }
+    }
+
     let id: String
     let feature: AnalysisFeature
     /// The app's episode id (itself a digest).
@@ -81,6 +103,7 @@ nonisolated struct AnalysisRunRecord: Codable, Sendable, Hashable, Identifiable 
     var outcomeCode: String?
     /// The listener-facing failure (`AnalysisProviderFailure` raw value).
     var listenerFailure: String?
+    var lastProviderError: ProviderError?
     /// Whether a continued-processing card held the run when it finished.
     var background: Bool?
     /// Whether the run's token totals are saved in the listener's usage
@@ -112,6 +135,7 @@ nonisolated struct AnalysisRunRecord: Codable, Sendable, Hashable, Identifiable 
         case exchangeSeconds = "exchange_seconds"
         case outcomeCode = "outcome_code"
         case listenerFailure = "listener_failure"
+        case lastProviderError = "last_provider_error"
         case background
         case usageRecorded = "usage_recorded"
         case finishedAt = "finished_at"

@@ -21,10 +21,11 @@ public struct AnalysisBilledUsage: Sendable, Hashable, Codable {
 }
 
 /// What one provider send did, for the run record and diagnostics. Never
-/// carries provider text, a header or the key: every field is a closed
-/// value or a number, and the model id is the entry's, kept only when it is
-/// 1 to 64 of `[A-Za-z0-9._:-]` (``invalidModelID`` otherwise), so an
-/// observer that sees a record before any logger sees nothing to scrub.
+/// carries a header or the key: every field is a closed value or a number,
+/// and the model id is the entry's, kept only when it is 1 to 64 of
+/// `[A-Za-z0-9._:-]` (``invalidModelID`` otherwise), so an observer that
+/// sees a record before any logger sees nothing to scrub. The one provider
+/// text is ``providerError``'s key-checked message, which no logger reads.
 public struct AnalysisProviderSendRecord: Sendable, Hashable {
     public static let invalidModelID = "invalid_model_id"
 
@@ -49,6 +50,8 @@ public struct AnalysisProviderSendRecord: Sendable, Hashable {
     /// Why the send failed; `nil` when a 2xx answer arrived or the run
     /// cancelled the send.
     public var failure: AnalysisProviderFailure?
+    /// What the provider's error body said, when a non-2xx carried one.
+    public var providerError: AnalysisProviderErrorDetail?
     /// The run cancelled the send (another window had already failed, or
     /// the caller stopped the run); the provider said nothing about it.
     public var cancelled: Bool
@@ -67,6 +70,7 @@ public struct AnalysisProviderSendRecord: Sendable, Hashable {
         status: Int?,
         finishReason: AnalysisFinishReason?,
         failure: AnalysisProviderFailure?,
+        providerError: AnalysisProviderErrorDetail? = nil,
         cancelled: Bool = false,
         usage: AnalysisBilledUsage?,
         pacedSeconds: Double,
@@ -80,10 +84,22 @@ public struct AnalysisProviderSendRecord: Sendable, Hashable {
         self.status = status
         self.finishReason = finishReason
         self.failure = failure
+        self.providerError = providerError
         self.cancelled = cancelled
         self.usage = usage
         self.pacedSeconds = pacedSeconds
         self.exchangeSeconds = exchangeSeconds
+    }
+}
+
+extension AnalysisProviderRequest.Purpose {
+    /// The purpose as logs and diagnostics name it (`ad_window_2`).
+    public var logName: String {
+        switch self {
+        case .adWindow(let index): "ad_window_\(index)"
+        case .adRepair(let index): "ad_repair_\(index)"
+        case .chapters(let attempt): "chapters_attempt_\(attempt)"
+        }
     }
 }
 

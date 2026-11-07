@@ -773,10 +773,13 @@ extension RedactionPropertyTests {
             status: 200, finishReason: .stop, failure: nil, usage: AnalysisBilledUsage(input: 1, cached: 0, write: 0, output: 2, reasoning: 0),
             pacedSeconds: 0, exchangeSeconds: 1
         )
-        // Every field is a number, a Boolean, a closed enum or the checked model id.
+        // Every field is a number, a Boolean, a closed enum, the checked model
+        // id or the provider's error detail, whose message is key-checked
+        // (AnalysisProviderErrorDetailTests) and never logged.
         let types = Mirror(reflecting: record).children.map { ($0.label ?? "", String(describing: type(of: $0.value))) }
         let allowed: Set<String> = ["AnalysisProvider", "AnalysisFeature", "Purpose", "Int", "Optional<Int>", "Optional<AnalysisFinishReason>",
-                                    "Optional<AnalysisProviderFailure>", "Bool", "Optional<AnalysisBilledUsage>", "Double"]
+                                    "Optional<AnalysisProviderFailure>", "Bool", "Optional<AnalysisBilledUsage>", "Double",
+                                    "Optional<AnalysisProviderErrorDetail>"]
         for (label, type) in types where label != "modelID" {
             #expect(allowed.contains(type), "\(label): \(type)")
         }

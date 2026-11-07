@@ -107,6 +107,7 @@ struct AnalysisProviderExchange: Sendable {
         }
         guard (200..<300).contains(response.status) else {
             let classification = classify(response.status, response.retryAfter, text)
+            outcome.providerError = AnalysisProviderErrorDetail.read(text, provider: provider, verifier: verifier)
             if classification.listener == .rateLimited, case .retryable(_, let retryAfter) = classification.transport {
                 // Noted in the same step that frees the slot, so no queued
                 // request starts before the cooldown applies.
@@ -131,6 +132,7 @@ struct AnalysisProviderExchange: Sendable {
         var status: Int?
         var finishReason: AnalysisFinishReason?
         var usage: AnalysisBilledUsage?
+        var providerError: AnalysisProviderErrorDetail?
         var pacedSeconds = 0.0
         var exchangeSeconds = 0.0
 
@@ -165,6 +167,7 @@ struct AnalysisProviderExchange: Sendable {
             status: outcome.status,
             finishReason: outcome.finishReason,
             failure: failure,
+            providerError: outcome.providerError,
             cancelled: cancelled,
             usage: outcome.usage,
             pacedSeconds: outcome.pacedSeconds,
@@ -194,6 +197,10 @@ struct AnalysisProviderExchange: Sendable {
             parts.append("outcome=cancelled")
         } else if let failure = send.failure {
             parts.append("outcome=failed class=\(failure.rawValue)")
+            // Closed values only; the message never reaches a log.
+            if let error = send.providerError {
+                parts.append("error_status=\(error.errorStatus ?? "none") reasons=\(error.reasons.isEmpty ? "none" : error.reasons.joined(separator: ":"))")
+            }
         } else {
             parts.append("outcome=answered finish=\(send.finishReason?.rawValue ?? "none")")
         }
@@ -205,11 +212,7 @@ struct AnalysisProviderExchange: Sendable {
     }
 
     static func purposeName(_ purpose: AnalysisProviderRequest.Purpose) -> String {
-        switch purpose {
-        case .adWindow(let index): "ad_window_\(index)"
-        case .adRepair(let index): "ad_repair_\(index)"
-        case .chapters(let attempt): "chapters_attempt_\(attempt)"
-        }
+        purpose.logName
     }
 
     private static func milliseconds(_ seconds: Double) -> Int {
