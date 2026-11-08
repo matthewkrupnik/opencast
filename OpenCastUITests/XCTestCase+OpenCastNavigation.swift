@@ -174,6 +174,11 @@ extension XCTestCase {
         if tabButton.existsOrWait(timeout: 1), tabButton.isHittable {
             return tabButton
         }
+        // Right after a launch the bar's button can exist but report not
+        // hittable for a few seconds; give it that long before falling back.
+        if tabButton.exists, pollNavigationState(timeout: 5, { tabButton.isHittable }) {
+            return tabButton
+        }
 
         if isSectionRail(in: app),
            let railItem = railButtons(named: title, region: .sections, in: app).last(where: \.isHittable) {

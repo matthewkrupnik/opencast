@@ -328,6 +328,10 @@ final class OpenCastUITests: XCTestCase {
 
     @MainActor
     func testSearchRevampSeededScopesEvidenceAndRelaunch() throws {
+        // Podcast Actions is a long system menu; while it is open XCUITest can
+        // wait its full 60 s for animations to idle before each tap, and this
+        // test opens it twice across relaunches.
+        executionTimeAllowance = 600
         let app = makeSeededApp(
             forcesDarkMode: false,
             forcesLightMode: true,
@@ -2301,6 +2305,9 @@ final class OpenCastUITests: XCTestCase {
 
     @MainActor
     func testSeededPodcastPlaybackSkipSettingsValidateSaveAndReset() throws {
+        // Podcast Actions is a long system menu; while it is open XCUITest can
+        // wait its full 60 s for animations to idle before the next tap.
+        executionTimeAllowance = 300
         let app = makeSeededApp()
         app.launch()
 
@@ -7991,10 +7998,14 @@ final class OpenCastUITests: XCTestCase {
         let targetHandle = target.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Reorder")).firstMatch
         assertHittable(handle, named: "moving show's reorder handle", file: file, line: line)
         assertExists(targetHandle, named: "target show's reorder handle", file: file, line: line)
-        handle.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+        // Drop at the target row's top edge: just above its center sits on
+        // the list's swap threshold and can leave the row where it was.
+        let start = handle.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+        let dropOffset = target.frame.minY + 4 - handle.frame.midY
+        start
             .press(
                 forDuration: 0.8,
-                thenDragTo: targetHandle.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: -0.2)),
+                thenDragTo: start.withOffset(CGVector(dx: 0, dy: dropOffset)),
                 withVelocity: .slow,
                 thenHoldForDuration: 0.5
             )
