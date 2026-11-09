@@ -650,27 +650,26 @@ struct NowPlayingView: View {
             .allowsHitTesting(!isSoundLabInteractionActive)
             .animation(.easeOut(duration: 0.15), value: isSoundLabInteractionActive)
 
-            // Close mirrors More across the card.
+            // A grab handle centered level with More: the card is dragged
+            // down to close, and a tap or VoiceOver still closes it.
             Button(action: onDismiss) {
-                Label("Close", systemImage: "chevron.down")
-                    .labelStyle(.iconOnly)
-                    .font(.title3)
-                    .frame(width: NowPlayingCardGeometry.moreDiameter, height: NowPlayingCardGeometry.moreDiameter)
-                    .contentShape(.circle)
+                Capsule()
+                    .fill(.secondary)
+                    .frame(width: 36, height: 5)
+                    .frame(width: 88, height: NowPlayingCardGeometry.moreDiameter)
+                    .contentShape(.rect)
             }
             .buttonStyle(.plain)
-            .glassEffect(.regular.interactive(), in: .circle)
+            .accessibilityLabel("Close")
+            .accessibilityHint("Or drag the card down.")
+            .frame(maxWidth: .infinity)
             .padding(.top, geometry.moreOrigin.y)
-            .padding(
-                .leading,
-                max(0, geometry.cardFrame.width - geometry.moreOrigin.x - NowPlayingCardGeometry.moreDiameter)
-            )
             .opacity(isSoundLabInteractionActive ? 0 : 1)
             .allowsHitTesting(!isSoundLabInteractionActive)
             .animation(.easeOut(duration: 0.15), value: isSoundLabInteractionActive)
             .accessibilityIdentifier("Close Now Playing")
         }
-        // Sits between Close and More so it never covers the titles.
+        // Sits between the grab handle and More so it never covers the titles.
         if let episodeID = appModel.playback.currentEpisode?.id {
             NowPlayingAutoSkipFeedbackView()
                 .id(episodeID)
