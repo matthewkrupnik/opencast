@@ -266,6 +266,44 @@ struct NowPlayingContentMetricsTests {
         #expect(metrics.requiresScrolling == (stackHeight > 678 + 0.5))
     }
 
+    @Test("Pinned iPhone at L: the title block leads the stack, above the artwork and the progress section")
+    func pinnedIPhoneTitleLeadsTheStack() throws {
+        let geometry = NowPlayingCardGeometry(
+            windowSize: NowPlayingCardGeometryTests.iPhoneWindow,
+            safeAreaInsets: NowPlayingCardGeometryTests.iPhoneInsets,
+            isRegular: false,
+            isAccessibilitySize: false,
+            pose: .compact,
+            occlusions: []
+        )
+        let metrics = NowPlayingContentMetrics(
+            containerSize: NowPlayingCardGeometryTests.iPhoneWindow,
+            cardGeometry: geometry,
+            dynamicTypeSize: .large,
+            horizontalSizeClass: .compact,
+            measurements: NowPlayingContentMeasurements(
+                rowsHeight: Self.rowsAtLarge,
+                titleBlockHeight: Self.titleBlockAtLarge,
+                progressSectionHeight: Self.progressSectionAtLarge
+            )
+        )
+        #expect(metrics.titleLeadsStack)
+        let title = try #require(metrics.titleBlockSpan)
+        let progress = try #require(metrics.progressSectionSpan)
+        #expect(title.lowerBound == metrics.topContentPadding)
+        #expect(abs(progress.lowerBound - (title.upperBound + 2 * metrics.contentSpacing + metrics.artworkSize + metrics.artworkProgressGap)) < 0.001)
+    }
+
+    @Test("Closed: the status cluster keeps the title block below the artwork")
+    func closedTitleFollowsTheArtwork() {
+        let metrics = Self.closedMetrics(
+            rowsHeight: Self.rowsAtLarge,
+            titleBlockHeight: Self.titleBlockAtLarge,
+            progressSectionHeight: Self.progressSectionAtLarge
+        )
+        #expect(!metrics.titleLeadsStack)
+    }
+
     // MARK: Laptop
 
     static let laptopWindow = CGSize(width: 669, height: 951)

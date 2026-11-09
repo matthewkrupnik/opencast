@@ -35,6 +35,11 @@ struct NowPlayingContentMetrics {
     /// section are measured.
     let titleBlockSpan: ClosedRange<CGFloat>?
     let progressSectionSpan: ClosedRange<CGFloat>?
+    /// The title block sits above the artwork rather than below it.
+    let titleLeadsStack: Bool
+    /// Extra room between the artwork and the progress section, beyond
+    /// `contentSpacing`, when the progress section follows the artwork.
+    let artworkProgressGap: CGFloat
     /// Laptop's band across the card, card-local y.
     let horizontalFold: ClosedRange<CGFloat>?
 
@@ -84,27 +89,40 @@ struct NowPlayingContentMetrics {
             artworkUpperBound
         }
 
+        // The title block leads the stack where nothing covers the card's
+        // top and no band crosses it. Elsewhere it follows the artwork, which
+        // may sit beside a status cluster that a full-width title cannot.
+        let titleLeadsStack = cardGeometry.controlsMinY <= topContentPadding && cardGeometry.horizontalFold == nil
+        let artworkProgressGap: CGFloat = titleLeadsStack ? 16 : 0
         var titleBlockTopSpacer: CGFloat = 0
         var progressSectionTopSpacer: CGFloat = 0
         var titleBlockSpan: ClosedRange<CGFloat>?
         var progressSectionSpan: ClosedRange<CGFloat>?
         if let titleBlockHeight = measurements.titleBlockHeight,
            let progressSectionHeight = measurements.progressSectionHeight {
-            let titleTop = topContentPadding + artworkSize + contentSpacing
-            func progressSpacer(titleSpacer: CGFloat) -> CGFloat {
-                max(0, cardGeometry.controlsMinY - (titleTop + titleSpacer + titleBlockHeight + contentSpacing))
+            if titleLeadsStack {
+                let titleBlockTop = topContentPadding
+                let progressTop = titleBlockTop + titleBlockHeight + contentSpacing + artworkSize + contentSpacing
+                    + artworkProgressGap
+                titleBlockSpan = titleBlockTop...(titleBlockTop + titleBlockHeight)
+                progressSectionSpan = progressTop...(progressTop + progressSectionHeight)
+            } else {
+                let titleTop = topContentPadding + artworkSize + contentSpacing
+                func progressSpacer(titleSpacer: CGFloat) -> CGFloat {
+                    max(0, cardGeometry.controlsMinY - (titleTop + titleSpacer + titleBlockHeight + contentSpacing))
+                }
+                progressSectionTopSpacer = progressSpacer(titleSpacer: 0)
+                let blockBottom = titleTop + titleBlockHeight + contentSpacing
+                    + progressSectionTopSpacer + progressSectionHeight
+                titleBlockTopSpacer = Self.foldSpacer(for: titleTop...blockBottom, fold: cardGeometry.horizontalFold)
+                if titleBlockTopSpacer > 0 {
+                    progressSectionTopSpacer = progressSpacer(titleSpacer: titleBlockTopSpacer)
+                }
+                let titleBlockTop = titleTop + titleBlockTopSpacer
+                let progressTop = titleBlockTop + titleBlockHeight + contentSpacing + progressSectionTopSpacer
+                titleBlockSpan = titleBlockTop...(titleBlockTop + titleBlockHeight)
+                progressSectionSpan = progressTop...(progressTop + progressSectionHeight)
             }
-            progressSectionTopSpacer = progressSpacer(titleSpacer: 0)
-            let blockBottom = titleTop + titleBlockHeight + contentSpacing
-                + progressSectionTopSpacer + progressSectionHeight
-            titleBlockTopSpacer = Self.foldSpacer(for: titleTop...blockBottom, fold: cardGeometry.horizontalFold)
-            if titleBlockTopSpacer > 0 {
-                progressSectionTopSpacer = progressSpacer(titleSpacer: titleBlockTopSpacer)
-            }
-            let titleBlockTop = titleTop + titleBlockTopSpacer
-            let progressTop = titleBlockTop + titleBlockHeight + contentSpacing + progressSectionTopSpacer
-            titleBlockSpan = titleBlockTop...(titleBlockTop + titleBlockHeight)
-            progressSectionSpan = progressTop...(progressTop + progressSectionHeight)
         }
 
         self.artworkUpperBound = artworkUpperBound
@@ -130,6 +148,8 @@ struct NowPlayingContentMetrics {
         }
         self.titleBlockSpan = titleBlockSpan
         self.progressSectionSpan = progressSectionSpan
+        self.titleLeadsStack = titleLeadsStack
+        self.artworkProgressGap = artworkProgressGap
         horizontalFold = cardGeometry.horizontalFold
     }
 

@@ -255,6 +255,11 @@ struct NowPlayingView: View {
         ScrollView {
             if let episode = appModel.playback.currentEpisode {
                 VStack(spacing: metrics.contentSpacing) {
+                    if metrics.titleLeadsStack {
+                        titleBlock(for: episode, metrics: metrics)
+                            .layoutPriority(0)
+                    }
+
                     artwork(
                         for: episode,
                         size: metrics.artworkSize,
@@ -265,12 +270,14 @@ struct NowPlayingView: View {
                         )
                     )
 
-                    titleBlock(for: episode, metrics: metrics)
-                        .padding(.top, metrics.titleBlockTopSpacer)
-                        .layoutPriority(0)
+                    if !metrics.titleLeadsStack {
+                        titleBlock(for: episode, metrics: metrics)
+                            .padding(.top, metrics.titleBlockTopSpacer)
+                            .layoutPriority(0)
+                    }
 
                     progressSection(for: episode)
-                        .padding(.top, metrics.progressSectionTopSpacer)
+                        .padding(.top, metrics.progressSectionTopSpacer + metrics.artworkProgressGap)
                         .layoutPriority(2)
 
                     failureBlock
