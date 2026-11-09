@@ -41,12 +41,14 @@ struct MiniPlayerMetadataView: View {
 
     @ViewBuilder
     private var secondaryLine: some View {
-        if playlistSource != nil {
-            // The show stays the subject; Now Playing names the playlist. The
-            // count keeps layout priority so a long show name truncates
-            // before "N left" does.
+        if let playlistSource {
+            // The show stays the subject, then the playlist. The playlist and
+            // count keep layout priority so a long show name truncates
+            // before they do.
             HStack(alignment: .firstTextBaseline, spacing: 0) {
                 Text(podcastTitle)
+                Text(verbatim: " · \(playlistSource.name)")
+                    .layoutPriority(1)
                 if playlistRemainingCount >= 1 {
                     Text(PlaylistPlaybackSourceText.miniPlayerRemainingSegment(remainingCount: playlistRemainingCount))
                         .layoutPriority(1)

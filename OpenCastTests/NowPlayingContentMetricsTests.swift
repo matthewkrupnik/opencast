@@ -70,6 +70,26 @@ struct NowPlayingContentMetricsTests {
         #expect(metrics.contentWidth == 418)
     }
 
+    @Test("A reserved bottom height comes out of the artwork, leaving room for the source pill")
+    func reservedBottomHeightShrinksTheArtwork() throws {
+        let reserve = NowPlayingSourcePill.minimumSpareHeight
+        let unreserved = Self.closedMetrics(rowsHeight: Self.rowsAtLarge)
+        let reserved = NowPlayingContentMetrics(
+            containerSize: Self.closedContainer,
+            cardGeometry: NowPlayingCardGeometryTests.closed(
+                isAccessibilitySize: false,
+                occlusions: NowPlayingCardGeometryTests.closedOcclusions
+            ),
+            dynamicTypeSize: .large,
+            horizontalSizeClass: .compact,
+            measurements: NowPlayingContentMeasurements(rowsHeight: Self.rowsAtLarge),
+            reservedBottomHeight: reserve
+        )
+        #expect(abs(reserved.artworkSize - (unreserved.artworkSize - reserve)) < 0.001)
+        let stackHeight = try #require(reserved.stackHeight)
+        #expect(Self.closedContainer.height - stackHeight >= reserve - 0.001)
+    }
+
     @Test("Room to spare keeps today's upper bound")
     func roomToSpareKeepsTheUpperBound() {
         let metrics = Self.closedMetrics(rowsHeight: 200)

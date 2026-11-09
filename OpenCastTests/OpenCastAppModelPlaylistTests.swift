@@ -803,6 +803,25 @@ struct OpenCastAppModelPlaylistTests {
         #expect(try preferenceValues(forKey: PlaybackRestorePreferenceStore.sourcePlaylistIDKey, in: fixture.container).isEmpty)
     }
 
+    @Test("Tapping the playlist's last row while that episode is already loaded untagged adopts the playlist")
+    func playPlaylistEpisodeAdoptsLoadedLastEpisode() async throws {
+        let fixture = try await makePlayableFixture()
+        let appModel = fixture.appModel
+        let context = fixture.context
+        // Commute lists "first" then "second"; "second" is its last row.
+        let last = try #require(appModel.episodeSnapshot(for: "second"))
+        try appModel.playEpisode(last, presentsNowPlaying: false, modelContext: context)
+        #expect(appModel.currentPlaylistSourceID == nil)
+
+        let started = appModel.playPlaylistEpisode("second", in: Self.commuteID, modelContext: context)
+
+        #expect(started)
+        #expect(appModel.playback.currentEpisode?.id.rawValue == "second")
+        #expect(appModel.currentPlaylistSourceID == Self.commuteID)
+        #expect(appModel.currentPlaylistSource?.playlistID == Self.commuteID)
+        #expect(appModel.lastPlaylistError == nil)
+    }
+
     @Test("The end-of-episode sleep timer and untagged episodes stop at the end instead of looping")
     func stopPolicyAndUntaggedEpisodesDoNotLoop() async throws {
         let fixture = try await makePlayableFixture()

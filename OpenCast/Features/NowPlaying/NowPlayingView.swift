@@ -234,7 +234,10 @@ struct NowPlayingView: View {
             cardGeometry: geometry,
             dynamicTypeSize: dynamicTypeSize,
             horizontalSizeClass: horizontalSizeClass,
-            measurements: contentMeasurements
+            measurements: contentMeasurements,
+            // The artwork gives up the source pill's room, so a playlist
+            // start always shows where it came from.
+            reservedBottomHeight: appModel.currentPlaylistSource == nil ? 0 : NowPlayingSourcePill.minimumSpareHeight
         )
         let presentation = secondaryPresentation
         let paneHeight = NowPlayingSecondaryPanePresentation.inlineHeight(

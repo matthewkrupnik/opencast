@@ -5709,6 +5709,67 @@ final class OpenCastUITests: XCTestCase {
     }
 
     @MainActor
+    func testTappingRestoredEpisodeInPlaylistAdoptsPlaylist() throws {
+        // The restored episode was started outside any playlist.
+        let app = makeSeededApp(seedsEpisodeProgress: true, seedsPlaylists: true)
+        app.launch()
+
+        let miniPlayer = app.buttons["Open Now Playing"].firstMatch
+        assertExists(miniPlayer, named: "restored mini player", timeout: 10)
+
+        openLibraryPlaylists(in: app)
+        openSeededCommutePlaylist(in: app)
+        let row = app.descendants(matching: .any)["playlist-episode-ui-test-episode-1"].firstMatch
+        assertHittable(row, named: "restored episode's Seeded Commute row")
+        row.tap()
+
+        assertNowPlayingOverlay(in: app)
+        assertNowPlayingSourcePill(reads: "Playing from Seeded Commute", in: app)
+    }
+
+    @MainActor
+    func testEpisodePagePlayThenPlaylistRowAdoptsPlaylist() throws {
+        // The row's long-press menu can make XCUITest wait for idle.
+        executionTimeAllowance = 600
+        let app = makeSeededApp(seedsPlaylists: true)
+        app.launch()
+
+        // Start from the episode page: playback outside any playlist.
+        openEpisodeDetailFromContextMenu(
+            seededShowEpisodeRow(in: app),
+            in: app,
+            named: "seeded show episode",
+            expectsGoToShow: false
+        )
+        let control = episodePlaybackControl(in: app)
+        assertHittable(control, named: "episode page play control")
+        control.tap()
+        if nowPlayingOverlay(in: app).waitForExistence(timeout: 5) {
+            dismissNowPlayingOverlay(in: app)
+        }
+        let miniPlayer = app.buttons["Open Now Playing"].firstMatch
+        assertExists(miniPlayer, named: "mini player after episode page play")
+        XCTAssertFalse(
+            (miniPlayer.value as? String)?.contains("playing from") == true,
+            "episode page play should not be tied to a playlist"
+        )
+
+        // Pause it from the episode page.
+        assertHittable(control, named: "episode page pause control")
+        control.tap()
+
+        // Play it again from a playlist that lists it.
+        openLibraryPlaylists(in: app)
+        openSeededCommutePlaylist(in: app)
+        let row = app.descendants(matching: .any)["playlist-episode-ui-test-episode-1"].firstMatch
+        assertHittable(row, named: "paused episode's Seeded Commute row")
+        row.tap()
+
+        assertNowPlayingOverlay(in: app)
+        assertNowPlayingSourcePill(reads: "Playing from Seeded Commute", in: app)
+    }
+
+    @MainActor
     func testSeededPlaylistSourceShowsInMiniPlayerAndNowPlaying() throws {
         let app = makeSeededApp(
             seedsEpisodeProgress: true,

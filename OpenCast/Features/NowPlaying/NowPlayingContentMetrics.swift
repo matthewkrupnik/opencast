@@ -43,7 +43,8 @@ struct NowPlayingContentMetrics {
         cardGeometry: NowPlayingCardGeometry,
         dynamicTypeSize: DynamicTypeSize,
         horizontalSizeClass: UserInterfaceSizeClass?,
-        measurements: NowPlayingContentMeasurements
+        measurements: NowPlayingContentMeasurements,
+        reservedBottomHeight: CGFloat = 0
     ) {
         let isAccessibilitySize = dynamicTypeSize.isAccessibilitySize
         let isRegular = horizontalSizeClass == .regular
@@ -75,7 +76,8 @@ struct NowPlayingContentMetrics {
         let artworkSize: CGFloat = if let rowsHeight = measurements.rowsHeight {
             Self.fittedArtworkSize(
                 upperBound: artworkUpperBound,
-                room: containerSize.height - topContentPadding - bottomContentPadding - rowsHeight,
+                room: containerSize.height - topContentPadding - bottomContentPadding - rowsHeight
+                    - reservedBottomHeight,
                 isAccessibilitySize: isAccessibilitySize
             )
         } else {
