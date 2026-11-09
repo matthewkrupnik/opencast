@@ -35,7 +35,7 @@ struct NowPlayingSecondaryPaneTests {
         #expect(NowPlayingSecondaryPane(sheet: .history) == nil)
         #expect(NowPlayingSecondaryPane(sheet: .chapters) == .chapters)
         #expect(NowPlayingSecondaryPane(sheet: .transcript) == .transcript)
-        #expect(NowPlayingSecondaryPane(sheet: .speed) == nil)
+        #expect(NowPlayingSecondaryPane(sheet: .audio) == nil)
         #expect(NowPlayingSecondaryPane(sheet: .sleep) == nil)
         #expect(NowPlayingSecondaryPane(sheet: .notes) == nil)
     }
@@ -113,7 +113,7 @@ struct NowPlayingSecondaryPaneTests {
         #expect(Self.presentation(.split(band: nil), .chapters, sheet: .chapters).content == nil)
         #expect(Self.presentation(.single(band: nil), .transcript, expanded: true, sheet: .transcript).content == nil)
         #expect(Self.presentation(.split(band: nil), .transcript, sheet: .chapters).content == .transcript)
-        #expect(Self.presentation(.split(band: nil), .transcript, sheet: .speed).content == .transcript)
+        #expect(Self.presentation(.split(band: nil), .transcript, sheet: .audio).content == .transcript)
         #expect(Self.presentation(.split(band: nil), .showNotes, sheet: .notes).content == .showNotes)
         // The sheet closes: the selected pane returns.
         #expect(Self.presentation(.split(band: Self.bookBand), .transcript, sheet: nil).content == .transcript)

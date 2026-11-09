@@ -14,7 +14,8 @@ struct AirPlayRoutePickerButton: View {
             .allowsHitTesting(false)
             .accessibilityHidden(true)
             .contentTransition(.symbolEffect(.replace))
-            .playerUtilityCircleChrome(isActive: isExternalRoute)
+            .foregroundStyle(isExternalRoute ? AnyShapeStyle(.tint) : AnyShapeStyle(.primary))
+            .nowPlayingToolbarHitTarget()
             .overlay {
                 AirPlayRoutePickerUIView(routeName: routeName)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)

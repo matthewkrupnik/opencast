@@ -21,7 +21,7 @@ nonisolated enum NowPlayingSecondaryPane: String, CaseIterable, Identifiable, Se
             self = .chapters
         case .transcript:
             self = .transcript
-        case .speed, .sleep, .notes, .history, .soundLab:
+        case .audio, .sleep, .notes, .history, .soundLab:
             return nil
         }
     }

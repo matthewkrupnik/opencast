@@ -24,7 +24,7 @@ struct NowPlayingSoundLabSheetHandoffTests {
     /// the handoff runs only when none is up, so the fallback never blocks it.
     @Test(
         "It never runs under a sheet: the Sound Lab's own, or one opened meanwhile",
-        arguments: [PlayerUtilitySheet.soundLab, .transcript, .history, .speed]
+        arguments: [PlayerUtilitySheet.soundLab, .transcript, .history, .audio]
     )
     func neverRunsUnderASheet(sheet: PlayerUtilitySheet) {
         let handoff = PlayerUtilitySheet.Handoff(action: .transcriptAction, episodeID: "episode-1")

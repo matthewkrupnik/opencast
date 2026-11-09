@@ -9,11 +9,12 @@ struct NowPlayingMoreMenu: View {
     let canShowShow: Bool
     /// The name of the playlist playback came from; nil when there is none.
     let playlistSourceName: String?
-    /// Whether Private Notes appears; follows the Playback setting that shows
-    /// the note circle, so a listener who hasn't opted in doesn't see it here
-    /// either. Adding a note is the circle's job, never the menu's.
+    /// Whether Add Note and Private Notes appear; follows the Playback
+    /// setting for private notes, so a listener who hasn't opted in sees
+    /// neither.
     let showsPrivateNotes: Bool
     let onTranscriptAction: () -> Void
+    let onAddNote: () -> Void
     let onShowNotes: () -> Void
     let onShowDescription: () -> Void
     let onShowShow: () -> Void
@@ -34,6 +35,8 @@ struct NowPlayingMoreMenu: View {
                 action: onTranscriptAction
             )
             if showsPrivateNotes {
+                Button("Add Note", systemImage: "square.and.pencil", action: onAddNote)
+                    .accessibilityIdentifier("Add Timestamped Note")
                 Button("Private Notes", systemImage: "note.text", action: onShowNotes)
                     .accessibilityIdentifier("Menu Private Notes")
             }
@@ -52,15 +55,13 @@ struct NowPlayingMoreMenu: View {
             Divider()
             Button("Stop Playback", systemImage: "stop.circle", action: onStopPlayback)
         } label: {
-            Label("More Actions", systemImage: "ellipsis.circle")
+            Label("More Actions", systemImage: "ellipsis")
                 .labelStyle(.iconOnly)
-                .font(.title3)
-                .frame(width: 44, height: 44)
-                .contentShape(.circle)
+                .nowPlayingToolbarHitTarget()
+                // On the label: glass around the Menu itself morphs the menu
+                // out of the circle on iOS 27, and the first item tap is lost.
+                .glassEffect(.regular, in: .circle)
         }
         .buttonStyle(.plain)
-        // Non-interactive glass: the interactive variant pulses with light
-        // under the Menu's highlight state on iOS 27.
-        .glassEffect(.regular, in: .circle)
     }
 }

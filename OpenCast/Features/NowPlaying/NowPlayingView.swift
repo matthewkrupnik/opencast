@@ -84,8 +84,11 @@ struct NowPlayingView: View {
                 }
                 .sheet(item: $utilitySheet, onDismiss: completeSoundLabHandoff) { sheet in
                     switch sheet {
-                    case .speed:
-                        PlaybackSpeedView()
+                    case .audio:
+                        NowPlayingAudioSheet(
+                            voiceBoostEnabled: $isVoiceBoostEnabled,
+                            voiceBoostControlEnabled: appModel.playbackSettings.canChangeCurrentEpisodeVoiceBoost
+                        )
                             .environment(appModel)
                             .modelContext(modelContext)
                             .presentationDetents([.medium, .large])
@@ -274,9 +277,9 @@ struct NowPlayingView: View {
 
                     transport(containerHeight: size.height)
 
-                    utilityRow(width: metrics.contentWidth)
-
                     secondaryDisclosure(presentation, paneHeight: paneHeight)
+
+                    toolbarRoom
                 }
                 .onGeometryChange(for: CGFloat.self) { geometry in
                     geometry.size.height - unmeasuredStackHeight
@@ -300,7 +303,7 @@ struct NowPlayingView: View {
                 .frame(maxWidth: .infinity)
                 .frame(minHeight: metrics.containerHeight, alignment: .top)
                 .overlay(alignment: .bottom) {
-                    sourcePill(
+                    bottomBar(
                         spareHeight: naturalContentHeight.map { metrics.containerHeight - $0 },
                         metrics: metrics,
                         bottomPadding: metrics.bottomContentPadding
@@ -327,8 +330,8 @@ struct NowPlayingView: View {
         .scrollDisabled(isTrackingDismissDrag)
         .tracksScrolledToTop(area: .player, update: updateScrolledToTop)
         .coordinateSpace(.named(NowPlayingSoundLabOpenPanel.CardContext.coordinateSpaceName))
-        .overlay(alignment: .topLeading) {
-            moreMenu(geometry: geometry)
+        .overlay(alignment: .top) {
+            autoSkipFeedback(geometry: geometry)
         }
         .overlay(alignment: .top) {
             toast(geometry: geometry)
@@ -408,8 +411,8 @@ struct NowPlayingView: View {
                     progressSection(for: episode)
                     failureBlock
                     transport(containerHeight: size.height)
-                    utilityRow(width: metrics.contentWidth)
                     secondaryDisclosure(presentation, paneHeight: paneHeight)
+                    toolbarRoom
                 }
                 .onGeometryChange(for: CGFloat.self) { geometry in
                     geometry.size.height - paneAllowance
@@ -424,7 +427,7 @@ struct NowPlayingView: View {
                 .frame(maxWidth: .infinity)
                 .frame(minHeight: layout.controlsViewportHeight, alignment: .top)
                 .overlay(alignment: .bottom) {
-                    sourcePill(
+                    bottomBar(
                         spareHeight: layout.controlsSpareHeight,
                         metrics: metrics,
                         bottomPadding: layout.controlsBottomPadding
@@ -443,8 +446,8 @@ struct NowPlayingView: View {
         }
         .frame(width: size.width, height: size.height, alignment: .top)
         .coordinateSpace(.named(NowPlayingSoundLabOpenPanel.CardContext.coordinateSpaceName))
-        .overlay(alignment: .topLeading) {
-            moreMenu(geometry: cardGeometry)
+        .overlay(alignment: .top) {
+            autoSkipFeedback(geometry: cardGeometry)
         }
         .overlay(alignment: .top) {
             toast(geometry: cardGeometry)
@@ -569,17 +572,39 @@ struct NowPlayingView: View {
         .layoutPriority(2)
     }
 
-    private func utilityRow(width: CGFloat) -> some View {
+    /// Keeps the toolbar's height clear at the end of the stack: the fit rule
+    /// counts it as a row, and the content never comes to rest under the
+    /// toolbar drawn over it.
+    private var toolbarRoom: some View {
+        Color.clear
+            .frame(height: NowPlayingUtilityControls<EmptyView>.height)
+            .accessibilityHidden(true)
+    }
+
+    private var toolbar: some View {
         NowPlayingUtilityControls(
             rate: appModel.playback.rate,
-            availableWidth: width,
-            playButtonDiameter: playButtonDiameter,
-            onShowSpeed: { utilitySheet = .speed },
-            onShowSleepTimer: { utilitySheet = .sleep },
-            onAddNote: addNoteAction
-        )
-        .padding(.top, utilityTopPadding)
-        .layoutPriority(1)
+            onClose: onDismiss,
+            onShowAudio: { utilitySheet = .audio },
+            onShowSleepTimer: { utilitySheet = .sleep }
+        ) {
+            NowPlayingMoreMenu(
+                episode: presentedEpisodeSnapshot,
+                hasTranscript: hasCompletedTranscript,
+                canShowDescription: canOpenCurrentEpisode,
+                canShowShow: canOpenCurrentPodcast,
+                playlistSourceName: appModel.currentPlaylistSource?.name,
+                showsPrivateNotes: appModel.playbackSettings.showsPrivateNoteButtons,
+                onTranscriptAction: performTranscriptAction,
+                onAddNote: addTimestampedNote,
+                onShowNotes: { utilitySheet = .notes },
+                onShowDescription: showDescription,
+                onShowShow: openPodcast,
+                onShowPlaylist: openPlaylist,
+                onShowHistory: { utilitySheet = .history },
+                onStopPlayback: stopPlayback
+            )
+        }
     }
 
     /// The pane collapsed to its row below the controls, and the same pane
@@ -610,66 +635,29 @@ struct NowPlayingView: View {
         }
     }
 
-    @ViewBuilder
-    private func sourcePill(
+    /// The toolbar on the content's bottom edge, which rests on the card's,
+    /// with the source pill just above it when there is room.
+    private func bottomBar(
         spareHeight: CGFloat?,
         metrics: NowPlayingContentMetrics,
         bottomPadding: CGFloat
     ) -> some View {
-        if let source = appModel.currentPlaylistSource, showsSourcePill(spareHeight: spareHeight) {
-            NowPlayingSourcePill(name: source.name, action: openPlaylist)
-                .frame(maxWidth: metrics.contentWidth)
-                .padding(.leading, metrics.leadingPadding)
-                .padding(.trailing, metrics.trailingPadding)
-                .padding(.bottom, bottomPadding)
-                .transition(.opacity)
+        VStack(spacing: metrics.contentSpacing) {
+            if let source = appModel.currentPlaylistSource, showsSourcePill(spareHeight: spareHeight) {
+                NowPlayingSourcePill(name: source.name, action: openPlaylist)
+                    .transition(.opacity)
+            }
+            toolbar
         }
+        .frame(maxWidth: metrics.contentWidth)
+        .padding(.leading, metrics.leadingPadding)
+        .padding(.trailing, metrics.trailingPadding)
+        .padding(.bottom, bottomPadding)
     }
 
+    /// The auto-skip pill, centered at the card's top.
     @ViewBuilder
-    private func moreMenu(geometry: NowPlayingCardGeometry) -> some View {
-        if appModel.playback.currentEpisode != nil {
-            NowPlayingMoreMenu(
-                episode: presentedEpisodeSnapshot,
-                hasTranscript: hasCompletedTranscript,
-                canShowDescription: canOpenCurrentEpisode,
-                canShowShow: canOpenCurrentPodcast,
-                playlistSourceName: appModel.currentPlaylistSource?.name,
-                showsPrivateNotes: appModel.playbackSettings.showsPrivateNoteButtons,
-                onTranscriptAction: performTranscriptAction,
-                onShowNotes: { utilitySheet = .notes },
-                onShowDescription: showDescription,
-                onShowShow: openPodcast,
-                onShowPlaylist: openPlaylist,
-                onShowHistory: { utilitySheet = .history },
-                onStopPlayback: stopPlayback
-            )
-            .padding(.top, geometry.moreOrigin.y)
-            .padding(.leading, geometry.moreOrigin.x)
-            .opacity(isSoundLabInteractionActive ? 0 : 1)
-            .allowsHitTesting(!isSoundLabInteractionActive)
-            .animation(.easeOut(duration: 0.15), value: isSoundLabInteractionActive)
-
-            // A grab handle centered level with More: the card is dragged
-            // down to close, and a tap or VoiceOver still closes it.
-            Button(action: onDismiss) {
-                Capsule()
-                    .fill(.secondary)
-                    .frame(width: 36, height: 5)
-                    .frame(width: 88, height: NowPlayingCardGeometry.moreDiameter)
-                    .contentShape(.rect)
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel("Close")
-            .accessibilityHint("Or drag the card down.")
-            .frame(maxWidth: .infinity)
-            .padding(.top, geometry.moreOrigin.y)
-            .opacity(isSoundLabInteractionActive ? 0 : 1)
-            .allowsHitTesting(!isSoundLabInteractionActive)
-            .animation(.easeOut(duration: 0.15), value: isSoundLabInteractionActive)
-            .accessibilityIdentifier("Close Now Playing")
-        }
-        // Sits between the grab handle and More so it never covers the titles.
+    private func autoSkipFeedback(geometry: NowPlayingCardGeometry) -> some View {
         if let episodeID = appModel.playback.currentEpisode?.id {
             NowPlayingAutoSkipFeedbackView()
                 .id(episodeID)
@@ -797,12 +785,6 @@ struct NowPlayingView: View {
             return
         }
         foldedControlsHeight = height
-    }
-
-    /// Nil hides the Now Playing note circle (the Playback setting is off).
-    private var addNoteAction: (() -> Void)? {
-        guard appModel.playbackSettings.showsPrivateNoteButtons else { return nil }
-        return addTimestampedNote
     }
 
     private func addTimestampedNote() {
@@ -1049,14 +1031,6 @@ struct NowPlayingView: View {
         }
 
         return containerHeight > 780 ? 12 : 10
-    }
-
-    private var utilityTopPadding: CGFloat {
-        if dynamicTypeSize.isAccessibilitySize {
-            return 8
-        }
-
-        return 6
     }
 
     private func retryPlayback() {

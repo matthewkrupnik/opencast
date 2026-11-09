@@ -861,6 +861,8 @@ final class OpenCastUITests: XCTestCase {
 
     @MainActor
     func testPrivateNotesSaveVisibilityAndDeletion() throws {
+        // Each note opens the More menu first, which runs past 3 minutes.
+        executionTimeAllowance = 600
         let app = makeSeededApp(audioDurationSeconds: 600)
         app.launch()
         setPrivateNoteButtons(true, in: app)
@@ -870,25 +872,23 @@ final class OpenCastUITests: XCTestCase {
         row.tap()
         assertNowPlayingOverlay(in: app)
         let overlay = nowPlayingOverlay(in: app)
-        let add = app.buttons["Add Timestamped Note"]
-        assertExists(add, named: "Add Note circle")
         XCTAssertFalse(app.buttons["Show Episode Notes"].exists)
         XCTAssertFalse(app.buttons["Add Episode Note"].exists)
         assertExists(overlay.buttons["Pause"], named: "playing before adding a note")
-        add.tap()
+        addNoteFromMoreMenu(in: app)
         let editor = app.textViews["Episode Note Text"]
         assertExists(editor, named: "note editor after one tap")
         editor.tap()
         editor.typeText("Private note UI fixture")
         app.buttons["Save Episode Note"].tap()
         assertExists(overlay.buttons["Pause"], named: "playback resumed after saving")
-        add.tap()
+        addNoteFromMoreMenu(in: app)
         assertExists(editor, named: "cancelled note editor")
         editor.tap()
         editor.typeText("Discard this draft")
         app.buttons["Cancel"].tap()
         assertExists(overlay.buttons["Pause"], named: "playback resumed after cancelling")
-        add.tap()
+        addNoteFromMoreMenu(in: app)
         assertExists(editor, named: "empty note editor")
         app.navigationBars["Add Private Note"].coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
             .press(forDuration: 0.1, thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.95)))
@@ -899,7 +899,7 @@ final class OpenCastUITests: XCTestCase {
         let progress = playbackProgress(in: app)
         progress.coordinate(withNormalizedOffset: CGVector(dx: 0.1, dy: 0.5))
             .press(forDuration: 0.08, thenDragTo: progress.coordinate(withNormalizedOffset: CGVector(dx: 0.6, dy: 0.5)))
-        add.tap()
+        addNoteFromMoreMenu(in: app)
         assertExists(editor, named: "editor while already paused")
         editor.tap()
         editor.typeText("Second note fixture")
@@ -1114,6 +1114,8 @@ final class OpenCastUITests: XCTestCase {
     ) {
         openSettingsScreen("Playback", expecting: "Playback", in: app, file: file, line: line)
         let toggle = app.switches["playback-private-notes-toggle"]
+        // Below the Speed and Voice Boost sections on a phone.
+        scrollUntilExists(toggle, in: app, file: file, line: line)
         assertExists(toggle, named: "Private Notes toggle", file: file, line: line)
         scrollClearOfMiniPlayer(toggle, in: app)
         toggle.coordinate(withNormalizedOffset: CGVector(dx: 0.9, dy: 0.5)).tap()
@@ -1139,7 +1141,7 @@ final class OpenCastUITests: XCTestCase {
     }
 
     /// Opens Now Playing's More menu once the card has finished expanding
-    /// (the menu sits near the top of the expanded card).
+    /// (the menu sits in the expanded card's bottom toolbar).
     @MainActor
     private func openNowPlayingMoreMenu(
         in app: XCUIApplication,
@@ -1147,26 +1149,21 @@ final class OpenCastUITests: XCTestCase {
         line: UInt = #line
     ) {
         let more = app.buttons["More Actions"].firstMatch
-        let expandedMenu = NSPredicate { _, _ in more.isHittable && more.frame.maxY < 200 }
+        let windowHeight = app.windows.firstMatch.frame.height
+        let expandedMenu = NSPredicate { _, _ in more.isHittable && more.frame.minY > windowHeight / 2 }
         XCTAssertEqual(
             XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: expandedMenu, object: more)], timeout: 5),
             .completed,
-            "More Actions should settle at the top of the expanded card",
+            "More Actions should settle in the expanded card's bottom toolbar",
             file: file,
             line: line
         )
         more.tap()
         assertExists(app.buttons["Stop Playback"], named: "Now Playing More menu", file: file, line: line)
-        XCTAssertFalse(
-            app.buttons["Menu Add Note"].exists,
-            "Adding a note belongs to the note circle, never the More menu",
-            file: file,
-            line: line
-        )
     }
 
     /// Opens the notes sheet from Now Playing's More menu; the Playback note
-    /// button setting must be on, since it also lists the note actions there.
+    /// setting must be on, since it also lists the note actions there.
     @MainActor
     private func openPrivateNotesSheet(
         in app: XCUIApplication,
@@ -1180,8 +1177,17 @@ final class OpenCastUITests: XCTestCase {
         assertScreen("Private Notes", named: "Private Notes sheet", in: app, file: file, line: line)
     }
 
-    /// With the Playback note button setting off, the More menu has no
-    /// Private Notes entry.
+    /// Add Note lives in Now Playing's More menu.
+    @MainActor
+    private func addNoteFromMoreMenu(in app: XCUIApplication, file: StaticString = #filePath, line: UInt = #line) {
+        openNowPlayingMoreMenu(in: app, file: file, line: line)
+        let add = app.buttons["Add Timestamped Note"].firstMatch
+        assertHittable(add, named: "More menu Add Note", file: file, line: line)
+        add.tap()
+    }
+
+    /// With the Playback note setting off, the More menu has neither Add
+    /// Note nor Private Notes.
     @MainActor
     private func assertMoreMenuHidesPrivateNotes(
         in app: XCUIApplication,
@@ -1191,7 +1197,13 @@ final class OpenCastUITests: XCTestCase {
         openNowPlayingMoreMenu(in: app, file: file, line: line)
         XCTAssertFalse(
             app.buttons["Menu Private Notes"].exists,
-            "Private Notes should leave the More menu while the note button is off",
+            "Private Notes should leave the More menu while private notes are off",
+            file: file,
+            line: line
+        )
+        XCTAssertFalse(
+            app.buttons["Add Timestamped Note"].exists,
+            "Add Note should leave the More menu while private notes are off",
             file: file,
             line: line
         )
@@ -1553,6 +1565,7 @@ final class OpenCastUITests: XCTestCase {
         openSettings(in: app)
         app.buttons["Playback"].tap()
         let presetsRow = app.buttons["playback-sleep-timer-presets-row"]
+        scrollUntilHittable(presetsRow, in: app)
         assertHittable(presetsRow, named: "Sleep Timer Presets row")
         presetsRow.tap()
         let firstPreset = app.buttons["sleep-timer-preset-1"]
@@ -2381,35 +2394,27 @@ final class OpenCastUITests: XCTestCase {
         XCTAssertEqual(app.textFields["Skip Outro Duration"].value as? String, "0:00")
     }
 
-    /// The seeded show has its own 1.5x. Custom for This Show in the speed
-    /// sheet returns it to the global speed and takes it back; the steps then
-    /// edit the show, and the show sheet's Save applies to the playing
-    /// episode without a replay.
+    /// The seeded show has its own 1.5x. The Audio sheet's stepper sets the
+    /// episode's own speed, which then wins over the show's new speed
+    /// saved from the show's page, without a replay.
     @MainActor
     func testSeededPodcastCustomSpeedAppliesAndTogglesFromNowPlaying() throws {
         let app = makeSeededApp(audioDurationSeconds: 600, podcastPlaybackRate: 1.5)
         app.launch()
 
         openSeededNowPlaying(in: app)
-        let speedButton = app.buttons["Playback Speed"]
-        assertHittable(speedButton, named: "Playback Speed control")
-        assertValue(of: speedButton, becomes: "1.5x", named: "Playback Speed at the show's own speed")
+        let speedButton = app.buttons["Audio"]
+        assertHittable(speedButton, named: "Audio control")
+        assertValue(of: speedButton, becomes: "1.5x", named: "Audio control at the show's own speed")
 
         speedButton.tap()
-        let customForShow = app.switches["playback-speed-custom-for-show-toggle"]
-        assertHittable(customForShow, named: "Custom for This Show toggle")
-        assertToggle(customForShow, isOn: true)
-        tapToggle(customForShow, to: false)
-        assertValue(of: speedButton, becomes: "1x", named: "Playback Speed back at the global speed")
-
-        tapToggle(customForShow, to: true)
-        assertValue(of: speedButton, becomes: "1x", named: "Playback Speed after the show takes the current speed")
-        // The sheet opens at its medium detent; the last step sits below it.
-        expandSheetToLargeDetent(in: app)
-        let twoX = app.buttons["2.0x"]
-        assertHittable(twoX, named: "2.0x speed step")
-        twoX.tap()
-        assertValue(of: speedButton, becomes: "2.0x", named: "Playback Speed after picking 2.0x for the episode")
+        let faster = audioSheetSpeedButton("Increment", in: app)
+        assertHittable(faster, named: "faster speed step")
+        faster.tap()
+        faster.tap()
+        assertValue(of: speedButton, becomes: "2.0x", named: "Audio control after two steps to 2.0x for the episode")
+        XCTAssertFalse(faster.isEnabled, "2.0x is the fastest step")
+        toolbarButton("Done", in: "Audio", of: app).tap()
 
         dismissNowPlayingOverlay(in: app)
         openLibrary(in: app)
@@ -2420,7 +2425,7 @@ final class OpenCastUITests: XCTestCase {
         let customSpeed = app.switches["podcast-playback-settings-custom-speed-toggle"]
         assertExists(customSpeed, named: "Custom Speed toggle")
         assertToggle(customSpeed, isOn: true)
-        // Now Playing's 2.0x was the episode's own; the show kept 1x.
+        // Now Playing's 2.0x was the episode's own; the show kept 1.5x.
         let speedPicker = app.buttons["podcast-playback-settings-speed-picker"]
         assertHittable(speedPicker, named: "show speed picker")
         speedPicker.tap()
@@ -2436,7 +2441,7 @@ final class OpenCastUITests: XCTestCase {
         miniPlayer.tap()
         assertNowPlayingOverlay(in: app)
         // The episode's own speed wins over the show's new one.
-        assertValue(of: speedButton, becomes: "2.0x", named: "Playback Speed after saving 1.25x for the show")
+        assertValue(of: speedButton, becomes: "2.0x", named: "Audio control after saving 1.25x for the show")
     }
 
     @MainActor
@@ -4518,12 +4523,14 @@ final class OpenCastUITests: XCTestCase {
             timeout: 40
         )
 
-        let playbackSpeedButton = app.buttons["Playback Speed"]
-        assertExists(playbackSpeedButton, named: "Playback Speed control")
-        playbackSpeedButton.tap()
-        let fasterSpeedButton = app.buttons["1.25x"]
-        assertExists(fasterSpeedButton, named: "1.25x speed option")
+        let audioButton = app.buttons["Audio"]
+        assertExists(audioButton, named: "Audio control")
+        audioButton.tap()
+        let fasterSpeedButton = audioSheetSpeedButton("Increment", in: app)
+        assertExists(fasterSpeedButton, named: "faster speed step")
         fasterSpeedButton.tap()
+        assertValue(of: audioButton, becomes: "1.25x", named: "Audio control after one faster step")
+        toolbarButton("Done", in: "Audio", of: app).tap()
         processedFrames = waitForVoiceBoostProcessedFrames(
             in: app,
             minProcessedFrames: processedFrames + 1,
@@ -4962,7 +4969,7 @@ final class OpenCastUITests: XCTestCase {
         ).firstMatch
         assertNowPlayingControlIsReachable(skipForwardButton, named: "Skip Forward control", in: app)
 
-        assertNowPlayingControlIsReachable(app.buttons["Playback Speed"], named: "Playback Speed control", in: app)
+        assertNowPlayingControlIsReachable(app.buttons["Audio"], named: "Audio control", in: app)
         assertNowPlayingControlIsReachable(app.buttons["AirPlay"], named: "AirPlay control", in: app)
         assertNowPlayingControlIsReachable(app.buttons["Sleep Timer"], named: "Sleep Timer control", in: app)
         assertPlayerUtilityControlHeightsAreBalanced(in: app)
@@ -7005,13 +7012,19 @@ final class OpenCastUITests: XCTestCase {
         assertDoesNotExist(nowPlayingOverlay(in: app), named: "\(name) Now Playing overlay", file: file, line: line)
     }
 
+    /// The Audio sheet's speed stepper button, "Increment" or "Decrement".
+    @MainActor
+    private func audioSheetSpeedButton(_ direction: String, in app: XCUIApplication) -> XCUIElement {
+        app.buttons.matching(NSPredicate(format: "label ENDSWITH %@", direction)).firstMatch
+    }
+
     @MainActor
     private func assertPlayerUtilityControlsExist(
         in app: XCUIApplication,
         file: StaticString = #filePath,
         line: UInt = #line
     ) {
-        assertExists(app.buttons["Playback Speed"], named: "Playback Speed control")
+        assertExists(app.buttons["Audio"], named: "Audio control")
         let airPlayControl = app.buttons["AirPlay"].firstMatch
         assertExists(airPlayControl, named: "AirPlay control", file: file, line: line)
         let airPlayButtonCount = app.buttons.matching(NSPredicate(format: "label == %@", "AirPlay")).count
@@ -7043,7 +7056,7 @@ final class OpenCastUITests: XCTestCase {
     ) {
         let overlay = nowPlayingOverlay(in: app)
         let controls = [
-            (name: "Playback Speed", element: overlay.buttons["Playback Speed"].firstMatch),
+            (name: "Audio", element: overlay.buttons["Audio"].firstMatch),
             (name: "AirPlay", element: overlay.buttons["AirPlay"].firstMatch),
             (name: "Sleep Timer", element: overlay.buttons["Sleep Timer"].firstMatch)
         ]
@@ -8336,10 +8349,10 @@ final class OpenCastUITests: XCTestCase {
         XCTAssertEqual(pill.label, expectedLabel, "Now Playing source pill label", file: file, line: line)
         let sleepTimer = nowPlayingOverlay(in: app).buttons["Sleep Timer"].firstMatch
         assertExists(sleepTimer, named: "Now Playing Sleep Timer control", file: file, line: line)
-        XCTAssertGreaterThanOrEqual(
-            pill.frame.minY,
-            sleepTimer.frame.maxY,
-            "The source pill should sit below the utility row; pill \(pill.frame), Sleep Timer \(sleepTimer.frame)",
+        XCTAssertLessThanOrEqual(
+            pill.frame.maxY,
+            sleepTimer.frame.minY,
+            "The source pill should sit above the bottom toolbar; pill \(pill.frame), Sleep Timer \(sleepTimer.frame)",
             file: file,
             line: line
         )
