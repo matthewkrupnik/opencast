@@ -30,45 +30,36 @@ struct OpenCastAppModelPlaybackRateTests {
         #expect(try storedGlobalRate(fixture.context) == "1.25")
     }
 
-    @Test("A speed change while a show with its own speed plays saves that show's speed, not the global one")
-    func speedChangeEditsTheShowSpeed() async throws {
+    @Test("A speed change while an episode plays saves that episode's speed, not its show's or the global one")
+    func speedChangeEditsTheEpisodeSpeed() async throws {
         let fixture = try await makeFixture()
         try play(Self.customEpisodeID, fixture: fixture)
 
         #expect(fixture.appModel.setPlaybackRate(2, modelContext: fixture.context))
 
         #expect(fixture.appModel.playback.rate == 2)
-        #expect(fixture.appModel.library.podcastPlaybackRateOverride(forPodcastID: Self.customShowID) == 2)
-        #expect(try savedPlaybackRate(forFeedURL: Self.customShowID, fixture: fixture) == 2)
+        #expect(fixture.appModel.playbackSettings.episodePlaybackRate == 2)
+        #expect(fixture.appModel.library.podcastPlaybackRateOverride(forPodcastID: Self.customShowID) == 1.5)
         #expect(fixture.appModel.playbackSettings.globalPlaybackRate == 1)
         #expect(try storedGlobalRate(fixture.context) == nil)
         #expect(fixture.appModel.playbackSettings.lastErrorMessage == nil)
+
+        // The episode keeps its speed when played again; the show's other
+        // episodes keep the show's.
+        try play(Self.globalEpisodeID, fixture: fixture)
+        try play(Self.customEpisodeID, fixture: fixture)
+        #expect(fixture.appModel.playback.rate == 2)
     }
 
-    @Test("A failed save of the show's speed rolls the player back and surfaces the error once")
-    func failedShowSpeedSaveRollsBack() async throws {
-        let saveSwitch = SyncedSaveSwitch()
-        let fixture = try await makeFixture(librarySave: { context in
-            if saveSwitch.failsSaves {
-                throw SimulatedSyncedSaveFailure()
-            }
-            try context.save()
-        })
-        try play(Self.customEpisodeID, fixture: fixture)
-        saveSwitch.failsSaves = true
+    @Test("A new default speed applies to an episode without its own speed at once")
+    func defaultSpeedAppliesToThePlayingEpisode() async throws {
+        let fixture = try await makeFixture()
+        try play(Self.globalEpisodeID, fixture: fixture)
 
-        #expect(!fixture.appModel.setPlaybackRate(2, modelContext: fixture.context))
+        #expect(fixture.appModel.setDefaultPlaybackRate(1.75, modelContext: fixture.context))
 
-        #expect(fixture.appModel.playback.rate == 1.5)
-        #expect(fixture.appModel.library.podcastPlaybackRateOverride(forPodcastID: Self.customShowID) == 1.5)
-        #expect(
-            fixture.appModel.playbackSettings.lastErrorMessage
-                == "Unable to update this show's speed: Simulated synced save failure"
-        )
-        // The speed sheet shows the failure; the root Library alert must not
-        // show it a second time.
-        #expect(fixture.appModel.library.lastErrorMessage == nil)
-        #expect(try storedGlobalRate(fixture.context) == nil)
+        #expect(fixture.appModel.playback.rate == 1.75)
+        #expect(try storedGlobalRate(fixture.context) == "1.75")
     }
 
     @Test("Turning the show's speed off while it plays drops to the global speed at once")
@@ -86,7 +77,7 @@ struct OpenCastAppModelPlaybackRateTests {
         #expect(try storedGlobalRate(fixture.context) == "1.25")
     }
 
-    @Test("Turning the show's speed on while it plays keeps the current speed and later changes edit the show")
+    @Test("Turning the show's speed on while it plays keeps the current speed; later changes edit the episode")
     func settingTheShowSpeedToTheCurrentRateKeepsPlaybackAsItWas() async throws {
         let fixture = try await makeFixture()
         #expect(fixture.appModel.setPlaybackRate(1.25, modelContext: fixture.context))
@@ -106,7 +97,7 @@ struct OpenCastAppModelPlaybackRateTests {
         #expect(fixture.appModel.setPlaybackRate(1.75, modelContext: fixture.context))
 
         #expect(fixture.appModel.playback.rate == 1.75)
-        #expect(fixture.appModel.library.podcastPlaybackRateOverride(forPodcastID: Self.globalShowID) == 1.75)
+        #expect(fixture.appModel.library.podcastPlaybackRateOverride(forPodcastID: Self.globalShowID) == 1.25)
         #expect(fixture.appModel.playbackSettings.globalPlaybackRate == 1.25)
         #expect(try storedGlobalRate(fixture.context) == "1.25")
     }
@@ -159,37 +150,32 @@ struct OpenCastAppModelPlaybackRateTests {
         #expect(fixture.appModel.library.lastErrorMessage == "Speed must be between 0.5x and 3x.")
     }
 
-    @Test("The lock-screen rate command edits the show's speed while it has one and the global speed otherwise")
-    func remoteRateCommandRoutesByShow() async throws {
+    @Test("The lock-screen rate command edits the playing episode's speed only")
+    func remoteRateCommandEditsTheEpisode() async throws {
         let fixture = try await makeFixture()
         try play(Self.customEpisodeID, fixture: fixture)
 
         fixture.appModel.playback.handleRemotePlaybackRateChange(2)
 
         #expect(fixture.appModel.playback.rate == 2)
-        #expect(fixture.appModel.library.podcastPlaybackRateOverride(forPodcastID: Self.customShowID) == 2)
+        #expect(fixture.appModel.playbackSettings.episodePlaybackRate == 2)
+        #expect(fixture.appModel.library.podcastPlaybackRateOverride(forPodcastID: Self.customShowID) == 1.5)
         #expect(try storedGlobalRate(fixture.context) == nil)
 
         try play(Self.globalEpisodeID, fixture: fixture)
         #expect(fixture.appModel.playback.rate == 1)
-
-        fixture.appModel.playback.handleRemotePlaybackRateChange(1.75)
-
-        #expect(fixture.appModel.playback.rate == 1.75)
-        #expect(try storedGlobalRate(fixture.context) == "1.75")
-        #expect(fixture.appModel.library.podcastPlaybackRateOverride(forPodcastID: Self.globalShowID) == nil)
-        #expect(fixture.appModel.library.podcastPlaybackRateOverride(forPodcastID: Self.customShowID) == 2)
     }
 
-    @Test("CarPlay's rate button cycles the show's speed while it has one")
-    func cyclingTheRateEditsTheShowSpeed() async throws {
+    @Test("CarPlay's rate button cycles the playing episode's speed")
+    func cyclingTheRateEditsTheEpisodeSpeed() async throws {
         let fixture = try await makeFixture()
         try play(Self.customEpisodeID, fixture: fixture)
 
         #expect(fixture.appModel.cyclePlaybackRate(modelContext: fixture.context))
 
         #expect(fixture.appModel.playback.rate == 1.75)
-        #expect(fixture.appModel.library.podcastPlaybackRateOverride(forPodcastID: Self.customShowID) == 1.75)
+        #expect(fixture.appModel.playbackSettings.episodePlaybackRate == 1.75)
+        #expect(fixture.appModel.library.podcastPlaybackRateOverride(forPodcastID: Self.customShowID) == 1.5)
         #expect(try storedGlobalRate(fixture.context) == nil)
     }
 
@@ -260,9 +246,7 @@ struct OpenCastAppModelPlaybackRateTests {
         #expect(try storedGlobalRate(fixture.context) == "1.25")
     }
 
-    private func makeFixture(
-        librarySave: ((ModelContext) throws -> Void)? = nil
-    ) async throws -> (appModel: OpenCastAppModel, context: ModelContext) {
+    private func makeFixture() async throws -> (appModel: OpenCastAppModel, context: ModelContext) {
         let container = try OpenCastModelContainerFactory.make(inMemory: true)
         let context = ModelContext(container)
         let cache = SQLiteLocalLibraryCacheStore.inMemory()
@@ -278,7 +262,6 @@ struct OpenCastAppModelPlaybackRateTests {
         context.insert(SubscriptionRecord(feedURL: Self.globalShowID, title: "Global Speed Show"))
         try context.save()
         let appModel = OpenCastAppModel(
-            library: librarySave.map { LibraryStore(localCache: cache, savePlaybackSkipSettingsModelContext: $0) },
             localLibraryCacheStore: cache,
             allowsAutomaticFeedRefresh: false
         )
@@ -340,12 +323,4 @@ struct OpenCastAppModelPlaybackRateTests {
             .first { $0.feedURL == feedURL }?
             .playbackRate
     }
-}
-
-private final class SyncedSaveSwitch {
-    var failsSaves = false
-}
-
-private struct SimulatedSyncedSaveFailure: LocalizedError {
-    var errorDescription: String? { "Simulated synced save failure" }
 }

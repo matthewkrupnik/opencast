@@ -2709,16 +2709,14 @@ final class OpenCastAppModel {
         appearanceSettings.setMode(mode, modelContext: modelContext)
     }
 
-    /// Edits the playing show's own speed while that show has one, the
-    /// global speed otherwise.
+    /// Sets the loaded episode's own speed; with nothing loaded, the global
+    /// speed. A show's own speed is set from the show's page.
     @discardableResult
     func setPlaybackRate(
         _ rate: Float,
         modelContext: ModelContext
     ) -> Bool {
-        guard let feedURL = playback.currentEpisode?.podcastID.rawValue,
-              library.podcastPlaybackRateOverride(forPodcastID: feedURL) != nil
-        else {
+        guard playback.currentEpisode != nil else {
             return playbackSettings.setPlaybackRate(
                 rate,
                 modelContext: modelContext,
@@ -2726,21 +2724,25 @@ final class OpenCastAppModel {
             )
         }
 
-        return playbackSettings.setPlaybackRate(
+        return playbackSettings.setEpisodePlaybackRate(
             rate,
             modelContext: modelContext,
-            playback: playback,
-            persist: { [library] rate, modelContext in
-                guard library.setPodcastPlaybackRateOverride(rate, feedURL: feedURL, modelContext: modelContext) else {
-                    // The failure surfaces through the playback settings
-                    // error; left on the library it would raise the root
-                    // Library alert as well.
-                    let message = library.lastErrorMessage ?? "Unable to save this show's speed."
-                    library.clearLastError()
-                    throw PodcastPlaybackRateSaveError(message: message)
-                }
-            }
+            playback: playback
         )
+    }
+
+    /// The global speed from Settings: what episodes without their own speed
+    /// play at, when their show has none either.
+    @discardableResult
+    func setDefaultPlaybackRate(
+        _ rate: Float,
+        modelContext: ModelContext
+    ) -> Bool {
+        guard playbackSettings.setGlobalPlaybackRate(rate, modelContext: modelContext) else {
+            return false
+        }
+        refreshCurrentPlaybackSettings(modelContext: modelContext)
+        return true
     }
 
     @discardableResult
@@ -2811,6 +2813,31 @@ final class OpenCastAppModel {
         modelContext: ModelContext
     ) -> Bool {
         playbackSettings.setSmartSpeedEnabled(
+            isEnabled,
+            modelContext: modelContext,
+            playback: playback
+        )
+    }
+
+    /// Smart Speed for the loaded episode only.
+    @discardableResult
+    func setEpisodeSmartSpeedEnabled(
+        _ isEnabled: Bool,
+        modelContext: ModelContext
+    ) -> Bool {
+        playbackSettings.setEpisodeSmartSpeedEnabled(
+            isEnabled,
+            modelContext: modelContext,
+            playback: playback
+        )
+    }
+
+    @discardableResult
+    func setVoiceBoostPerEpisodeDefault(
+        _ isEnabled: Bool,
+        modelContext: ModelContext
+    ) -> Bool {
+        playbackSettings.setVoiceBoostPerEpisodeDefault(
             isEnabled,
             modelContext: modelContext,
             playback: playback

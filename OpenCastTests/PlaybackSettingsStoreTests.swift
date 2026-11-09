@@ -338,6 +338,131 @@ struct PlaybackSettingsStoreTests {
         #expect(reloadedPlayback.appliedValues == [false])
     }
 
+    @Test("An episode's own speed wins over its show's and the global speed, for that episode only")
+    func episodeSpeedOverridesShowAndGlobalForThatEpisode() throws {
+        let container = try OpenCastModelContainerFactory.make(inMemory: true)
+        let context = ModelContext(container)
+        let playback = PlaybackVoiceBoostControllerSpy()
+        let store = PlaybackSettingsStore()
+        store.load(episodeID: "episode-1", podcastID: "podcast-1", rateOverride: 1.5, modelContext: context, playback: playback)
+
+        #expect(store.setEpisodePlaybackRate(2, modelContext: context, playback: playback))
+        #expect(playback.rate == 2)
+        #expect(store.episodePlaybackRate == 2)
+        #expect(store.globalPlaybackRate == 1)
+
+        let reloaded = PlaybackSettingsStoreTests.load("episode-1", rateOverride: 1.5, context: context)
+        #expect(reloaded.playback.rate == 2)
+        let other = PlaybackSettingsStoreTests.load("episode-2", rateOverride: 1.5, context: context)
+        #expect(other.playback.rate == 1.5)
+        #expect(other.store.episodePlaybackRate == nil)
+    }
+
+    @Test("A new default speed is saved without changing an episode that has its own")
+    func globalSpeedSaveLeavesEpisodeSpeedPlaying() throws {
+        let container = try OpenCastModelContainerFactory.make(inMemory: true)
+        let context = ModelContext(container)
+        let playback = PlaybackVoiceBoostControllerSpy()
+        let store = PlaybackSettingsStore()
+        store.load(episodeID: "episode-1", podcastID: "podcast-1", modelContext: context, playback: playback)
+        #expect(store.setEpisodePlaybackRate(1.75, modelContext: context, playback: playback))
+
+        #expect(store.setGlobalPlaybackRate(1.25, modelContext: context))
+        store.load(episodeID: "episode-1", podcastID: "podcast-1", modelContext: context, playback: playback)
+
+        #expect(store.globalPlaybackRate == 1.25)
+        #expect(playback.rate == 1.75)
+        #expect(PlaybackSettingsStoreTests.load("episode-2", context: context).playback.rate == 1.25)
+    }
+
+    @Test("An episode's own Smart Speed overrides the global switch both ways, for that episode only")
+    func episodeSmartSpeedOverridesGlobal() throws {
+        let container = try OpenCastModelContainerFactory.make(inMemory: true)
+        let context = ModelContext(container)
+        let playback = PlaybackVoiceBoostControllerSpy()
+        let store = PlaybackSettingsStore()
+        store.load(episodeID: "episode-1", podcastID: "podcast-1", modelContext: context, playback: playback)
+
+        #expect(store.setEpisodeSmartSpeedEnabled(true, modelContext: context, playback: playback))
+        #expect(store.effectiveSmartSpeedEnabled)
+        #expect(!store.isSmartSpeedEnabled)
+        #expect(playback.appliedSmartSpeedValues.last == true)
+
+        // Turning the global switch on and off leaves the episode's own on.
+        #expect(store.setSmartSpeedEnabled(true, modelContext: context, playback: playback))
+        #expect(store.setSmartSpeedEnabled(false, modelContext: context, playback: playback))
+        #expect(playback.appliedSmartSpeedValues.last == true)
+
+        #expect(PlaybackSettingsStoreTests.load("episode-1", context: context).store.effectiveSmartSpeedEnabled)
+        #expect(!PlaybackSettingsStoreTests.load("episode-2", context: context).store.effectiveSmartSpeedEnabled)
+    }
+
+    @Test("Episode settings need a loaded episode")
+    func episodeSettingsNeedAnEpisode() throws {
+        let container = try OpenCastModelContainerFactory.make(inMemory: true)
+        let context = ModelContext(container)
+        let playback = PlaybackVoiceBoostControllerSpy()
+        let store = PlaybackSettingsStore()
+        store.load(modelContext: context, playback: playback)
+
+        #expect(!store.setEpisodePlaybackRate(2, modelContext: context, playback: playback))
+        #expect(!store.setEpisodeSmartSpeedEnabled(true, modelContext: context, playback: playback))
+        #expect(playback.rate == 1)
+    }
+
+    @Test("Per Episode Voice Boost starts new episodes at its default; an episode's own switch still wins")
+    func perEpisodeVoiceBoostDefault() throws {
+        let container = try OpenCastModelContainerFactory.make(inMemory: true)
+        let context = ModelContext(container)
+        let playback = PlaybackVoiceBoostControllerSpy()
+        let store = PlaybackSettingsStore()
+        store.load(episodeID: "episode-1", podcastID: "podcast-1", modelContext: context, playback: playback)
+        store.setVoiceBoostEnabled(true, forEpisodeID: "episode-1", podcastID: "podcast-1", modelContext: context, playback: playback)
+
+        store.load(episodeID: "episode-2", podcastID: "podcast-1", modelContext: context, playback: playback)
+        #expect(store.setVoiceBoostPerEpisodeDefault(false, modelContext: context, playback: playback))
+        #expect(!store.isVoiceBoostEnabled)
+        #expect(playback.appliedValues.last == false)
+
+        #expect(!PlaybackSettingsStoreTests.load("episode-3", context: context).store.isVoiceBoostEnabled)
+        #expect(PlaybackSettingsStoreTests.load("episode-1", context: context).store.isVoiceBoostEnabled)
+    }
+
+    @Test("Unsubscribe cleanup removes an episode's own speed and Smart Speed with its Voice Boost")
+    func cleanupRemovesEpisodeSettings() throws {
+        let container = try OpenCastModelContainerFactory.make(inMemory: true)
+        let context = ModelContext(container)
+        let playback = PlaybackVoiceBoostControllerSpy()
+        let store = PlaybackSettingsStore()
+        store.load(episodeID: "episode-1", podcastID: "podcast-1", modelContext: context, playback: playback)
+        #expect(store.setEpisodePlaybackRate(2, modelContext: context, playback: playback))
+        #expect(store.setEpisodeSmartSpeedEnabled(true, modelContext: context, playback: playback))
+
+        #expect(store.removeVoiceBoostPreferences(forEpisodeIDs: ["episode-1"], modelContext: context))
+
+        let reloaded = PlaybackSettingsStoreTests.load("episode-1", context: context)
+        #expect(reloaded.store.episodePlaybackRate == nil)
+        #expect(reloaded.store.episodeSmartSpeedEnabled == nil)
+        #expect(reloaded.playback.rate == 1)
+    }
+
+    private static func load(
+        _ episodeID: String,
+        rateOverride: Float? = nil,
+        context: ModelContext
+    ) -> (store: PlaybackSettingsStore, playback: PlaybackVoiceBoostControllerSpy) {
+        let store = PlaybackSettingsStore()
+        let playback = PlaybackVoiceBoostControllerSpy()
+        store.load(
+            episodeID: episodeID,
+            podcastID: "podcast-1",
+            rateOverride: rateOverride,
+            modelContext: context,
+            playback: playback
+        )
+        return (store, playback)
+    }
+
     @Test("Per-episode Voice Boost toggle persists for only that episode")
     func perEpisodeVoiceBoostPersistsForCurrentEpisode() throws {
         let container = try OpenCastModelContainerFactory.make(inMemory: true)

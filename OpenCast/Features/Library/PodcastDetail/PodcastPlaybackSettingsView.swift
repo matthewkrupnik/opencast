@@ -36,8 +36,8 @@ struct PodcastPlaybackSettingsView: View {
                 } footer: {
                     Text(
                         isCustomSpeedOn
-                            ? "Episodes of this show play at this speed. Changing the speed in Now Playing while this show is playing updates this show only."
-                            : "Episodes of this show play at your global speed."
+                            ? "Episodes of this show play at this speed. Changing the speed in Now Playing changes the playing episode only."
+                            : "Episodes of this show play at your default speed."
                     )
                 }
 

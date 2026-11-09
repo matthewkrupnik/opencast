@@ -53,14 +53,8 @@ struct PlaybackSpeedView: View {
                             }
                         }
                     }
-                } header: {
-                    if isCustomForShow, let showTitle = appModel.playback.currentEpisode?.podcastTitle {
-                        Text("Speed for \(showTitle)")
-                    }
                 } footer: {
-                    if isCustomForShow {
-                        Text("This show has its own speed. Other shows play at \(appModel.playbackSettings.globalPlaybackRate.formattedSpeed).")
-                    }
+                    Text("Changes this episode only. Other episodes play at \(isCustomForShow ? "their show’s" : "your default") speed.")
                 }
             }
             .navigationTitle("Speed")

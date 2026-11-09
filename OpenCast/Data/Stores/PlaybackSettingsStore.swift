@@ -12,17 +12,28 @@ final class PlaybackSettingsStore {
     static let privateNoteButtonsPreferenceKey = "playback.privateNotes.showButtons"
     static let tapToPlayPreferenceKey = "playback.episodeRow.tapToPlay"
     static let sleepTimerPresetsPreferenceKey = "playback.sleepTimer.presets"
+    /// What Per Episode mode plays an episode at before its own switch is set.
+    static let voiceBoostPerEpisodeDefaultPreferenceKey = "playback.voiceBoost.perEpisodeDefault"
     private static let voiceBoostEpisodeKeyPrefix = "playback.voiceBoost.episode."
+    private static let playbackRateEpisodeKeyPrefix = "playback.rate.episode."
+    private static let smartSpeedEpisodeKeyPrefix = "playback.smartSpeed.episode."
     private static let skipBackwardIntervalKey = "playback.skip.backward"
     private static let skipForwardIntervalKey = "playback.skip.forward"
 
     private(set) var voiceBoostMode = VoiceBoostMode.defaultMode
     private(set) var isVoiceBoostEnabled = true
+    private(set) var voiceBoostPerEpisodeDefault = true
     private(set) var currentEpisodeID: String?
     private(set) var currentPodcastID: String?
     private(set) var skipBackwardOption = PlaybackSkipIntervalOption.defaultBackward
     private(set) var skipForwardOption = PlaybackSkipIntervalOption.defaultForward
+    /// The global Smart Speed setting; `effectiveSmartSpeedEnabled` is what
+    /// the loaded episode plays with.
     private(set) var isSmartSpeedEnabled = false
+    /// The loaded episode's own speed and Smart Speed, set from Now Playing;
+    /// nil plays the show's or global setting.
+    private(set) var episodePlaybackRate: Float?
+    private(set) var episodeSmartSpeedEnabled: Bool?
     private(set) var isAutoSkipPromosAndAdsEnabled = true
     private(set) var showsPrivateNoteButtons = false
     private(set) var isTapToPlayEnabled = true
@@ -44,8 +55,12 @@ final class PlaybackSettingsStore {
         voiceBoostMode == .perEpisode && currentEpisodeID != nil
     }
 
+    var effectiveSmartSpeedEnabled: Bool {
+        episodeSmartSpeedEnabled ?? isSmartSpeedEnabled
+    }
+
     /// `rateOverride` is the loaded show's own speed; nil plays the global
-    /// speed.
+    /// speed. The episode's own speed, when set, wins over both.
     func load(
         episodeID: String? = nil,
         podcastID: String? = nil,
@@ -86,12 +101,25 @@ final class PlaybackSettingsStore {
                 modelContext: modelContext
             ) ?? true
             sleepTimerPresets = try storedSleepTimerPresets(modelContext: modelContext)
+            voiceBoostPerEpisodeDefault = try booleanPreference(
+                key: Self.voiceBoostPerEpisodeDefaultPreferenceKey,
+                modelContext: modelContext
+            ) ?? true
             isVoiceBoostEnabled = try resolvedVoiceBoostEnabled(
                 episodeID: episodeID,
                 modelContext: modelContext
             )
+            episodePlaybackRate = try episodeID.flatMap { episodeID in
+                try preferenceRecord(key: Self.playbackRateEpisodeKeyPrefix + episodeID, modelContext: modelContext)?
+                    .value
+            }
+            .flatMap(Float.init)
+            .map(PlaybackRateSteps.clamped)
+            episodeSmartSpeedEnabled = try episodeID.flatMap { episodeID in
+                try booleanPreference(key: Self.smartSpeedEpisodeKeyPrefix + episodeID, modelContext: modelContext)
+            }
             globalPlaybackRate = playbackRate
-            playback.setRate(rateOverride ?? playbackRate)
+            playback.setRate(episodePlaybackRate ?? rateOverride ?? playbackRate)
             lastErrorMessage = nil
         } catch {
             voiceBoostMode = .defaultMode
@@ -103,6 +131,9 @@ final class PlaybackSettingsStore {
             sleepTimerPresets = SleepTimerPresetDuration.defaults
             showsPrivateNoteButtons = false
             isVoiceBoostEnabled = true
+            voiceBoostPerEpisodeDefault = true
+            episodePlaybackRate = nil
+            episodeSmartSpeedEnabled = nil
             globalPlaybackRate = 1
             playback.setRate(1)
             lastErrorMessage = "Unable to load playback settings: \(error.localizedDescription)"
@@ -247,7 +278,7 @@ final class PlaybackSettingsStore {
         guard isSmartSpeedEnabled != isEnabled else { return true }
         let previous = isSmartSpeedEnabled
         isSmartSpeedEnabled = isEnabled
-        playback.setSmartSpeedEnabled(isEnabled)
+        playback.setSmartSpeedEnabled(effectiveSmartSpeedEnabled)
         
         do {
             try LocalPreferenceRecord.upsert(
@@ -260,8 +291,131 @@ final class PlaybackSettingsStore {
             return true
         } catch {
             isSmartSpeedEnabled = previous
-            playback.setSmartSpeedEnabled(previous)
+            playback.setSmartSpeedEnabled(effectiveSmartSpeedEnabled)
             lastErrorMessage = "Unable to update Smart Speed: \(error.localizedDescription)"
+            return false
+        }
+    }
+
+    /// Saves the global speed without touching what is playing; the caller
+    /// reloads the loaded episode's settings to pick it up.
+    @discardableResult
+    func setGlobalPlaybackRate(_ rate: Float, modelContext: ModelContext) -> Bool {
+        let rate = PlaybackRateSteps.clamped(rate)
+        guard globalPlaybackRate != rate else {
+            return true
+        }
+
+        do {
+            try persistPreference(String(rate), key: Self.playbackRatePreferenceKey, modelContext: modelContext)
+            globalPlaybackRate = rate
+            lastErrorMessage = nil
+            return true
+        } catch {
+            lastErrorMessage = "Unable to update the default speed: \(error.localizedDescription)"
+            return false
+        }
+    }
+
+    /// Plays the loaded episode at `rate` and saves it as that episode's own
+    /// speed. Other episodes keep the show's or global speed.
+    @discardableResult
+    func setEpisodePlaybackRate(
+        _ rate: Float,
+        modelContext: ModelContext,
+        playback: any PlaybackSettingsControlling
+    ) -> Bool {
+        guard let episodeID = currentEpisodeID else {
+            return false
+        }
+
+        let rate = PlaybackRateSteps.clamped(rate)
+        let previousRate = playback.rate
+        let previousEpisodeRate = episodePlaybackRate
+        episodePlaybackRate = rate
+        playback.setRate(rate)
+
+        do {
+            try persistPreference(
+                String(rate),
+                key: Self.playbackRateEpisodeKeyPrefix + episodeID,
+                modelContext: modelContext
+            )
+            lastErrorMessage = nil
+            return true
+        } catch {
+            episodePlaybackRate = previousEpisodeRate
+            playback.setRate(previousRate)
+            lastErrorMessage = "Unable to update this episode's speed: \(error.localizedDescription)"
+            return false
+        }
+    }
+
+    /// Turns Smart Speed on or off for the loaded episode only.
+    @discardableResult
+    func setEpisodeSmartSpeedEnabled(
+        _ isEnabled: Bool,
+        modelContext: ModelContext,
+        playback: any PlaybackSettingsControlling
+    ) -> Bool {
+        guard let episodeID = currentEpisodeID else {
+            return false
+        }
+
+        let previous = episodeSmartSpeedEnabled
+        episodeSmartSpeedEnabled = isEnabled
+        playback.setSmartSpeedEnabled(effectiveSmartSpeedEnabled)
+
+        do {
+            try persistPreference(
+                isEnabled.description,
+                key: Self.smartSpeedEpisodeKeyPrefix + episodeID,
+                modelContext: modelContext
+            )
+            lastErrorMessage = nil
+            return true
+        } catch {
+            episodeSmartSpeedEnabled = previous
+            playback.setSmartSpeedEnabled(effectiveSmartSpeedEnabled)
+            lastErrorMessage = "Unable to update Smart Speed for this episode: \(error.localizedDescription)"
+            return false
+        }
+    }
+
+    /// What Per Episode mode plays an episode at until its own switch is
+    /// set. The loaded episode follows it when it has no switch of its own.
+    @discardableResult
+    func setVoiceBoostPerEpisodeDefault(
+        _ isEnabled: Bool,
+        modelContext: ModelContext,
+        playback: any PlaybackSettingsControlling
+    ) -> Bool {
+        guard voiceBoostPerEpisodeDefault != isEnabled else {
+            return true
+        }
+
+        let previousDefault = voiceBoostPerEpisodeDefault
+        let previousValue = isVoiceBoostEnabled
+        voiceBoostPerEpisodeDefault = isEnabled
+
+        do {
+            try persistPreference(
+                isEnabled.description,
+                key: Self.voiceBoostPerEpisodeDefaultPreferenceKey,
+                modelContext: modelContext
+            )
+            isVoiceBoostEnabled = try resolvedVoiceBoostEnabled(
+                episodeID: currentEpisodeID,
+                modelContext: modelContext
+            )
+            applyVoiceBoost(to: playback)
+            lastErrorMessage = nil
+            return true
+        } catch {
+            voiceBoostPerEpisodeDefault = previousDefault
+            isVoiceBoostEnabled = previousValue
+            applyVoiceBoost(to: playback)
+            lastErrorMessage = "Unable to update the Voice Boost default: \(error.localizedDescription)"
             return false
         }
     }
@@ -458,8 +612,8 @@ final class PlaybackSettingsStore {
         )
     }
 
-    /// Unsubscribe cleanup: removes the per-episode Voice Boost switches for
-    /// the given episodes (device-local preference rows).
+    /// Unsubscribe cleanup: removes the given episodes' own Voice Boost,
+    /// speed and Smart Speed settings (device-local preference rows).
     @discardableResult
     func removeVoiceBoostPreferences(
         forEpisodeIDs episodeIDs: [String],
@@ -469,7 +623,13 @@ final class PlaybackSettingsStore {
             return true
         }
 
-        let keys = Set(episodeIDs.map(voiceBoostEpisodePreferenceKey))
+        let keys = Set(episodeIDs.flatMap { episodeID in
+            [
+                voiceBoostEpisodePreferenceKey(episodeID),
+                Self.playbackRateEpisodeKeyPrefix + episodeID,
+                Self.smartSpeedEpisodeKeyPrefix + episodeID
+            ]
+        })
         do {
             let records = try modelContext.fetch(
                 FetchDescriptor<LocalPreferenceRecord>(
@@ -517,13 +677,13 @@ final class PlaybackSettingsStore {
         modelContext: ModelContext
     ) throws -> Bool {
         guard let episodeID else {
-            return true
+            return voiceBoostPerEpisodeDefault
         }
 
         return try booleanPreference(
             key: voiceBoostEpisodePreferenceKey(episodeID),
             modelContext: modelContext
-        ) ?? true
+        ) ?? voiceBoostPerEpisodeDefault
     }
 
     private func storedVoiceBoostMode(modelContext: ModelContext) throws -> VoiceBoostMode {
@@ -619,7 +779,7 @@ final class PlaybackSettingsStore {
         applyVoiceBoost(to: playback)
         applySkipIntervals(to: playback)
         applyAutoSkip(to: playback)
-        playback.setSmartSpeedEnabled(isSmartSpeedEnabled)
+        playback.setSmartSpeedEnabled(effectiveSmartSpeedEnabled)
     }
 
     private func applyVoiceBoost(to playback: any PlaybackSettingsControlling) {

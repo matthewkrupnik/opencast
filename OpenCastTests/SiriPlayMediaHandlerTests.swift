@@ -27,15 +27,17 @@ struct SiriPlayMediaHandlerTests {
         #expect(response.code == .success)
         #expect(fixture.appModel.playback.currentEpisode?.id.rawValue == "newest")
         #expect(fixture.appModel.playback.rate == 2)
+        // The speed is the episode's own; the default speed is untouched.
+        #expect(fixture.appModel.playbackSettings.episodePlaybackRate == 2)
         #expect(try LocalPreferenceRecord.preference(
             forKey: PlaybackSettingsStore.playbackRatePreferenceKey,
             modelContext: fixture.modelContext
-        )?.value == "2.0")
+        ) == nil)
         #expect(fixture.appModel.nowPlayingPresentationRequest == 0)
     }
 
-    @Test("A requested speed for a show with its own speed sets that show's speed")
-    func requestedSpeedOnCustomSpeedShowSetsTheShowSpeed() async throws {
+    @Test("A requested speed for a show with its own speed sets the episode's speed and leaves the show's")
+    func requestedSpeedOnCustomSpeedShowSetsTheEpisodeSpeed() async throws {
         let fixture = try await makeFixture(playbackRate: 1.5)
         let intent = SiriPlayMediaIntentFactory.make(
             mediaItems: [
@@ -54,7 +56,8 @@ struct SiriPlayMediaHandlerTests {
         #expect(response.code == .success)
         #expect(fixture.appModel.playback.currentEpisode?.id.rawValue == "newest")
         #expect(fixture.appModel.playback.rate == 2)
-        #expect(fixture.appModel.library.podcastPlaybackRateOverride(forPodcastID: Self.feedURL) == 2)
+        #expect(fixture.appModel.playbackSettings.episodePlaybackRate == 2)
+        #expect(fixture.appModel.library.podcastPlaybackRateOverride(forPodcastID: Self.feedURL) == 1.5)
         #expect(try LocalPreferenceRecord.preference(
             forKey: PlaybackSettingsStore.playbackRatePreferenceKey,
             modelContext: fixture.modelContext

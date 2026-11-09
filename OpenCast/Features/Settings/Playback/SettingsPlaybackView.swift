@@ -1,3 +1,4 @@
+import OpenCastPlayback
 import SwiftData
 import SwiftUI
 
@@ -18,6 +19,11 @@ struct SettingsPlaybackView: View {
                 .labelsHidden()
                 .accessibilityLabel("Voice Boost")
                 .accessibilityValue(appModel.playbackSettings.voiceBoostMode.fullTitle)
+
+                if appModel.playbackSettings.voiceBoostMode == .perEpisode {
+                    Toggle("On for New Episodes", isOn: voiceBoostPerEpisodeDefaultBinding)
+                        .accessibilityIdentifier("playback-voice-boost-per-episode-default-toggle")
+                }
             } header: {
                 Text("Voice Boost")
             } footer: {
@@ -25,6 +31,21 @@ struct SettingsPlaybackView: View {
                     Text("Lifts quiet voices and evens out volume.")
                     HelpFooterLink(title: "How Voice Boost works", topicID: HelpTopicID.voiceBoost)
                 }
+            }
+
+            Section {
+                Picker("Default Speed", selection: defaultSpeedBinding) {
+                    ForEach(PlaybackRateSteps.steps, id: \.self) { speed in
+                        Text(speed.formattedSpeed)
+                            .tag(speed)
+                    }
+                }
+                .pickerStyle(.menu)
+                .accessibilityIdentifier("playback-default-speed-picker")
+            } header: {
+                Text("Speed")
+            } footer: {
+                Text("Episodes play at this speed unless their show or the episode has its own.")
             }
 
             Section {
@@ -97,6 +118,22 @@ struct SettingsPlaybackView: View {
             appModel.playbackSettings.voiceBoostMode
         } set: { mode in
             _ = appModel.setVoiceBoostMode(mode, modelContext: modelContext)
+        }
+    }
+
+    private var voiceBoostPerEpisodeDefaultBinding: Binding<Bool> {
+        Binding {
+            appModel.playbackSettings.voiceBoostPerEpisodeDefault
+        } set: { isEnabled in
+            _ = appModel.setVoiceBoostPerEpisodeDefault(isEnabled, modelContext: modelContext)
+        }
+    }
+
+    private var defaultSpeedBinding: Binding<Float> {
+        Binding {
+            PodcastPlaybackRateOverride.nearestStep(to: appModel.playbackSettings.globalPlaybackRate)
+        } set: { rate in
+            _ = appModel.setDefaultPlaybackRate(rate, modelContext: modelContext)
         }
     }
 

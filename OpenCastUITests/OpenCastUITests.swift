@@ -2404,16 +2404,12 @@ final class OpenCastUITests: XCTestCase {
 
         tapToggle(customForShow, to: true)
         assertValue(of: speedButton, becomes: "1x", named: "Playback Speed after the show takes the current speed")
-        assertExists(
-            app.staticTexts.matching(NSPredicate(format: "label ==[c] %@", "Speed for UI Test Show")).firstMatch,
-            named: "Speed for UI Test Show header"
-        )
         // The sheet opens at its medium detent; the last step sits below it.
         expandSheetToLargeDetent(in: app)
         let twoX = app.buttons["2.0x"]
         assertHittable(twoX, named: "2.0x speed step")
         twoX.tap()
-        assertValue(of: speedButton, becomes: "2.0x", named: "Playback Speed after picking 2.0x for the show")
+        assertValue(of: speedButton, becomes: "2.0x", named: "Playback Speed after picking 2.0x for the episode")
 
         dismissNowPlayingOverlay(in: app)
         openLibrary(in: app)
@@ -2424,9 +2420,9 @@ final class OpenCastUITests: XCTestCase {
         let customSpeed = app.switches["podcast-playback-settings-custom-speed-toggle"]
         assertExists(customSpeed, named: "Custom Speed toggle")
         assertToggle(customSpeed, isOn: true)
+        // Now Playing's 2.0x was the episode's own; the show kept 1x.
         let speedPicker = app.buttons["podcast-playback-settings-speed-picker"]
         assertHittable(speedPicker, named: "show speed picker")
-        assertExists(elementContaining(label: "2.0x", in: app), named: "show speed picker at 2.0x")
         speedPicker.tap()
         let oneTwentyFive = app.buttons["1.25x"].firstMatch
         assertHittable(oneTwentyFive, named: "1.25x speed choice")
@@ -2439,7 +2435,8 @@ final class OpenCastUITests: XCTestCase {
         assertHittable(miniPlayer, named: "mini-player after saving the show's speed")
         miniPlayer.tap()
         assertNowPlayingOverlay(in: app)
-        assertValue(of: speedButton, becomes: "1.25x", named: "Playback Speed after saving 1.25x for the show")
+        // The episode's own speed wins over the show's new one.
+        assertValue(of: speedButton, becomes: "2.0x", named: "Playback Speed after saving 1.25x for the show")
     }
 
     @MainActor
