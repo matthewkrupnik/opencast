@@ -1,46 +1,59 @@
 import OpenCastAnalysis
 import SwiftUI
 
-/// The standing reminder that ad detection and Chapters & Summary move to the
-/// listener's own key, shown until a key is saved (seeing the one-time
-/// notice does not hide it). With the built-in key it says that key is in
-/// use instead.
+/// The standing reminder of what is included until the trial date, shown
+/// until a key is saved (seeing the one-time notice does not hide it) and
+/// only where the trial service is reachable, so it appears once that is
+/// known. With a Google key that Google named free tier, the mark takes its
+/// place; with neither there is no row and no space. With the built-in key
+/// and no saved key it says the built-in key is in use instead.
 struct SettingsAIServicesNoticeSection: View {
     @Environment(OpenCastAppModel.self) private var appModel
 
     var body: some View {
-        let bundle = appModel.analysisPolicy.snapshot.bundle
-        let now = Date.now
-
-        if appModel.analysisRoutes.hasBuiltInKey {
-            if !appModel.analysisKeys.hasSavedKey {
-                Section {
-                    Label(AIServicesCopy.builtInKeyRow, systemImage: "info.circle")
-                        .accessibilityIdentifier("AI Services Notice Row")
-                }
+        if appModel.analysisRoutes.hasBuiltInKey, !appModel.analysisKeys.hasSavedKey {
+            Section {
+                Label(AIServicesCopy.builtInKeyRow, systemImage: "info.circle")
+                    .accessibilityIdentifier("AI Services Notice Row")
             }
-        } else if appModel.analysisKeyNotice.showsSettingsNoticeRow(
-            notice: bundle.notice,
+        } else if let freeTierDay {
+            Section {
+                Label(markText(day: freeTierDay), systemImage: "info.circle")
+                    .accessibilityIdentifier("AI Services Free Tier Mark")
+            }
+        } else if !appModel.analysisRoutes.hasBuiltInKey, appModel.analysisKeyNotice.showsSettingsNoticeRow(
             hasSavedKey: appModel.analysisKeys.hasSavedKey,
-            now: now
+            reachability: appModel.analysisTrialReachability.state
         ) {
             Section {
-                Label(rowText(trial: bundle.trial, now: now), systemImage: "info.circle")
-                    .accessibilityIdentifier("AI Services Notice Row")
+                Label(
+                    appModel.analysisKeyNotice.settingsRowText(trial: trial, now: .now),
+                    systemImage: "info.circle"
+                )
+                .accessibilityIdentifier("AI Services Notice Row")
             }
         }
     }
 
-    private func rowText(trial: AnalysisTrialPolicy, now: Date) -> String {
-        let remainingUnits = appModel.analysisKeyNotice.remainingUnits(trial: trial)
-        if trial.startsAt > now {
-            return AIServicesCopy.noticeRowBeforeTrial(
-                date: AIServicesCopy.trialDate(trial.startsAt),
-                units: remainingUnits
-            )
+    private var trial: AnalysisTrialPolicy {
+        appModel.analysisPolicy.snapshot.bundle.trial
+    }
+
+    /// The day Google answered, while the state is free tier and a Google
+    /// key is saved.
+    private var freeTierDay: Date? {
+        guard case .freeTier(let day) = appModel.analysisKeyTier.state,
+              appModel.analysisKeys.presence(for: .google).isSaved
+        else {
+            return nil
         }
-        return remainingUnits > 0
-            ? AIServicesCopy.noticeRowUnitsLeft(remainingUnits)
-            : AIServicesCopy.noticeRowExhausted
+        return day
+    }
+
+    private func markText(day: Date) -> String {
+        let answerDay = AIServicesCopy.answerDay(day)
+        return appModel.analysisTrialReachability.isHandoverWindowOpen(trialStartsAt: trial.startsAt, now: .now)
+            ? AIServicesCopy.freeTierMarkInHandoverWindow(day: answerDay, date: AIServicesCopy.trialDate(trial.startsAt))
+            : AIServicesCopy.freeTierMark(day: answerDay)
     }
 }

@@ -123,6 +123,10 @@ struct OpenCastLaunchConfiguration {
             from: arguments,
             flag: "--opencast-ui-test-analysis-transport"
         ) ?? environment["OPENCAST_UI_TEST_ANALYSIS_TRANSPORT"]
+        let analysisTierAnswer = BenchmarkHarnessSupport.argumentValue(
+            from: arguments,
+            flag: "--opencast-ui-test-analysis-tier"
+        )
         let analysisKeyRequiredFeature = BenchmarkHarnessSupport.argumentValue(
             from: arguments,
             flag: "--opencast-present-analysis-key-required"
@@ -312,7 +316,8 @@ struct OpenCastLaunchConfiguration {
             uiTestAnalysisTransport: isUITesting
                 ? AnalysisUITestTransportMode(
                     answer: analysisTransportAnswer.flatMap(AnalysisUITestTransportMode.Answer.init(rawValue:)) ?? .fixture,
-                    holds: holdsAnalysisTransport
+                    holds: holdsAnalysisTransport,
+                    tierAnswer: AnalysisUITestTransportMode.tierAnswer(analysisTierAnswer)
                 )
                 : nil,
             uiTestChaptersSummarySession: isUITesting

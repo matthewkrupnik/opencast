@@ -41,6 +41,7 @@ final class OpenCastAppModel {
     let analysisKeys: AnalysisProviderKeyStore
     let analysisProviderSelection: AnalysisProviderSelectionStore
     let analysisUsage: AnalysisUsageStore
+    let analysisKeyTier: AnalysisKeyTierStore
     let analysisKeyNotice: AnalysisKeyNoticeStore
     let analysisKeyRequired: AnalysisKeyRequiredPresenter
     let analysisKeyTester: any AnalysisKeyTesting
@@ -48,6 +49,7 @@ final class OpenCastAppModel {
     let analysisRuns: AnalysisRunRecordStore
     /// The install's trial status, cached for an hour.
     let analysisTrialStatus: AnalysisTrialStatusCache
+    let analysisTrialReachability: AnalysisTrialReachability
     /// Decides each analysis run's route: key, trial or key screen.
     let analysisRoutes: AnalysisRouteResolver
     /// Builds each analysis run's transport from its route.
@@ -230,6 +232,7 @@ final class OpenCastAppModel {
         analysisKeys: AnalysisProviderKeyStore = AnalysisProviderKeyStore(storage: KeychainAnalysisProviderKeyStorage()),
         analysisProviderSelection: AnalysisProviderSelectionStore = AnalysisProviderSelectionStore(),
         analysisUsage: AnalysisUsageStore = AnalysisUsageStore(),
+        analysisKeyTier: AnalysisKeyTierStore = AnalysisKeyTierStore(),
         analysisKeyNotice: AnalysisKeyNoticeStore = AnalysisKeyNoticeStore(),
         analysisKeyRequired: AnalysisKeyRequiredPresenter = AnalysisKeyRequiredPresenter(),
         analysisKeyTester: any AnalysisKeyTesting = AnalysisProviderKeyTester(),
@@ -240,6 +243,7 @@ final class OpenCastAppModel {
         transcriptGenerationBackgroundSession: EpisodeTranscriptGenerationBackgroundSession = EpisodeTranscriptGenerationBackgroundSession(),
         analysisRuns: AnalysisRunRecordStore = AnalysisRunRecordStore(),
         analysisTrialConnection: AnalysisTrialConnection = AnalysisTrialConnection(),
+        analysisTrialReachability: AnalysisTrialReachability? = nil,
         analysisTransportFixture: AnalysisUITestTransportMode? = nil,
         analysisContinuedTaskScheduler: (any AnalysisContinuedTaskScheduling)? = nil,
         analysisTrialStatusDefaults: UserDefaults = .standard,
@@ -317,6 +321,7 @@ final class OpenCastAppModel {
         self.analysisKeys = analysisKeys
         self.analysisProviderSelection = analysisProviderSelection
         self.analysisUsage = analysisUsage
+        self.analysisKeyTier = analysisKeyTier
         self.analysisKeyNotice = analysisKeyNotice
         self.analysisKeyRequired = analysisKeyRequired
         self.analysisKeyTester = analysisKeyTester
@@ -325,6 +330,10 @@ final class OpenCastAppModel {
             await analysisTrialConnection.fetchStatus(trialEndpoint: snapshotStore.snapshot.bundle.trial.endpoint)
         }
         analysisTrialStatus = trialStatus
+        let trialReachability = analysisTrialReachability ?? AnalysisTrialReachability { [snapshotStore = analysisPolicy, analysisTrialConnection] in
+            await analysisTrialConnection.isReachable(trialEndpoint: snapshotStore.snapshot.bundle.trial.endpoint)
+        }
+        self.analysisTrialReachability = trialReachability
         analysisTransports = AnalysisTransportFactory(
             policy: analysisPolicy,
             runs: analysisRuns,
@@ -348,6 +357,7 @@ final class OpenCastAppModel {
             },
             trialStatus: trialStatus,
             trial: analysisTrialConnection,
+            trialReachability: trialReachability,
             runs: analysisRuns,
             builtInGoogleKey: builtInAnalysisKey
         )
@@ -530,6 +540,7 @@ final class OpenCastAppModel {
                 transports: analysisTransports,
                 runs: analysisRuns,
                 usage: analysisUsage,
+                keyTier: analysisKeyTier,
                 trialStatus: analysisTrialStatus,
                 policy: analysisPolicy,
                 presentKeyRequired: { [weak self] reason in
@@ -640,7 +651,9 @@ final class OpenCastAppModel {
             }
             analysisProviderSelection.load(modelContext: modelContext)
             analysisUsage.load(modelContext: modelContext)
+            analysisKeyTier.load(modelContext: modelContext)
             analysisKeyNotice.load(modelContext: modelContext)
+            analysisTrialReachability.start()
             let didLoadLibrary = await library.load(modelContext: modelContext)
             libraryEpisodesLoaded = true
             await downloads.load(modelContext: modelContext)
@@ -2538,13 +2551,21 @@ final class OpenCastAppModel {
         )
     }
 
-    /// Never with the built-in key: the notice announces the trial and the
-    /// move to the listener's own key, and this build has neither.
-    func isAnalysisKeyNoticeDue(now: Date = .now) -> Bool {
+    /// Never with the built-in key: the notice announces the trial, and this
+    /// build has none.
+    func isAnalysisKeyNoticeDue() -> Bool {
         !analysisRoutes.hasBuiltInKey && analysisKeyNotice.isNoticeDue(
-            notice: analysisPolicy.snapshot.bundle.notice,
             hasSavedKey: analysisKeys.hasSavedKey,
-            now: now
+            reachability: analysisTrialReachability.state
+        )
+    }
+
+    /// The notice would be due if the trial service proves reachable, which
+    /// is not known yet.
+    func isAnalysisKeyNoticeAwaitingReachability() -> Bool {
+        analysisKeyNotice.isAwaitingReachability(
+            hasSavedKey: analysisKeys.hasSavedKey,
+            reachability: analysisTrialReachability.state
         )
     }
 
@@ -2978,9 +2999,11 @@ final class OpenCastAppModel {
         playlistDisplaySettings.load(modelContext: modelContext)
         playlists.sortOrder = playlistDisplaySettings.sortOrder
         // Provider keys are Keychain credentials and survive the wipe; only
-        // the device-local choices, usage and the notice flag reset.
+        // the device-local choices, usage, the key's tier and the notice
+        // flag reset.
         analysisProviderSelection.load(modelContext: modelContext)
         analysisUsage.load(modelContext: modelContext)
+        analysisKeyTier.load(modelContext: modelContext)
         analysisKeyNotice.load(modelContext: modelContext)
         recentSearches.load(modelContext: modelContext)
         playbackSettings.load(modelContext: modelContext, playback: playback)

@@ -3716,7 +3716,6 @@ final class OpenCastUITests: XCTestCase {
 
         openSection("Downloads", in: app)
         assertScreen("Downloads", named: "Downloads navigation bar", in: app)
-        assertExists(app.staticTexts["Downloaded"], named: "flat Downloaded section")
 
         let options = toolbarButton("Download Options", in: "Downloads", of: app)
         assertHittable(options, named: "Download Options menu")
@@ -3762,7 +3761,6 @@ final class OpenCastUITests: XCTestCase {
         options.tap()
         assertHittable(groupByShow, named: "Group by Show toggle to turn off")
         groupByShow.tap()
-        assertExists(app.staticTexts["Downloaded"], named: "flat Downloaded section restored")
         assertDoesNotExist(section, named: "show section after turning grouping off", timeout: 5)
     }
 

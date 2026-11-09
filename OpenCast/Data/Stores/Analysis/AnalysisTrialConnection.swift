@@ -18,6 +18,12 @@ nonisolated final class AnalysisTrialConnection: AnalysisTrialConnecting {
         isFixture
     }
 
+    /// Whether a trial route is there: only the UI-test fixture in this build.
+    /// Makes no request.
+    func isReachable(trialEndpoint: URL) async -> Bool {
+        isFixture
+    }
+
     func exchange(trialEndpoint: URL) async -> (any AnalysisTrialProxyExchange)? {
         isFixture ? AnalysisUITestTrialProxyExchange() : nil
     }

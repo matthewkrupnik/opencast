@@ -133,6 +133,7 @@ struct AnalysisProviderExchange: Sendable {
         var finishReason: AnalysisFinishReason?
         var usage: AnalysisBilledUsage?
         var providerError: AnalysisProviderErrorDetail?
+        var freeTier = false
         var pacedSeconds = 0.0
         var exchangeSeconds = 0.0
 
@@ -148,6 +149,7 @@ struct AnalysisProviderExchange: Sendable {
     /// Records a failed send. A send the run cancelled is recorded as
     /// cancelled, with no listener-facing failure: the provider said nothing.
     private func finish(_ outcome: inout Outcome, _ classification: AnalysisProviderErrorClassification) -> AnalysisTransportError {
+        outcome.freeTier = classification.freeTier
         if Task.isCancelled, outcome.status == nil {
             record(outcome, failure: nil, cancelled: true)
         } else {
@@ -169,6 +171,7 @@ struct AnalysisProviderExchange: Sendable {
             failure: failure,
             providerError: outcome.providerError,
             cancelled: cancelled,
+            freeTier: outcome.freeTier,
             usage: outcome.usage,
             pacedSeconds: outcome.pacedSeconds,
             exchangeSeconds: outcome.exchangeSeconds

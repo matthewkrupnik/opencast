@@ -118,7 +118,7 @@ struct DownloadsView: View {
                     }
                 }
             } else if !model.downloaded.isEmpty || hasSearchQuery {
-                Section("Downloaded") {
+                Section {
                     if hasSearchQuery {
                         if searchSession.isIndexedSearchUnavailable {
                             SearchIndexUpdatingIndicator(mode: searchMode)
