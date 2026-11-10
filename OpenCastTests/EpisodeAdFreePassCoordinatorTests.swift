@@ -1782,6 +1782,61 @@ struct EpisodeAdFreePassCoordinatorTests {
         #expect(records.isEmpty)
     }
 
+    @Test("removeItems(forPodcastID:) drops the podcast's pending items, records, and finished rows only")
+    func removeItemsForPodcastDropsOnlyThatPodcast() async throws {
+        let downloader = GatedEpisodeAudioDownloader()
+        let fixture = try await makeFixture(downloader: downloader)
+        let removedFeed = "https://example.com/removed.xml"
+        func episode(_ episodeID: String, podcastID: String) -> EpisodeListItemSnapshot {
+            .fixture(
+                episodeID: episodeID,
+                podcastID: podcastID,
+                audioURL: "https://example.com/\(episodeID).mp3",
+                guid: episodeID
+            )
+        }
+        let removedFinished = episode("remove-podcast-finished", podcastID: removedFeed)
+        let kept = makeEpisode(episodeID: "remove-podcast-kept")
+        let removedPending = episode("remove-podcast-pending", podcastID: removedFeed)
+
+        fixture.enqueue(removedFinished)
+        #expect(await waitUntil {
+            fixture.coordinator.activeEpisodeID == removedFinished.episodeID
+        })
+        fixture.enqueue(kept)
+        fixture.enqueue(removedPending)
+        downloader.release(urlContaining: removedFinished.episodeID)
+        #expect(await waitUntil {
+            fixture.coordinator.activeEpisodeID == kept.episodeID
+                && fixture.coordinator.drainOutcomes.map(\.episodeID) == [removedFinished.episodeID]
+        })
+        #expect(await waitUntil {
+            let episodeIDs = try? fixture.context.fetch(
+                FetchDescriptor<AdFreePassQueueItemRecord>()
+            ).map(\.episodeID)
+            return episodeIDs?.contains(removedPending.episodeID) == true
+        })
+
+        fixture.coordinator.removeItems(
+            forPodcastID: removedFeed,
+            episodeIDs: [removedFinished.episodeID, removedPending.episodeID],
+            modelContext: fixture.context
+        )
+
+        #expect(fixture.coordinator.queueItems.isEmpty)
+        #expect(fixture.coordinator.drainOutcomes.isEmpty)
+        #expect(fixture.coordinator.drainCompletedCount == 0)
+        #expect(fixture.coordinator.activeEpisodeID == kept.episodeID)
+        #expect(fixture.coordinator.queueState == .running)
+        let records = try fixture.context.fetch(FetchDescriptor<AdFreePassQueueItemRecord>())
+        #expect(records.map(\.episodeID) == [kept.episodeID])
+
+        downloader.release(urlContaining: kept.episodeID)
+        #expect(await waitUntil {
+            fixture.coordinator.queueState == .idle && fixture.coordinator.activeEpisodeID == nil
+        })
+    }
+
     // MARK: - Fixture
 
     @MainActor

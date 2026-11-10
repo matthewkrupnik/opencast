@@ -614,6 +614,40 @@ final class EpisodeAdFreePassCoordinator {
         )
     }
 
+    /// Drops a removed podcast from the queue: its pending items and their
+    /// persisted records, its finished rows, and a pass running for it.
+    /// `episodeIDs` matches finished rows, which carry no podcast ID.
+    func removeItems(forPodcastID podcastID: String, episodeIDs: Set<String>, modelContext: ModelContext) {
+        if activeItem?.episode.podcastID == podcastID {
+            cancelActivePass()
+        }
+
+        for episodeID in entries.filter({ $0.item.episode.podcastID == podcastID }).map(\.item.episodeID) {
+            removePendingItem(episodeID: episodeID, modelContext: modelContext)
+        }
+        // Records a restore never loaded into `entries` would come back on
+        // the next launch.
+        let descriptor = FetchDescriptor<AdFreePassQueueItemRecord>(
+            predicate: #Predicate { $0.podcastID == podcastID }
+        )
+        if let records = try? modelContext.fetch(descriptor), !records.isEmpty {
+            let activeEpisodeID = activeEpisodeID
+            for record in records where record.episodeID != activeEpisodeID {
+                modelContext.delete(record)
+            }
+            try? modelContext.save()
+        }
+
+        for outcome in drainOutcomes where episodeIDs.contains(outcome.episodeID) {
+            adjustDrainCount(for: outcome.kind, by: -1)
+            failureMessagesByEpisodeID[outcome.episodeID] = nil
+        }
+        drainOutcomes.removeAll { episodeIDs.contains($0.episodeID) }
+        if let lastFailureEpisodeID, episodeIDs.contains(lastFailureEpisodeID) {
+            clearFailure(episodeID: lastFailureEpisodeID)
+        }
+    }
+
     // MARK: - Queue drain
 
     private struct PassDependencies {

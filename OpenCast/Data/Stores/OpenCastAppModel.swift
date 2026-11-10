@@ -1637,6 +1637,11 @@ final class OpenCastAppModel {
         if !upNextQueue.removeAll(forPodcastID: feedURL, modelContext: modelContext) {
             sidecarErrorMessage = upNextQueue.lastErrorMessage
         }
+        adFreePass.removeItems(
+            forPodcastID: feedURL,
+            episodeIDs: Set(episodeIDs),
+            modelContext: modelContext
+        )
         // Downloads are destroyed only after the delete is confirmed — files
         // cannot be rolled back, and dynamic enclosures mean a re-download
         // may not be byte-identical — and route through the transcription
