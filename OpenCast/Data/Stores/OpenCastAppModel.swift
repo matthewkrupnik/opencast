@@ -34,6 +34,8 @@ final class OpenCastAppModel {
     @ObservationIgnored private let adFreePassEnqueueContext: AdFreePassEnqueueContext
     let adAnalyses: EpisodeAdAnalysisStore
     let transcriptAnalyses: EpisodeTranscriptAnalysisStore
+    /// Feed-declared `podcast:chapters` documents, shared by playback and detail.
+    let feedChapters: PodcastChaptersLoader
     /// Which episodes' Private Notes changed, for the views that fetch them.
     let episodeNotes = EpisodeNotesChangeTracker()
     let transcriptIntelligence: TranscriptIntelligenceStore
@@ -164,6 +166,10 @@ final class OpenCastAppModel {
     var currentEpisodeChapters: PlaybackChapterList {
         chapters.current
     }
+    /// The playing chapter's art; nil shows the episode artwork.
+    var currentChapterArtworkURL: URL? {
+        chapters.currentArtworkURL
+    }
     #if DEBUG
     var lastVoiceBoostDeviceProbeResult: String?
     var lastVoiceBoostDeviceProbeReportStatus: String?
@@ -287,6 +293,7 @@ final class OpenCastAppModel {
         self.appAttestSuspension = appAttestSuspension
         self.cacheController = cacheController
         self.httpClient = resolvedHTTPClient
+        feedChapters = PodcastChaptersLoader(httpClient: resolvedHTTPClient)
         self.helpContent = helpContent ?? HelpContentStore()
         // Remote help copies were cached here before help became bundled-only.
         try? FileManager.default.removeItem(
@@ -414,7 +421,8 @@ final class OpenCastAppModel {
             playback: self.playback,
             library: resolvedLibrary,
             transcriptions: transcriptions,
-            transcriptAnalyses: transcriptAnalyses
+            transcriptAnalyses: transcriptAnalyses,
+            feedChapters: feedChapters
         )
         downloadCleanup = DownloadCleanupCoordinator(
             downloads: downloads,
@@ -479,6 +487,7 @@ final class OpenCastAppModel {
             self?.downloadCleanup.deferTrim(forPodcastID: record.podcastID, modelContext: modelContext)
             self?.autoDetectAdsOnDownloadIfQualified(record, modelContext: modelContext)
             self?.prepareSmartSpeedPausesIfEnabled(record)
+            self?.prefetchChaptersForOffline(episodeID: record.episodeID)
         }
         self.transcriptAnalyses.producer = makeChaptersSummaryProducer()
         self.transcriptAnalyses.dispatchedRunLookup = { [analysisRuns] episodeID in

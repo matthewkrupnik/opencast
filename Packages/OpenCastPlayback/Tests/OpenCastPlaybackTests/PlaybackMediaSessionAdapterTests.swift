@@ -116,6 +116,35 @@ struct PlaybackMediaSessionAdapterTests {
     }
 
     @Test
+    func chapterArtworkReplacesEpisodeArtworkAndFallsBack() async throws {
+        let episodeArt = URL(string: "https://example.com/episode.jpg")!
+        let chapterArt = URL(string: "https://example.com/chapter.jpg")!
+        let current = episode(duration: 300, artworkURL: episodeArt)
+
+        let values = try #require(PlaybackMediaSessionValues(
+            PlaybackSnapshot(currentEpisode: current, chapterArtworkURL: chapterArt),
+            resolvedDuration: nil
+        ))
+        #expect(values.artworkURL == chapterArt)
+        #expect(values.fallbackArtworkURL == episodeArt)
+
+        let plain = try #require(PlaybackMediaSessionValues(PlaybackSnapshot(currentEpisode: current), resolvedDuration: nil))
+        #expect(plain.artworkURL == episodeArt)
+        #expect(plain.fallbackArtworkURL == nil)
+
+        // The chapter image is missing, so the request serves the episode art.
+        let loader = ImmediateArtworkLoader()
+        loader.artworks[episodeArt] = makeArtwork()
+        let adapter = PlaybackMediaSessionAdapter(artworkLoader: loader)
+        adapter.publish(PlaybackSnapshot(currentEpisode: current, chapterArtworkURL: chapterArt), resolvedDuration: nil)
+        let request = try #require(adapter.artworkRequest)
+        // macOS test artwork has no bitmap, so only the loads are checked.
+        _ = try? await request.image()
+        #expect(loader.loadCount[chapterArt] == 1)
+        #expect(loader.loadCount[episodeArt] == 1)
+    }
+
+    @Test
     func configuredSkipIntervalsRejectInvalidUpdates() {
         let adapter = PlaybackMediaSessionAdapter(artworkLoader: ImmediateArtworkLoader())
         adapter.setSkipIntervals(backward: 45, forward: 60)

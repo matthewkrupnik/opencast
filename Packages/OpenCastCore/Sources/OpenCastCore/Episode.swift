@@ -12,8 +12,9 @@ public struct Episode: Codable, Hashable, Identifiable, Sendable {
     public var audioURL: URL?
     public var artworkURL: URL?
     public var guid: String?
-    /// Feed-declared `podcast:chapters` document URL. v1 uses presence only:
-    /// creator chapters suppress generated ones (rendering is v1.5).
+    /// Feed-declared chapters: the `podcast:chapters` document URL, or inline
+    /// Podlove chapters as an `InlineChaptersDocument` data URL. Creator
+    /// chapters suppress generated ones.
     public var chaptersURL: URL?
 
     public init(

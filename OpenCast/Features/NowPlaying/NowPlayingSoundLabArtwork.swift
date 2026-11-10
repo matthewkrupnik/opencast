@@ -33,6 +33,9 @@ struct NowPlayingSoundLabArtwork: View {
     @State private var dragOwnership = DragOwnershipBox()
     @State private var feedbackTrigger = false
     @State private var imageState = ArtworkImageState()
+    @State private var chapterImageState = ArtworkImageState()
+    /// The chapter art being fetched, during which the previous chapter's stays up.
+    @State private var pendingChapterRequest: ArtworkRequest?
     /// The square in the card's coordinates, and the heading's whole height:
     /// what a closed panel resolves from. They stay measured while it is open,
     /// to tell whether its key still holds.
@@ -113,7 +116,8 @@ struct NowPlayingSoundLabArtwork: View {
     var body: some View {
         let request = artworkRequest
         let loadingRequest = appModel.isNowPlayingPresented ? request : nil
-        let artworkImage = loadedArtworkImage(for: request)
+        let chapterRequest = chapterArtworkRequest
+        let artworkImage = chapterImage(for: chapterRequest) ?? loadedArtworkImage(for: request)
 
         // Nil is closed, in the very body that first sees a changed key:
         // nothing stored decides whether an invalid panel is drawn.
@@ -255,6 +259,14 @@ struct NowPlayingSoundLabArtwork: View {
             // Reopening can render it even after the shared cache evicts it.
             guard let loadingRequest else { return }
             _ = await imageState.loadArtwork(for: loadingRequest, cacheKind: .episode)
+        }
+        .task(id: appModel.isNowPlayingPresented ? chapterRequest : nil) {
+            guard appModel.isNowPlayingPresented, let chapterRequest else { return }
+            pendingChapterRequest = chapterRequest
+            _ = await chapterImageState.loadArtwork(for: chapterRequest, cacheKind: .episode)
+            if pendingChapterRequest == chapterRequest {
+                pendingChapterRequest = nil
+            }
         }
     }
 
@@ -561,6 +573,23 @@ struct NowPlayingSoundLabArtwork: View {
         }
 
         return ArtworkRequest(url: artworkURL, targetPixelSize: targetPixelSize)
+    }
+
+    private var chapterArtworkRequest: ArtworkRequest? {
+        appModel.currentChapterArtworkURL.map { ArtworkRequest(url: $0, targetPixelSize: targetPixelSize) }
+    }
+
+    /// While the next chapter's art loads the previous chapter's stays up,
+    /// so a chapter change doesn't flash the episode artwork in between. Art
+    /// that fails to load falls back to the episode artwork.
+    private func chapterImage(for request: ArtworkRequest?) -> UIImage? {
+        guard let request else {
+            return nil
+        }
+        if let image = chapterImageState.resolvedImage(for: request) {
+            return image
+        }
+        return pendingChapterRequest == request ? chapterImageState.loadedImage : nil
     }
 
     private func updateSoundLabDrag(_ value: DragGesture.Value) {

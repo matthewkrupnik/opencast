@@ -24,6 +24,7 @@ struct EpisodeDetailView: View {
     @State private var adSection = EpisodeAdAnalysisSectionModel()
     @State private var chaptersSection = EpisodeChaptersSummarySectionModel()
     @State private var embeddedChapters: [EpisodeChapter] = []
+    @State private var feedChapters: [EpisodeChapter] = []
     @State private var privateNotes: [EpisodeNoteRecord] = []
     @State private var isConfirmingClearProgress = false
     @State private var isConfirmingGenerateDisclosure = false
@@ -142,6 +143,21 @@ struct EpisodeDetailView: View {
             }
             embeddedChapters = chapters
         }
+        .task(id: feedChaptersLoadKey) {
+            feedChapters = []
+            guard let declared = chaptersSection.creatorChaptersURL, let url = URL(string: declared) else {
+                return
+            }
+            let chapters = await appModel.feedChapters.chapters(at: url)
+            guard !Task.isCancelled else {
+                return
+            }
+            feedChapters = chapters.filter { !$0.isHidden }
+        }
+    }
+
+    private var feedChaptersLoadKey: String {
+        "\(episodeID)|\(chaptersSection.creatorChaptersURL ?? "")"
     }
 
     private var downloadedFileURL: URL? {
@@ -262,6 +278,10 @@ struct EpisodeDetailView: View {
                 // the creator declaration.
                 if !displayedEmbeddedChapters.isEmpty {
                     EpisodeChaptersCard(chapters: displayedEmbeddedChapters, source: .embedded) { chapter in
+                        seekToTimestamp(chapter.startTime, episode: episode)
+                    }
+                } else if !feedChapters.isEmpty {
+                    EpisodeChaptersCard(chapters: feedChapters, source: .feed) { chapter in
                         seekToTimestamp(chapter.startTime, episode: episode)
                     }
                 }

@@ -356,6 +356,16 @@ public final class AVFoundationPlaybackController {
         mediaSession.setSkipIntervals(backward: backward, forward: forward)
     }
 
+    /// Shows the playing chapter's art on system Now Playing surfaces; nil
+    /// returns them to the episode artwork. A newly loaded episode starts at nil.
+    public func setChapterArtworkURL(_ url: URL?) {
+        guard snapshot.currentEpisode != nil, snapshot.chapterArtworkURL != url else {
+            return
+        }
+        snapshot.chapterArtworkURL = url
+        publishPlaybackState()
+    }
+
     public func setSkipZones(_ zones: [PlaybackSkipZone]) {
         playbackAdSkipPolicy.setZones(zones)
         snapshot.skipZones = playbackAdSkipPolicy.zones

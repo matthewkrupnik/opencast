@@ -10,6 +10,8 @@ public struct PlaybackSnapshot: Equatable, Sendable {
     public var sleepTimerEndsAt: Date?
     public var progressBoundaryID: Int
     public var skipZones: [PlaybackSkipZone]
+    /// The playing chapter's art, shown in place of the episode artwork.
+    public var chapterArtworkURL: URL?
 
     public init(
         state: PlaybackState = .idle,
@@ -19,7 +21,8 @@ public struct PlaybackSnapshot: Equatable, Sendable {
         rate: Float = 1,
         sleepTimerEndsAt: Date? = nil,
         progressBoundaryID: Int = 0,
-        skipZones: [PlaybackSkipZone] = []
+        skipZones: [PlaybackSkipZone] = [],
+        chapterArtworkURL: URL? = nil
     ) {
         self.state = state
         self.currentEpisode = currentEpisode
@@ -29,6 +32,12 @@ public struct PlaybackSnapshot: Equatable, Sendable {
         self.sleepTimerEndsAt = sleepTimerEndsAt
         self.progressBoundaryID = progressBoundaryID
         self.skipZones = skipZones
+        self.chapterArtworkURL = chapterArtworkURL
+    }
+
+    /// What system Now Playing surfaces show: chapter art over episode art.
+    public nonisolated var displayArtworkURL: URL? {
+        chapterArtworkURL ?? currentEpisode?.artworkURL
     }
 
     public nonisolated var normalizedProgress: Double {

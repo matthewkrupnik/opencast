@@ -66,4 +66,27 @@ struct PlaybackChapterListTests {
         #expect(list.previousChapter(before: 61)?.title == "First")
         #expect(list.previousChapter(before: 70)?.title == "Third")
     }
+
+    @Test("Hidden chapters stay out of the list but drive the art until they end")
+    func artTimeline() {
+        let a = URL(string: "https://example.com/a.jpg")!
+        let b = URL(string: "https://example.com/b.jpg")!
+        let list = PlaybackChapterList(
+            chapters: [
+                EpisodeChapter(id: 0, title: "Open", startTime: 0, imageURL: a),
+                EpisodeChapter(id: 1, title: "Art", startTime: 30, endTime: 45, imageURL: b, isHidden: true),
+                EpisodeChapter(id: 2, title: "Talk", startTime: 60),
+            ],
+            source: .feed
+        )
+
+        #expect(list.chapters.map(\.title) == ["Open", "Talk"])
+        #expect(list.chapter(at: 40)?.title == "Open")
+        #expect(list.hasAnyArt)
+        #expect(list.imageURL(at: 10) == a)
+        #expect(list.imageURL(at: 40) == b)
+        // Past the hidden chapter's end, the chapter underneath shows again.
+        #expect(list.imageURL(at: 50) == a)
+        #expect(list.imageURL(at: 70) == nil)
+    }
 }

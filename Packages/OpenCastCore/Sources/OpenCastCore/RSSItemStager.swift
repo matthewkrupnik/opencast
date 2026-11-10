@@ -174,7 +174,7 @@ final class RSSItemStager {
                     audioURL: item.audioURL,
                     artworkURL: item.artworkURL ?? podcast.artworkURL,
                     guid: guid,
-                    chaptersURL: item.chaptersURL
+                    chaptersURL: item.resolvedChaptersURL
                 )
                 sqlite3_bind_int64(save, 1, position)
                 try outputDB.bind(encoder.encode(episode), to: save, at: 2)

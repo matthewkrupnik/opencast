@@ -19,30 +19,44 @@ struct NowPlayingChaptersView: View {
                     ContentUnavailableView("No Chapters", systemImage: "list.bullet")
                 } else {
                     List(chapters.chapters) { chapter in
-                        Button {
-                            select(chapter, in: chapters)
-                        } label: {
-                            HStack(alignment: .firstTextBaseline, spacing: 12) {
-                                Text(EpisodeChaptersCard.startTimeText(chapter.startTime))
-                                    .font(.subheadline)
-                                    .monospacedDigit()
-                                    .foregroundStyle(.tint)
-                                Text(chapter.title)
-                                    .font(.body)
-                                    .fontWeight(chapter == current ? .semibold : .regular)
-                                    .foregroundStyle(.primary)
-                                Spacer(minLength: 0)
-                                if chapter == current {
-                                    Image(systemName: "speaker.wave.2.fill")
-                                        .foregroundStyle(.tint)
-                                        .accessibilityHidden(true)
+                        HStack(spacing: 4) {
+                            Button {
+                                select(chapter, in: chapters)
+                            } label: {
+                                HStack(spacing: 12) {
+                                    if chapters.hasChapterArt {
+                                        ChapterArtworkThumbnail(url: chapter.imageURL)
+                                    }
+                                    HStack(alignment: .firstTextBaseline, spacing: 12) {
+                                        Text(EpisodeChaptersCard.startTimeText(chapter.startTime))
+                                            .font(.subheadline)
+                                            .monospacedDigit()
+                                            .foregroundStyle(.tint)
+                                        Text(chapter.title)
+                                            .font(.body)
+                                            .fontWeight(chapter == current ? .semibold : .regular)
+                                            .foregroundStyle(.primary)
+                                        Spacer(minLength: 0)
+                                        if chapter == current {
+                                            Image(systemName: "speaker.wave.2.fill")
+                                                .foregroundStyle(.tint)
+                                                .accessibilityHidden(true)
+                                        }
+                                    }
                                 }
+                                .contentShape(.rect)
+                            }
+                            // Two tap targets share the row only with non-list button styles.
+                            .buttonStyle(.plain)
+                            .accessibilityLabel(
+                                "Chapter, \(chapter.title), starts at \(EpisodeChaptersCard.startTimeText(chapter.startTime))"
+                            )
+                            .accessibilityValue(chapter == current ? "Now playing" : "")
+
+                            if let linkURL = chapter.linkURL {
+                                ChapterLinkButton(url: linkURL, chapterTitle: chapter.title)
                             }
                         }
-                        .accessibilityLabel(
-                            "Chapter, \(chapter.title), starts at \(EpisodeChaptersCard.startTimeText(chapter.startTime))"
-                        )
-                        .accessibilityValue(chapter == current ? "Now playing" : "")
                     }
                     .listStyle(.plain)
                 }

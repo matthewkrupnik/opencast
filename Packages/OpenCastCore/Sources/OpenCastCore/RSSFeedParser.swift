@@ -121,12 +121,19 @@ final class FeedXMLParserDelegate: NSObject, XMLParserDelegate {
     /// closes, so a prefix rebound to a foreign namespace stops matching for
     /// exactly that subtree — and vice versa.
     private var podcastPrefixBindings: [String: [Bool]] = ["podcast": [true]]
+    /// The same scoping for the Podlove Simple Chapters namespace.
+    private var podlovePrefixBindings: [String: [Bool]] = ["psc": [true]]
     /// Aligned with `elementStack`: the prefixes each open element declared.
     private var declaredNamespacePrefixStack: [[String]] = []
 
     private static let podcastNamespaceURIs: Set<String> = [
         "https://podcastindex.org/namespace/1.0",
         "https://github.com/podcastindex-org/podcast-namespace/blob/main/docs/1.0.md"
+    ]
+
+    private static let podloveNamespaceURIs: Set<String> = [
+        "http://podlove.org/simple-chapters",
+        "https://podlove.org/simple-chapters"
     ]
 
     /// - Parameter fallbackCDATAEncoding: the document's prolog-declared
@@ -250,7 +257,7 @@ final class FeedXMLParserDelegate: NSObject, XMLParserDelegate {
                     audioURL: item.audioURL,
                     artworkURL: item.artworkURL ?? channel.artworkURL,
                     guid: item.guid.nilIfBlank,
-                    chaptersURL: item.chaptersURL
+                    chaptersURL: item.resolvedChaptersURL
                 )
             )
         }
@@ -369,6 +376,8 @@ final class FeedXMLParserDelegate: NSObject, XMLParserDelegate {
                let url = attributeDict.caseInsensitiveValue(for: "url").flatMap(URL.init(string:)) {
                 currentItem?.chaptersURL = url
             }
+        case _ where isPodloveChapterElement(name):
+            capturePodloveChapter(attributes: attributeDict)
         case "itunes:image":
             if let url = attributeDict.caseInsensitiveValue(for: "href").flatMap(URL.init(string:)) {
                 if currentItem == nil {
@@ -538,6 +547,11 @@ final class FeedXMLParserDelegate: NSObject, XMLParserDelegate {
                 value.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
             )
             podcastPrefixBindings[prefix, default: []].append(isPodcastNamespace)
+            let namespace = value.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+            let isPodloveNamespace = Self.podloveNamespaceURIs.contains(
+                namespace.hasSuffix("/") ? String(namespace.dropLast()) : namespace
+            )
+            podlovePrefixBindings[prefix, default: []].append(isPodloveNamespace)
             declaredPrefixes.append(prefix)
         }
         declaredNamespacePrefixStack.append(declaredPrefixes)
@@ -552,6 +566,10 @@ final class FeedXMLParserDelegate: NSObject, XMLParserDelegate {
             if podcastPrefixBindings[prefix]?.isEmpty == true {
                 podcastPrefixBindings[prefix] = nil
             }
+            podlovePrefixBindings[prefix]?.removeLast()
+            if podlovePrefixBindings[prefix]?.isEmpty == true {
+                podlovePrefixBindings[prefix] = nil
+            }
         }
     }
 
@@ -560,6 +578,44 @@ final class FeedXMLParserDelegate: NSObject, XMLParserDelegate {
             return false
         }
         return podcastPrefixBindings[String(name.dropLast(":chapters".count))]?.last == true
+    }
+
+    private func isPodloveChapterElement(_ name: String) -> Bool {
+        guard name.hasSuffix(":chapter") else {
+            return false
+        }
+        return podlovePrefixBindings[String(name.dropLast(":chapter".count))]?.last == true
+    }
+
+    /// `<psc:chapter start="00:01:30.500" title="…" href="…" image="…"/>`;
+    /// links and art resolve against the feed URL.
+    private func capturePodloveChapter(attributes: [String: String]) {
+        let capturedCount = currentItem?.podloveChapters?.count ?? 0
+        guard currentItem != nil,
+              capturedCount < InlineChaptersDocument.maximumChapterCount,
+              let start = attributes.caseInsensitiveValue(for: "start").flatMap(DurationParser.parse)
+        else {
+            return
+        }
+        func webURL(_ key: String) -> String? {
+            guard let value = attributes.caseInsensitiveValue(for: key)?.trimmingCharacters(in: .whitespacesAndNewlines),
+                  !value.isEmpty,
+                  let url = URL(string: value, relativeTo: feedURL)?.absoluteURL,
+                  let scheme = url.scheme?.lowercased(),
+                  scheme == "https" || scheme == "http"
+            else {
+                return nil
+            }
+            return url.absoluteString
+        }
+        let chapter = InlineChaptersDocument.Chapter(
+            startTime: start,
+            title: attributes.caseInsensitiveValue(for: "title"),
+            url: webURL("href"),
+            img: webURL("image")
+        )
+        let chapters = currentItem?.podloveChapters ?? []
+        currentItem?.podloveChapters = chapters + [chapter]
     }
 
     private func captureEnclosure(attributes: [String: String]) {
@@ -631,6 +687,12 @@ struct ItemAccumulator: Codable {
     var enclosureType: String?
     var artworkURL: URL?
     var chaptersURL: URL?
+    var podloveChapters: [InlineChaptersDocument.Chapter]?
+
+    /// A `podcast:chapters` link wins; otherwise inline Podlove chapters.
+    var resolvedChaptersURL: URL? {
+        chaptersURL ?? podloveChapters.flatMap(InlineChaptersDocument.url(for:))
+    }
 }
 
 private extension Dictionary where Key == String, Value == String {

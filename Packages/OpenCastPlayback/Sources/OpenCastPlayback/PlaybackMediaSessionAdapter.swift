@@ -41,6 +41,7 @@ final class PlaybackMediaSessionAdapter {
                 MediaSessionArtworkRequest(
                     id: updated.episodeID.rawValue + ":" + url.absoluteString,
                     url: url,
+                    fallbackURL: updated.fallbackArtworkURL,
                     loader: artworkLoader
                 )
             } else {

@@ -2,11 +2,12 @@ import OpenCastCore
 import SwiftUI
 
 /// Chapter list on episode detail: title + start time, tap seeks. Renders
-/// chapters embedded in the audio file or a current generated analysis;
-/// the tag tells them apart.
+/// chapters embedded in the audio file, the feed's chapters document, or a
+/// current generated analysis; the tag marks generated ones.
 struct EpisodeChaptersCard: View {
     enum Source {
         case embedded
+        case feed
         case generated
     }
 
@@ -27,25 +28,36 @@ struct EpisodeChaptersCard: View {
 
             VStack(alignment: .leading, spacing: 0) {
                 ForEach(chapters) { chapter in
-                    Button {
-                        onSelectChapter(chapter)
-                    } label: {
-                        HStack(alignment: .firstTextBaseline, spacing: 12) {
-                            Text(Self.startTimeText(chapter.startTime))
-                                .font(.subheadline)
-                                .monospacedDigit()
-                                .foregroundStyle(.tint)
-                            Text(chapter.title)
-                                .font(.subheadline)
-                                .foregroundStyle(.primary)
-                                .multilineTextAlignment(.leading)
-                            Spacer(minLength: 0)
+                    HStack(spacing: 4) {
+                        Button {
+                            onSelectChapter(chapter)
+                        } label: {
+                            HStack(spacing: 12) {
+                                if showsChapterArt {
+                                    ChapterArtworkThumbnail(url: chapter.imageURL)
+                                }
+                                HStack(alignment: .firstTextBaseline, spacing: 12) {
+                                    Text(Self.startTimeText(chapter.startTime))
+                                        .font(.subheadline)
+                                        .monospacedDigit()
+                                        .foregroundStyle(.tint)
+                                    Text(chapter.title)
+                                        .font(.subheadline)
+                                        .foregroundStyle(.primary)
+                                        .multilineTextAlignment(.leading)
+                                    Spacer(minLength: 0)
+                                }
+                            }
+                            .padding(.vertical, 8)
+                            .contentShape(.rect)
                         }
-                        .padding(.vertical, 8)
-                        .contentShape(.rect)
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("Chapter, \(chapter.title), starts at \(Self.startTimeText(chapter.startTime))")
+
+                        if let linkURL = chapter.linkURL {
+                            ChapterLinkButton(url: linkURL, chapterTitle: chapter.title)
+                        }
                     }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel("Chapter, \(chapter.title), starts at \(Self.startTimeText(chapter.startTime))")
 
                     if chapter.id != chapters.last?.id {
                         Divider()
@@ -57,6 +69,10 @@ struct EpisodeChaptersCard: View {
         .padding(18)
         .glassEffect(.regular, in: .rect(cornerRadius: 26))
         .accessibilityIdentifier("Episode Chapters Card")
+    }
+
+    private var showsChapterArt: Bool {
+        chapters.contains { $0.imageURL != nil }
     }
 
     static func startTimeText(_ startTime: TimeInterval) -> String {

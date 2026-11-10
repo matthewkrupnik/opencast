@@ -6,15 +6,20 @@ import OpenCastPlayback
 @Observable
 final class PlaybackChaptersCoordinator {
     private(set) var current: PlaybackChapterList = .empty
+    /// The playing chapter's art, also handed to the system Now Playing
+    /// surfaces. Nil means the episode artwork.
+    private(set) var currentArtworkURL: URL?
 
     @ObservationIgnored private let playback: AVFoundationPlaybackController
     @ObservationIgnored private let library: LibraryStore
     @ObservationIgnored private let transcriptions: EpisodeTranscriptionStore
     @ObservationIgnored private let transcriptAnalyses: EpisodeTranscriptAnalysisStore
+    @ObservationIgnored private let feedChapters: PodcastChaptersLoader
     /// UI-test seam: served for every episode in place of any real lookup.
     @ObservationIgnored var uiTestOverride: PlaybackChapterList?
     @ObservationIgnored private var refreshTask: Task<Void, Never>?
     @ObservationIgnored private var itemObservationTask: Task<Void, Never>?
+    @ObservationIgnored private var artworkObservationTask: Task<Void, Never>?
     @ObservationIgnored private var installedEpisodeID: String?
     @ObservationIgnored private var installedItemGeneration: Int?
 
@@ -22,17 +27,21 @@ final class PlaybackChaptersCoordinator {
         playback: AVFoundationPlaybackController,
         library: LibraryStore,
         transcriptions: EpisodeTranscriptionStore,
-        transcriptAnalyses: EpisodeTranscriptAnalysisStore
+        transcriptAnalyses: EpisodeTranscriptAnalysisStore,
+        feedChapters: PodcastChaptersLoader
     ) {
         self.playback = playback
         self.library = library
         self.transcriptions = transcriptions
         self.transcriptAnalyses = transcriptAnalyses
+        self.feedChapters = feedChapters
         startItemObservation()
+        startArtworkObservation()
     }
 
     deinit {
         itemObservationTask?.cancel()
+        artworkObservationTask?.cancel()
     }
 
     func refreshForCurrentEpisode() {
@@ -98,6 +107,29 @@ final class PlaybackChaptersCoordinator {
         }
     }
 
+    /// Follows the playhead through the art timeline. A list without art never
+    /// reads the position, so it doesn't wake on every tick.
+    private func startArtworkObservation() {
+        let artworkURLs = Observations { [weak self] () -> URL? in
+            guard let self, current.hasAnyArt else {
+                return nil
+            }
+            return current.imageURL(at: playback.position)
+        }
+        artworkObservationTask = Task { [weak self] in
+            for await url in artworkURLs {
+                guard !Task.isCancelled, let self else {
+                    return
+                }
+                guard url != currentArtworkURL else {
+                    continue
+                }
+                currentArtworkURL = url
+                playback.setChapterArtworkURL(url)
+            }
+        }
+    }
+
     private func load(episodeID: String) async -> PlaybackChapterList {
         if let uiTestOverride {
             return uiTestOverride
@@ -109,10 +141,14 @@ final class PlaybackChaptersCoordinator {
             return .empty
         }
 
-        // Creator-declared chapters win over generated ones even though the
-        // document isn't fetched yet; same rule the detail cards follow.
-        if await library.episodeDetail(for: episodeID)?.chaptersURL != nil {
-            return .empty
+        // Creator-declared chapters win over generated ones even when the
+        // document can't be fetched; same rule the detail cards follow.
+        if let declared = await library.episodeDetail(for: episodeID)?.chaptersURL {
+            guard let url = URL(string: declared) else {
+                return .empty
+            }
+            let chapters = await feedChapters.chapters(at: url)
+            return chapters.isEmpty ? .empty : PlaybackChapterList(chapters: chapters, source: .feed)
         }
 
         guard transcriptAnalyses.record(for: episodeID)?.state == .completed,

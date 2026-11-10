@@ -47,7 +47,7 @@ final class NowPlayingInfoPublisher {
             return
         }
 
-        prepareArtwork(for: episode)
+        prepareArtwork(for: episode, artworkURL: snapshot.displayArtworkURL)
         publishInfoIfChanged(for: snapshot, resolvedDuration: resolvedDuration)
     }
 
@@ -65,8 +65,8 @@ final class NowPlayingInfoPublisher {
         infoCenter.nowPlayingInfo = nil
     }
 
-    private func prepareArtwork(for episode: Episode) {
-        guard let artworkURL = episode.artworkURL else {
+    private func prepareArtwork(for episode: Episode, artworkURL: URL?) {
+        guard let artworkURL else {
             artworkTask?.cancel()
             artworkTask = nil
             currentArtwork = nil

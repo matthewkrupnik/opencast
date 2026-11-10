@@ -9,14 +9,22 @@ nonisolated final class MediaSessionArtworkRequest: Sendable {
     private let task: Task<CGImage, Error>
 
     @MainActor
-    init(id: String, url: URL, loader: any NowPlayingArtworkLoading) {
+    init(id: String, url: URL, fallbackURL: URL? = nil, loader: any NowPlayingArtworkLoading) {
         self.id = id
         task = Task { @MainActor in
+            @MainActor func load(_ url: URL) async throws -> MPMediaItemArtwork {
+                if let cached = loader.cachedArtwork(for: url) {
+                    return cached
+                }
+                return try await loader.artwork(for: url)
+            }
             let artwork: MPMediaItemArtwork
-            if let cached = loader.cachedArtwork(for: url) {
-                artwork = cached
-            } else {
-                artwork = try await loader.artwork(for: url)
+            do {
+                artwork = try await load(url)
+            } catch let error where !(error is CancellationError) {
+                // Chapter art that fails to load shows the episode artwork.
+                guard let fallbackURL else { throw error }
+                artwork = try await load(fallbackURL)
             }
             try Task.checkCancellation()
             let image = artwork.image(at: artwork.bounds.size)

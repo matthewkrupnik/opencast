@@ -7,6 +7,8 @@ struct PlaybackMediaSessionValues: Equatable {
     let showName: String
     let releaseDate: Date?
     let artworkURL: URL?
+    /// The episode artwork, when chapter art is what `artworkURL` names.
+    let fallbackArtworkURL: URL?
     let duration: TimeInterval?
     let elapsedTime: TimeInterval
     let defaultPlaybackRate: Float
@@ -18,7 +20,8 @@ struct PlaybackMediaSessionValues: Equatable {
         title = episode.title
         showName = episode.podcastTitle
         releaseDate = episode.publishedAt
-        artworkURL = episode.artworkURL
+        artworkURL = snapshot.displayArtworkURL
+        fallbackArtworkURL = artworkURL == episode.artworkURL ? nil : episode.artworkURL
         duration = snapshot.bestFiniteDuration(preferring: resolvedDuration)
         elapsedTime = clampPlaybackPosition(snapshot.position, to: duration)
         defaultPlaybackRate = snapshot.rate.isFinite && snapshot.rate > 0 ? snapshot.rate : 1

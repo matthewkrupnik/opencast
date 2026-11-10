@@ -12,7 +12,8 @@ public enum FeedResourcePolicy {
     public static let chunkBytes = 64 * 1_024
     public static let importBatchRows = 256
     public static let importBatchTextBytes = 1_024 * 1_024
-    public static let processingVersion = 2
+    /// 3: inline Podlove chapters are kept, so cached feeds are parsed again.
+    public static let processingVersion = 3
 }
 
 public enum FeedIncompleteReason: Codable, Hashable, Sendable {
