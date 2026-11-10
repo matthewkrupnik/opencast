@@ -38,8 +38,9 @@ struct OpenCastRootLayerView<Content: View>: View {
                 .accessibilityHidden(isNowPlayingPresented)
 
             // Prepare the card with the playback surface instead of rebuilding
-            // its view graph on every tap. Hidden content stops observing clocks
-            // and progress; dismissal resets its transient interaction state.
+            // it on every tap. The player inside the card mounts only while it
+            // is presented, so its controls leave the accessibility tree with
+            // it; dismissal resets the card's transient interaction state.
             if appModel.hasNowPlayingPresentationContent {
                 NowPlayingOverlayView(
                     onDismissed: onDismissNowPlaying,

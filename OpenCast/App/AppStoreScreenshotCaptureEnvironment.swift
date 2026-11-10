@@ -11,8 +11,4 @@ extension EnvironmentValues {
     /// Keeps Now Playing's "Skipped promo" pill on screen for the ad-skip
     /// hero shot (`--opencast-pin-app-store-autoskip-pill`).
     @Entry var pinsAppStoreAutoSkipPill = false
-
-    /// Seeds the Sound Lab reveal at a fixed progress so a mid-slide pose can
-    /// be captured as a still (`OPENCAST_PIN_APP_STORE_SOUND_LAB_REVEAL`).
-    @Entry var appStoreSoundLabRevealProgress: Double?
 }

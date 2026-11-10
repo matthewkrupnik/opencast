@@ -7,6 +7,8 @@ struct NowPlayingAutoSkipFeedbackView: View {
     @Environment(\.pinsAppStoreAutoSkipPill) private var pinsAutoSkipPill
     @State private var feedback = 0
     @State private var showsPill = false
+    /// Whether the pill is up, for the host's status slot.
+    @Binding var isShowingPill: Bool
 
     var body: some View {
         ZStack {
@@ -16,6 +18,9 @@ struct NowPlayingAutoSkipFeedbackView: View {
             }
         }
         .sensoryFeedback(.impact(flexibility: .soft), trigger: feedback)
+        .onChange(of: showsPill || pinsAutoSkipPill, initial: true) { _, isShowing in
+            isShowingPill = isShowing
+        }
         .onChange(of: appModel.playback.lastAutoSkipEvent, initial: true) { _, event in
             guard event != nil, appModel.isNowPlayingPresented else { return }
             feedback += 1

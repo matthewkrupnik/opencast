@@ -28,7 +28,6 @@ final class OpenCastUITests: XCTestCase {
     private static let nowPlayingSourceIdentifier = "Now Playing Source"
     /// The system sheet grabber's accessibility value at the large detent.
     private static let largeDetentGrabberValue = "Expanded"
-    private static let soundLabTranscriptActionIdentifier = "Now Playing Sound Lab Transcript Action"
     private static let seedVoiceBoostModeEnvironmentKey = "OPENCAST_SEED_VOICE_BOOST_MODE"
     private static let seedAdDetectionModeEnvironmentKey = "OPENCAST_SEED_AD_DETECTION_MODE"
     private static let cloudAdDetectionModeValue = "cloud"
@@ -39,8 +38,6 @@ final class OpenCastUITests: XCTestCase {
     private static let liveAdAnalysisResponsePathEnvironmentKey = "OPENCAST_SEED_LIVE_AD_ANALYSIS_RESPONSE_PATH"
     private static let adFreePassPresentationOverrideEnvironmentKey = "OPENCAST_UI_TEST_AD_FREE_PASS_STAGE"
     private static let seedAdAnalysisSpanAtStartEnvironmentKey = "OPENCAST_SEED_AD_ANALYSIS_SPAN_AT_START"
-    private static let soundLabLaunchHoldEnvironmentKey =
-        "OPENCAST_UI_TEST_SOUND_LAB_LAUNCH_HOLD_MILLISECONDS"
     private static let perEpisodeVoiceBoostModeValue = "perEpisode"
     private static let playEpisodeTraceArmingSecondsEnvironmentKey = "OPENCAST_PLAY_EPISODE_TRACE_ARMING_SECONDS"
     private static let nowPlayingDismissTraceArmingSecondsEnvironmentKey = "OPENCAST_NOW_PLAYING_DISMISS_TRACE_ARMING_SECONDS"
@@ -2734,112 +2731,20 @@ final class OpenCastUITests: XCTestCase {
     }
 
     @MainActor
-    func testSeededNowPlayingArtworkSlideOpensSoundLabPanel() throws {
-        let app = makeSeededApp()
-        app.launch()
-
-        assertExists(app.tabBars.buttons["Library"], named: "Library tab")
-        openAllPlaylist(in: app)
-
-        let inboxEpisode = seededEpisodeRow(in: app)
-        assertExists(inboxEpisode, named: "seeded inbox episode")
-        inboxEpisode.tap()
-
-        assertNowPlayingOverlay(in: app)
-        revealNowPlayingSoundLab(in: app)
-
-        assertNowPlayingOverlay(in: app)
-        assertExists(nowPlayingSoundLabPanel(in: app), named: "Now Playing Sound Lab panel")
-        assertExists(app.switches["Voice Boost"], named: "Voice Boost Sound Lab toggle")
-        XCTAssertFalse(app.buttons["Smart Speed"].exists)
-        XCTAssertFalse(app.buttons["Skip Intros"].exists)
-        XCTAssertFalse(app.buttons["Show Alerts"].exists)
-    }
-
-    @MainActor
-    func testSeededNowPlayingArtworkSlideClosesSoundLabPanel() throws {
-        let app = makeSeededApp()
-        app.launch()
-
-        assertExists(app.tabBars.buttons["Library"], named: "Library tab")
-        openAllPlaylist(in: app)
-
-        let inboxEpisode = seededEpisodeRow(in: app)
-        assertExists(inboxEpisode, named: "seeded inbox episode")
-        inboxEpisode.tap()
-
-        assertNowPlayingOverlay(in: app)
-        revealNowPlayingSoundLab(in: app)
-        assertExists(nowPlayingSoundLabPanel(in: app), named: "Now Playing Sound Lab panel")
-
-        closeNowPlayingSoundLab(in: app)
-
-        assertNowPlayingOverlay(in: app)
-        XCTAssertTrue(nowPlayingSoundLabPanel(in: app).absentOrWait(timeout: 5))
-        XCTAssertFalse(app.switches["Voice Boost"].exists)
-    }
-
-    @MainActor
-    func testSeededNowPlayingArtworkTapClosesSoundLabPanel() throws {
-        let app = makeSeededApp()
-        app.launch()
-
-        assertExists(app.tabBars.buttons["Library"], named: "Library tab")
-        openAllPlaylist(in: app)
-
-        let inboxEpisode = seededEpisodeRow(in: app)
-        assertExists(inboxEpisode, named: "seeded inbox episode")
-        inboxEpisode.tap()
-
-        assertNowPlayingOverlay(in: app)
-        revealNowPlayingSoundLab(in: app)
-        assertExists(nowPlayingSoundLabPanel(in: app), named: "Now Playing Sound Lab panel")
-
-        nowPlayingArtwork(in: app).tap()
-
-        assertNowPlayingOverlay(in: app)
-        XCTAssertTrue(nowPlayingSoundLabPanel(in: app).absentOrWait(timeout: 5))
-        XCTAssertFalse(app.switches["Voice Boost"].exists)
-    }
-
-    @MainActor
-    func testSeededNowPlayingArtworkTapOpensSoundLabPanel() throws {
-        let app = makeSeededApp()
-        app.launch()
-
-        openSeededNowPlaying(in: app)
-        nowPlayingArtwork(in: app).tap()
-
-        assertNowPlayingOverlay(in: app)
-        assertExists(nowPlayingSoundLabPanel(in: app), named: "Now Playing Sound Lab panel")
-        assertExists(app.switches["Voice Boost"], named: "Voice Boost Sound Lab toggle")
-
-        // Only the hidden square's 1 pt offset keeps this order under a legacy panel.
-        let identifiers = nowPlayingOverlay(in: app)
-            .descendants(matching: .any)
-            .allElementsBoundByIndex.map(\.identifier)
-        let artworkIndex = try XCTUnwrap(identifiers.firstIndex(of: "Now Playing Artwork"))
-        let panelIndex = try XCTUnwrap(identifiers.firstIndex(of: "Now Playing Sound Lab"))
-        XCTAssertLessThan(artworkIndex, panelIndex)
-    }
-
-    @MainActor
     func testSeededNowPlayingReopenResetsTransientControls() throws {
         let app = makeSeededApp()
         app.launch()
-        openSeededNowPlayingSoundLab(in: app)
+        openSeededNowPlaying(in: app)
 
         let initialProgress = try XCTUnwrap(playbackProgress(in: app).value as? String)
         dismissNowPlayingOverlay(in: app)
         XCTAssertFalse(playbackProgress(in: app).exists, "Prepared player controls must be hidden from accessibility")
-        XCTAssertFalse(nowPlayingSoundLabPanel(in: app).exists)
 
         app.tabBars.buttons["Settings"].tap()
         app.tabBars.buttons["Library"].tap()
         app.buttons["Open Now Playing"].tap()
         assertNowPlayingOverlay(in: app)
-        XCTAssertFalse(nowPlayingSoundLabPanel(in: app).exists, "Sound Lab must reopen closed")
-        XCTAssertFalse(app.switches["Voice Boost"].exists)
+        XCTAssertFalse(app.switches["Voice Boost"].exists, "The Audio sheet must not reopen with the card")
 
         let progress = playbackProgress(in: app)
         let advanced = NSPredicate { object, _ in
@@ -2852,105 +2757,17 @@ final class OpenCastUITests: XCTestCase {
             .completed,
             "Reopened progress must reflect playback while the card was hidden"
         )
-        nowPlayingArtwork(in: app).tap()
-        assertExists(nowPlayingSoundLabPanel(in: app), named: "Sound Lab after reopening")
     }
 
     @MainActor
-    func testSeededSoundLabStaysOpenWhenPlaylistAdvances() throws {
-        // The queue seed adds the Queued UI Episodes to the feed; only a
-        // start from a playlist plays on after the episode ends.
-        let app = makeSeededApp(seedsUpNextQueue: true, audioDurationSeconds: 25)
-        app.launch()
-        openAllPlaylist(in: app)
-        let row = seededEpisodeRow(in: app)
-        assertExists(row, named: "seeded All Episodes row")
-        row.tap()
-        assertNowPlayingOverlay(in: app)
-        revealNowPlayingSoundLab(in: app)
-        assertExists(nowPlayingSoundLabPanel(in: app), named: "Now Playing Sound Lab panel")
-
-        let title = app.buttons["Now Playing Episode Title"]
-        let advanced = NSPredicate(format: "label == %@", "Queued UI Episode 1")
-        XCTAssertEqual(
-            XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: advanced, object: title)], timeout: 35),
-            .completed,
-            "Natural completion should advance to the next episode in the playlist"
-        )
-        XCTAssertTrue(nowPlayingSoundLabPanel(in: app).exists, "Auto-advance must preserve the open Sound Lab")
-        assertHittable(app.switches["Voice Boost"], named: "Voice Boost after auto-advance")
-        nowPlayingArtwork(in: app).tap()
-        assertDoesNotExist(nowPlayingSoundLabPanel(in: app), named: "Sound Lab after closing on the next episode")
-    }
-
-    @MainActor
-    func testSeededSoundLabAdActionAcknowledgesBeforeHeldLaunchPreparation() throws {
-        let app = makeSeededApp(seedsCompletedTranscript: true)
-        app.launchEnvironment[Self.soundLabLaunchHoldEnvironmentKey] =
-            optionalEnvironmentValue(Self.soundLabLaunchHoldEnvironmentKey) ?? "5000"
-        app.launch()
-
-        openSeededNowPlayingSoundLab(in: app)
-
-        let voiceBoost = app.switches["Voice Boost"]
-        let adAction = app.buttons.matching(identifier: "Skip Promos & Ads").firstMatch
-        let transcriptAction = app.buttons.matching(
-            identifier: Self.soundLabTranscriptActionIdentifier
-        ).firstMatch
-        for (control, name) in [
-            (voiceBoost, "Voice Boost"),
-            (adAction, "Skip Promos & Ads"),
-            (transcriptAction, "Show Transcript")
-        ] {
-            assertExists(control, named: "\(name) Sound Lab control")
-            if name == "Show Transcript" {
-                XCTAssertEqual(control.label, name)
-            }
-            XCTAssertTrue(control.isHittable, "\(name) should be hittable")
-            XCTAssertGreaterThanOrEqual(
-                control.frame.height,
-                43.99,
-                "\(name) should keep the 44-point tap target"
-            )
-        }
-        for title in ["Skip Promos & Ads", "Show Transcript"] {
-            let label = app.staticTexts[title]
-            assertExists(label, named: "complete \(title) label")
-            let intrinsicWidth = (title as NSString).size(
-                withAttributes: [
-                    .font: UIFont.preferredFont(forTextStyle: .subheadline)
-                ]
-            ).width
-            XCTAssertGreaterThanOrEqual(
-                label.frame.width + 1,
-                intrinsicWidth,
-                "\(title) should receive enough width to render without truncation"
-            )
-        }
-
-        adAction.tap()
-
-        let accepted = NSPredicate(format: "value CONTAINS[c] %@", "Queued")
-        expectation(for: accepted, evaluatedWith: adAction)
-        waitForExpectations(timeout: 2)
-        XCTAssertFalse(adAction.isEnabled)
-        XCTAssertTrue(
-            app.staticTexts["Skip Promos & Ads"].exists,
-            "The stable action title should not reflow while accepted"
-        )
-    }
-
-    @MainActor
-    func testSeededCompletedTranscriptSoundLabOpensTranscript() throws {
+    func testSeededCompletedTranscriptMoreMenuOpensTranscript() throws {
         let app = makeSeededApp(seedsCompletedTranscript: true)
         app.launch()
 
-        openSeededNowPlayingSoundLab(in: app)
-        let showTranscript = app.buttons.matching(
-            identifier: Self.soundLabTranscriptActionIdentifier
-        ).firstMatch
-        assertHittable(showTranscript, named: "Show Transcript Sound Lab row")
-        XCTAssertEqual(showTranscript.label, "Show Transcript")
+        openSeededNowPlaying(in: app)
+        app.buttons["More Actions"].tap()
+        let showTranscript = app.buttons["Show Transcript"]
+        assertHittable(showTranscript, named: "Show Transcript More item")
         showTranscript.tap()
 
         assertExists(app.staticTexts["Transcript"], named: "transcript sheet title")
@@ -2958,100 +2775,6 @@ final class OpenCastUITests: XCTestCase {
             app.buttons["Welcome to a deterministic transcript."],
             named: "seeded transcript line"
         )
-    }
-
-    @MainActor
-    func testSeededLocalSoundLabTranscriptionCompletesAndOpensTranscript() throws {
-        let app = makeSeededApp(
-            seedsCompletedDownload: true,
-            completesTranscriptRequests: true
-        )
-        app.launch()
-
-        openSeededNowPlayingSoundLab(in: app)
-        let transcriptAction = app.buttons.matching(
-            identifier: Self.soundLabTranscriptActionIdentifier
-        ).firstMatch
-        assertHittable(transcriptAction, named: "local Sound Lab transcript action")
-        XCTAssertEqual(transcriptAction.label, "Transcribe")
-        transcriptAction.tap()
-
-        assertExists(
-            app.descendants(matching: .any)["Transcription Progress Toast"],
-            named: "local transcription progress toast"
-        )
-        expectation(
-            for: NSPredicate(format: "label == %@", "Show Transcript"),
-            evaluatedWith: transcriptAction
-        )
-        waitForExpectations(timeout: 10)
-        assertHittable(transcriptAction, named: "completed Sound Lab transcript action")
-        transcriptAction.tap()
-
-        assertExists(app.staticTexts["Transcript"], named: "transcript sheet title")
-        assertExists(
-            app.buttons["Deterministic UI request transcript."],
-            named: "generated transcript line"
-        )
-    }
-
-    @MainActor
-    func testSeededNowPlayingAdFreePassControlStateScreenshots() throws {
-        // One relaunch per stage, so the run is long by design.
-        executionTimeAllowance = 600
-        // The fixed-footprint row never shows progress text or "Working";
-        // in-flight stages keep the stable title and expose status through
-        // the accessibility value.
-        let variants: [(stage: String, buttonLabel: String, statusFragment: String)] = [
-            ("idle", "Skip Promos & Ads", "Ready to mark"),
-            ("consent", "Download Model", "Speech model needed"),
-            ("downloading", "Skip Promos & Ads", "Downloading episode"),
-            ("installing", "Skip Promos & Ads", "Downloading speech model"),
-            ("checking", "Skip Promos & Ads", "Checking speech model"),
-            ("model-busy", "Skip Promos & Ads", "Speech model is not ready"),
-            ("transcribing", "Skip Promos & Ads", "Transcribing"),
-            ("analyzing", "Skip Promos & Ads", "Detecting ads"),
-            ("completed", "Reanalyze", "2 zones marked"),
-            ("outdated", "Skip Promos & Ads", "Outdated — run again"),
-            ("interrupted", "Resume", "Transcript interrupted"),
-            ("failed", "Retry", "Your provider is busy or at its limit"),
-            ("unavailable", "Skip Promos & Ads", "No episode playing")
-        ]
-
-        for variant in variants {
-            captureAdFreePassControlScreenshot(
-                stage: variant.stage,
-                buttonLabel: variant.buttonLabel,
-                statusFragment: variant.statusFragment,
-                screenshotName: "ad_free_pass_\(variant.stage)"
-            )
-        }
-    }
-
-    @MainActor
-    func testSeededLandscapeNowPlayingAdFreePassControlLayoutScreenshots() throws {
-        // One relaunch per stage, so the run is long by design.
-        executionTimeAllowance = 600
-        XCUIDevice.shared.orientation = .landscapeLeft
-        defer {
-            XCUIDevice.shared.orientation = .portrait
-        }
-
-        let variants: [(stage: String, buttonLabel: String, statusFragment: String)] = [
-            ("consent", "Download Model", "Speech model needed"),
-            ("installing", "Skip Promos & Ads", "Downloading speech model"),
-            ("transcribing", "Skip Promos & Ads", "Transcribing"),
-            ("failed", "Retry", "Your provider is busy or at its limit")
-        ]
-
-        for variant in variants {
-            captureAdFreePassControlScreenshot(
-                stage: variant.stage,
-                buttonLabel: variant.buttonLabel,
-                statusFragment: variant.statusFragment,
-                screenshotName: "ad_free_pass_landscape_\(variant.stage)"
-            )
-        }
     }
 
     @MainActor
@@ -3159,7 +2882,7 @@ final class OpenCastUITests: XCTestCase {
     }
 
     @MainActor
-    func testSeededStaleAdAnalysisSkipsNothingAndOffersRerun() throws {
+    func testSeededStaleAdAnalysisSkipsNothing() throws {
         let app = makeSeededApp(
             seedsCompletedTranscript: true,
             seedsStaleAdAnalysis: true
@@ -3171,16 +2894,6 @@ final class OpenCastUITests: XCTestCase {
         assertExists(progress, named: "Playback Progress control")
         _ = waitForPlaybackElapsed(progress, in: 4.2..<8.8, timeout: 8)
         assertDoesNotExist(autoSkipPill(in: app), named: "auto-skip feedback pill for stale analysis", timeout: 1)
-
-        revealNowPlayingSoundLab(in: app)
-        assertExists(nowPlayingSoundLabPanel(in: app), named: "Now Playing Sound Lab panel")
-        let passButton = app.buttons.matching(identifier: "Skip Promos & Ads").firstMatch
-        assertExists(passButton, named: "stale-analysis pass re-run button")
-        XCTAssertTrue(passButton.label.contains("Skip Promos & Ads"))
-        XCTAssertTrue(
-            ((passButton.value as? String) ?? "").contains("Outdated — run again"),
-            "stale-analysis re-run status should surface as the row's accessibility value"
-        )
         attachSmokeScreenshot(named: "seeded_stale_ad_analysis_offers_rerun")
     }
 
@@ -3211,7 +2924,7 @@ final class OpenCastUITests: XCTestCase {
     }
 
     @MainActor
-    func testSeededOutdatedPolicyAnalysisSkipsNothingAndOffersRerun() throws {
+    func testSeededOutdatedPolicyAnalysisSkipsNothing() throws {
         let app = makeSeededApp(
             seedsCompletedTranscript: true,
             seedsOutdatedPolicyAdAnalysis: true
@@ -3226,15 +2939,6 @@ final class OpenCastUITests: XCTestCase {
             autoSkipPill(in: app),
             named: "auto-skip feedback pill for outdated-policy analysis",
             timeout: 1
-        )
-
-        revealNowPlayingSoundLab(in: app)
-        assertExists(nowPlayingSoundLabPanel(in: app), named: "Now Playing Sound Lab panel")
-        let outdatedPassButton = app.buttons.matching(identifier: "Skip Promos & Ads").firstMatch
-        assertExists(outdatedPassButton, named: "outdated-policy pass re-run button")
-        XCTAssertTrue(
-            ((outdatedPassButton.value as? String) ?? "").contains("Outdated — run again"),
-            "outdated-policy re-run status should surface as the row's accessibility value"
         )
         attachSmokeScreenshot(named: "seeded_outdated_policy_ad_analysis_offers_rerun")
     }
@@ -3366,23 +3070,6 @@ final class OpenCastUITests: XCTestCase {
             "Playback should continue inside the disarmed pod instead of re-skipping."
         )
         attachSmokeScreenshot(named: "auto_skip_bug_episode_pill_undo_playthrough")
-    }
-
-    @MainActor
-    func testSeededNowPlayingArtworkSlideDragDoesNotDismissOrMoveCard() throws {
-        let app = makeSeededApp()
-        app.launch()
-
-        openSeededNowPlaying(in: app)
-        let overlay = nowPlayingOverlay(in: app)
-        let initialFrame = overlay.frame
-
-        revealNowPlayingSoundLab(in: app)
-
-        assertNowPlayingOverlay(in: app)
-        assertExists(nowPlayingSoundLabPanel(in: app), named: "Now Playing Sound Lab panel")
-        XCTAssertEqual(overlay.frame.minY, initialFrame.minY, accuracy: 6)
-        XCTAssertEqual(overlay.frame.height, initialFrame.height, accuracy: 6)
     }
 
     @MainActor
@@ -4297,69 +3984,17 @@ final class OpenCastUITests: XCTestCase {
         let app = makeSeededApp(seedsPerEpisodeVoiceBoost: true)
         app.launch()
 
-        openSeededNowPlayingSoundLab(in: app)
+        openSeededNowPlaying(in: app)
+        app.buttons["Audio"].tap()
 
         let voiceBoostToggle = app.switches["Voice Boost"]
-        assertExists(voiceBoostToggle, named: "Voice Boost Sound Lab toggle")
+        assertExists(voiceBoostToggle, named: "Voice Boost Audio sheet toggle")
         assertToggle(voiceBoostToggle, isOn: true)
         attachSmokeScreenshot(named: "now_playing_voice_boost_on")
 
         tapToggle(voiceBoostToggle, to: false)
         attachSmokeScreenshot(named: "now_playing_voice_boost_off")
 
-        tapToggle(voiceBoostToggle, to: true)
-    }
-
-    @MainActor
-    func testNowPlayingVoiceBoostSupportsLargeDynamicType() throws {
-        let app = makeSeededApp(
-            seedsPerEpisodeVoiceBoost: true,
-            preferredContentSizeCategoryName: "UICTContentSizeCategoryAccessibilityXXXL"
-        )
-        app.launch()
-
-        openSeededNowPlayingSoundLab(in: app)
-
-        let panel = nowPlayingSoundLabPanel(in: app)
-        let voiceBoostToggle = app.switches["Voice Boost"]
-        let adAction = app.buttons.matching(identifier: "Skip Promos & Ads").firstMatch
-        let transcriptAction = app.buttons.matching(
-            identifier: Self.soundLabTranscriptActionIdentifier
-        ).firstMatch
-        let header = app.staticTexts["Sound Lab"].firstMatch
-        assertToggle(voiceBoostToggle, isOn: true)
-        assertExists(adAction, named: "Skip Promos & Ads at Accessibility XXXL")
-        assertExists(transcriptAction, named: "transcript action at Accessibility XXXL")
-
-        let controls = [voiceBoostToggle, adAction, transcriptAction]
-        for control in controls {
-            XCTAssertTrue(control.isHittable, "\(control.label) should remain hittable")
-            XCTAssertGreaterThanOrEqual(control.frame.height, 43.99)
-            XCTAssertTrue(
-                panel.frame.contains(control.frame),
-                "\(control.label) should remain fully inside the Sound Lab panel"
-            )
-            if header.exists {
-                XCTAssertFalse(
-                    control.frame.intersects(header.frame),
-                    "\(control.label) should not overlap the Sound Lab header"
-                )
-            }
-        }
-        for firstIndex in controls.indices {
-            for secondIndex in controls.indices where secondIndex > firstIndex {
-                XCTAssertFalse(
-                    controls[firstIndex].frame.intersects(controls[secondIndex].frame),
-                    "Sound Lab controls should not overlap: \(controls[firstIndex].label) "
-                        + "\(controls[firstIndex].frame) and \(controls[secondIndex].label) "
-                        + "\(controls[secondIndex].frame)"
-                )
-            }
-        }
-
-        attachSmokeScreenshot(named: "now_playing_sound_lab_accessibility_xxxl")
-
-        tapToggle(voiceBoostToggle, to: false)
         tapToggle(voiceBoostToggle, to: true)
     }
 
@@ -7097,13 +6732,6 @@ final class OpenCastUITests: XCTestCase {
     }
 
     @MainActor
-    private func openSeededNowPlayingSoundLab(in app: XCUIApplication) {
-        openSeededNowPlaying(in: app)
-        revealNowPlayingSoundLab(in: app)
-        assertExists(nowPlayingSoundLabPanel(in: app), named: "Now Playing Sound Lab panel")
-    }
-
-    @MainActor
     private func openSeededNowPlaying(in app: XCUIApplication) {
         seededShowEpisodeRow(in: app).tap()
 
@@ -7214,24 +6842,6 @@ final class OpenCastUITests: XCTestCase {
     }
 
     @MainActor
-    private func revealNowPlayingSoundLab(in app: XCUIApplication) {
-        let artwork = nowPlayingArtwork(in: app)
-        assertExists(artwork, named: "Now Playing artwork before Sound Lab reveal")
-        let start = artwork.coordinate(withNormalizedOffset: CGVector(dx: 0.88, dy: 0.52))
-        let end = artwork.coordinate(withNormalizedOffset: CGVector(dx: 0.52, dy: 0.48))
-        start.press(forDuration: 0.10, thenDragTo: end)
-    }
-
-    @MainActor
-    private func closeNowPlayingSoundLab(in app: XCUIApplication) {
-        let artwork = nowPlayingArtwork(in: app)
-        assertExists(artwork, named: "Now Playing artwork before closing Sound Lab")
-        let start = artwork.coordinate(withNormalizedOffset: CGVector(dx: 0.22, dy: 0.52))
-        let end = start.withOffset(CGVector(dx: max(180, artwork.frame.width * 2.2), dy: 0))
-        start.press(forDuration: 0.06, thenDragTo: end)
-    }
-
-    @MainActor
     private func assertValue(
         of element: XCUIElement,
         contains expected: String,
@@ -7261,72 +6871,6 @@ final class OpenCastUITests: XCTestCase {
     @MainActor
     private func nowPlayingArtwork(in app: XCUIApplication) -> XCUIElement {
         app.descendants(matching: .any)["Now Playing Artwork"]
-    }
-
-    @MainActor
-    private func nowPlayingSoundLabPanel(in app: XCUIApplication) -> XCUIElement {
-        app.descendants(matching: .any)["Now Playing Sound Lab"]
-    }
-
-    @MainActor
-    private func assertAdFreePassControlSitsInProtectedPanelSpace(
-        _ element: XCUIElement,
-        panel: XCUIElement,
-        stage: String,
-        file: StaticString = #filePath,
-        line: UInt = #line
-    ) {
-        XCTAssertTrue(
-            panel.frame.contains(element.frame),
-            "\(stage) ad-free pass control should stay inside the Sound Lab panel",
-            file: file,
-            line: line
-        )
-        // Mirrors NowPlayingSoundLabLayout(panelWidth:): the artwork rail plus
-        // its gutter is the panel's protected leading space — controls must
-        // clear the rail, wherever layout tuning puts the row's own insets.
-        let artworkRailWidth = min(54, max(40, panel.frame.width * 0.18))
-        let protectedLeadingSpace = artworkRailWidth + 4
-        XCTAssertGreaterThanOrEqual(
-            element.frame.minX,
-            panel.frame.minX + protectedLeadingSpace - 0.5,
-            "\(stage) ad-free pass control should clear the artwork rail",
-            file: file,
-            line: line
-        )
-    }
-
-    @MainActor
-    private func captureAdFreePassControlScreenshot(
-        stage: String,
-        buttonLabel: String,
-        statusFragment: String,
-        screenshotName: String,
-        file: StaticString = #filePath,
-        line: UInt = #line
-    ) {
-        let app = makeSeededApp()
-        app.launchEnvironment[Self.adFreePassPresentationOverrideEnvironmentKey] = stage
-        app.launch()
-
-        openSeededNowPlayingSoundLab(in: app)
-        let panel = nowPlayingSoundLabPanel(in: app)
-        let passButton = app.buttons.matching(identifier: "Skip Promos & Ads").firstMatch
-
-        assertExists(passButton, named: "\(stage) ad-free pass button", file: file, line: line)
-        XCTAssertTrue(passButton.label.contains(buttonLabel), file: file, line: line)
-        // The row is fixed-footprint: no visible status line, so the status
-        // lives entirely in the accessibility value.
-        XCTAssertTrue(
-            ((passButton.value as? String) ?? "").contains(statusFragment),
-            "\(stage) ad-free pass button should expose its status as an accessibility value",
-            file: file,
-            line: line
-        )
-        assertAdFreePassControlSitsInProtectedPanelSpace(passButton, panel: panel, stage: stage, file: file, line: line)
-        attachSmokeScreenshot(named: screenshotName)
-
-        app.terminate()
     }
 
     @MainActor
@@ -8331,9 +7875,8 @@ final class OpenCastUITests: XCTestCase {
         nowPlayingOverlay(in: app).buttons.matching(identifier: Self.nowPlayingSourceIdentifier).firstMatch
     }
 
-    /// The pill sits at the bottom of the card, below the utility row, only
-    /// when the controls leave room for it. The pinned iPhone at the default
-    /// text size leaves about 100 pt, so it shows there.
+    /// On the pinned iPhone the pill sits in the status slot that leads the
+    /// card, above the episode title.
     @MainActor
     @discardableResult
     private func assertNowPlayingSourcePill(
@@ -8345,12 +7888,12 @@ final class OpenCastUITests: XCTestCase {
         let pill = nowPlayingSourcePill(in: app)
         assertHittable(pill, named: "Now Playing source pill", file: file, line: line)
         XCTAssertEqual(pill.label, expectedLabel, "Now Playing source pill label", file: file, line: line)
-        let sleepTimer = nowPlayingOverlay(in: app).buttons["Sleep Timer"].firstMatch
-        assertExists(sleepTimer, named: "Now Playing Sleep Timer control", file: file, line: line)
+        let title = nowPlayingOverlay(in: app).buttons["Now Playing Episode Title"].firstMatch
+        assertExists(title, named: "Now Playing episode title", file: file, line: line)
         XCTAssertLessThanOrEqual(
             pill.frame.maxY,
-            sleepTimer.frame.minY,
-            "The source pill should sit above the bottom toolbar; pill \(pill.frame), Sleep Timer \(sleepTimer.frame)",
+            title.frame.minY,
+            "The source pill should sit above the episode title; pill \(pill.frame), title \(title.frame)",
             file: file,
             line: line
         )

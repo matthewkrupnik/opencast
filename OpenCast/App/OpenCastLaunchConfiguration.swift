@@ -32,10 +32,8 @@ struct OpenCastLaunchConfiguration {
     /// UI-test seam: scripts PCC eligibility so the recap entries and the
     /// sheet's unavailable state can be exercised on a simulator.
     var uiTestTranscriptIntelligenceAvailability: TranscriptIntelligenceModelAvailability?
-    /// App Store screenshot pins: keep the "Skipped promo" pill on screen, and
-    /// seed the Sound Lab reveal at a fixed progress for a mid-slide still.
+    /// App Store screenshot pin: keep the "Skipped promo" pill on screen.
     var pinsAppStoreAutoSkipPill: Bool
-    var appStoreSoundLabRevealProgress: Double?
     var uiTestLibraryLoadDelayMilliseconds: Int?
     var uiTestCloudKitAccountStatus: SyncAccountStatus?
     /// UI-test seam: holds the fixed account status back, so a test can show
@@ -202,9 +200,6 @@ struct OpenCastLaunchConfiguration {
                 }
             }
             : []
-        let appStoreSoundLabRevealProgress = isUITesting
-            ? environment["OPENCAST_PIN_APP_STORE_SOUND_LAB_REVEAL"].flatMap(Double.init)
-            : nil
         let adFreePassPresentationOverride = isUITesting
             ? OpenCastUITestAdFreePassPresentationOverride.resolve(environment: environment)
             : nil
@@ -285,7 +280,6 @@ struct OpenCastLaunchConfiguration {
             adFreePassQueueOverride: adFreePassQueueOverride,
             uiTestTranscriptIntelligenceAvailability: uiTestTranscriptIntelligenceAvailability,
             pinsAppStoreAutoSkipPill: isUITesting && shouldPinAppStoreAutoSkipPill,
-            appStoreSoundLabRevealProgress: appStoreSoundLabRevealProgress,
             uiTestLibraryLoadDelayMilliseconds: uiTestLibraryLoadDelayMilliseconds,
             uiTestCloudKitAccountStatus: uiTestCloudKitAccountStatus,
             uiTestCloudKitAccountStatusDelayMilliseconds: uiTestCloudKitAccountStatusDelayMilliseconds,

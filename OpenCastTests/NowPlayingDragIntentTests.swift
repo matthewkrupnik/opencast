@@ -5,36 +5,14 @@ import Testing
 @MainActor
 @Suite("Now Playing drag intent")
 struct NowPlayingDragIntentTests {
-    @Test("Open Sound Lab yields vertical flicks to card dismissal")
-    func openSoundLabYieldsVerticalFlicksToCardDismissal() {
-        let translation = CGSize(width: 48, height: 72)
-
-        #expect(NowPlayingDragIntent.shouldSoundLabYieldToCardDismiss(translation: translation))
-        #expect(NowPlayingDragIntent.shouldStartCardDismiss(
-            translation: translation,
-            isSoundLabInteractionActive: true
-        ))
+    @Test("A mostly downward drag starts the card's dismiss drag")
+    func downwardDragStartsDismiss() {
+        #expect(NowPlayingDragIntent.shouldStartCardDismiss(translation: CGSize(width: 72, height: 54)))
     }
 
-    @Test("Active Sound Lab keeps horizontal drags for reveal interaction")
-    func activeSoundLabKeepsHorizontalDragsForRevealInteraction() {
-        let translation = CGSize(width: 72, height: 48)
-
-        #expect(!NowPlayingDragIntent.shouldSoundLabYieldToCardDismiss(translation: translation))
-        #expect(!NowPlayingDragIntent.shouldStartCardDismiss(
-            translation: translation,
-            isSoundLabInteractionActive: true
-        ))
+    @Test("A mostly sideways or upward drag does not")
+    func sidewaysOrUpwardDragDoesNotStartDismiss() {
+        #expect(!NowPlayingDragIntent.shouldStartCardDismiss(translation: CGSize(width: 90, height: 54)))
+        #expect(!NowPlayingDragIntent.shouldStartCardDismiss(translation: CGSize(width: 0, height: -40)))
     }
-
-    @Test("Closed card keeps existing permissive dismiss angle")
-    func closedCardKeepsExistingPermissiveDismissAngle() {
-        let translation = CGSize(width: 72, height: 54)
-
-        #expect(NowPlayingDragIntent.shouldStartCardDismiss(
-            translation: translation,
-            isSoundLabInteractionActive: false
-        ))
-    }
-
 }

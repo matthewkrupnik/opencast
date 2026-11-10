@@ -7,8 +7,6 @@ struct NowPlayingChaptersView: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(\.dismiss) private var dismiss
 
-    var host: NowPlayingSecondaryHost = .sheet
-
     var body: some View {
         let chapters = appModel.currentEpisodeChapters
         let current = chapters.chapter(at: appModel.playback.position)
@@ -64,11 +62,9 @@ struct NowPlayingChaptersView: View {
             .navigationTitle("Chapters")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                if host.showsDoneButton {
-                    ToolbarItem(placement: .confirmationAction) {
-                        Button("Done") {
-                            dismiss()
-                        }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Done") {
+                        dismiss()
                     }
                 }
             }
@@ -78,8 +74,6 @@ struct NowPlayingChaptersView: View {
 
     private func select(_ chapter: EpisodeChapter, in chapters: PlaybackChapterList) {
         appModel.seekCurrentEpisode(toChapter: chapter, in: chapters, modelContext: modelContext)
-        if host.dismissesAfterSelection {
-            dismiss()
-        }
+        dismiss()
     }
 }

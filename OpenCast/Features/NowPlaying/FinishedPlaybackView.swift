@@ -2,45 +2,38 @@ import SwiftUI
 
 struct FinishedPlaybackView: View {
     @AccessibilityFocusState private var isFinishedStatusAccessibilityFocused: Bool
-    @State private var titleBlockHeight: CGFloat?
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     let presentation: FinishedPlaybackPresentation
-    let metrics: NowPlayingContentMetrics
+    let artworkSide: CGFloat
     let onReplay: () -> Void
     let onDone: () -> Void
 
     var body: some View {
-        VStack(spacing: metrics.contentSpacing) {
+        let isAccessibilitySize = dynamicTypeSize.isAccessibilitySize
+        VStack(spacing: 12) {
             ArtworkPlaceholder(
                 title: presentation.episode.podcastTitle,
                 imageURL: presentation.episode.artworkURL,
-                size: metrics.artworkUpperBound,
+                size: artworkSide,
                 cacheKind: .episode,
                 preview: presentation.episode.artworkPreview
             )
 
-            VStack(spacing: metrics.metadataSpacing) {
+            VStack(spacing: 6) {
                 Text(presentation.episode.title)
-                    .font(metrics.titleFont)
+                    .font(isAccessibilitySize ? .headline : .title2)
                     .multilineTextAlignment(.center)
-                    .lineLimit(metrics.titleLineLimit)
-                    .minimumScaleFactor(metrics.titleMinimumScaleFactor)
+                    .lineLimit(isAccessibilitySize ? 3 : 2)
                     .fixedSize(horizontal: false, vertical: true)
 
                 Text(presentation.episode.podcastTitle)
-                    .font(metrics.podcastFont)
+                    .font(isAccessibilitySize ? .subheadline : .title3)
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
-                    .lineLimit(metrics.podcastLineLimit)
-                    .minimumScaleFactor(metrics.podcastMinimumScaleFactor)
+                    .lineLimit(isAccessibilitySize ? 2 : 1)
                     .fixedSize(horizontal: false, vertical: true)
             }
-            .onGeometryChange(for: CGFloat.self) { geometry in
-                geometry.size.height
-            } action: { height in
-                titleBlockHeight = height
-            }
-            .padding(.top, metrics.finishedTitleBlockTopSpacer(titleBlockHeight: titleBlockHeight))
 
             Label("Finished", systemImage: "checkmark.circle.fill")
                 .font(.headline)
@@ -64,13 +57,6 @@ struct FinishedPlaybackView: View {
             }
             .padding(.top, 8)
         }
-        .frame(maxWidth: metrics.contentWidth)
-        .padding(.leading, metrics.leadingPadding)
-        .padding(.trailing, metrics.trailingPadding)
-        .padding(.top, metrics.topContentPadding)
-        .padding(.bottom, metrics.bottomContentPadding)
-        .frame(maxWidth: .infinity)
-        .frame(minHeight: metrics.containerHeight, alignment: .top)
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Finished")
         .accessibilityIdentifier("Finished Playback")

@@ -86,11 +86,6 @@ final class AppStoreScreenshotUITests: XCTestCase {
             .ipad: "app_store_03_transcript",
             .duoOuter: "app_store_02_duoOuter_transcript"
         ],
-        "sound_lab": [
-            .iphone: "app_store_03_sound_lab",
-            .ipad: "app_store_06_sound_lab",
-            .duoOuter: "app_store_03_duoOuter_sound_lab"
-        ],
         "search": [
             .iphone: "app_store_04_search",
             .ipad: "app_store_04_search",
@@ -144,7 +139,7 @@ final class AppStoreScreenshotUITests: XCTestCase {
     }
 
     // Capture order differs from App Store order. One base launch carries the
-    // library, transcript, chapters, pipeline, search, and Sound Lab
+    // library, transcript, chapters, pipeline and search
     // frames; the ad-skip hero, the welcome page, and the notification each
     // relaunch with their own flag so a pinned pill or forced onboarding
     // never leaks into another frame. The notification goes last so its
@@ -160,7 +155,7 @@ final class AppStoreScreenshotUITests: XCTestCase {
         app.launchEnvironment[Self.queueOverrideEnvironmentKey] = "transcribing:\(Self.pipelineEpisodeID)"
         app.launchEnvironment[Self.queueOverrideProgressEnvironmentKey] = "1822/2940"
 
-        if ["transcript", "chapters", "library", "pipeline", "search", "sound_lab"].contains(where: { wants($0) }) {
+        if ["transcript", "chapters", "library", "pipeline", "search"].contains(where: { wants($0) }) {
             launch(app)
             startPrimaryEpisodePlayback(in: app)
             seekIntoSponsorRead(in: app)
@@ -204,19 +199,6 @@ final class AppStoreScreenshotUITests: XCTestCase {
             if wants("search") {
                 performLibrarySearch(in: app)
                 capture("search")
-            }
-
-            // The mini player stays reachable under the search results, so the
-            // Sound Lab closes the base launch and nothing after the search needs
-            // the tab bar (the iPhone bar morphs into the search field; the iPad
-            // bar hides outright).
-            if wants("sound_lab") {
-                openNowPlayingFromMiniPlayer(in: app)
-                revealNowPlayingSoundLab(in: app)
-                assertExists(nowPlayingSoundLab(in: app), named: "Now Playing Sound Lab panel")
-                assertSeededSkipZonesMarked(in: app)
-                assertCompletedTranscriptReady(in: app)
-                capture("sound_lab")
             }
         }
 
@@ -294,20 +276,11 @@ final class AppStoreScreenshotUITests: XCTestCase {
         assertExists(app.descendants(matching: .any)["Skipped promo"], named: "pinned Skipped promo pill (dark)")
         attachAppStoreScreenshot(named: "bakeoff_dark_01_skip")
 
-        // Sound Lab pinned mid-slide.
         app.launchArguments.removeAll { $0 == Self.autoSkipPillArgument || $0 == "--opencast-force-dark-mode" }
         app.launchEnvironment.removeValue(forKey: "OPENCAST_FORCE_DARK_MODE")
         app.launchArguments.append("--opencast-force-light-mode")
-        app.launchEnvironment["OPENCAST_PIN_APP_STORE_SOUND_LAB_REVEAL"] = "0.7"
-        app.launch()
-        startPrimaryEpisodePlayback(in: app)
-        seekIntoSponsorRead(in: app)
-        pausePlayback(in: app)
-        assertExists(nowPlayingSoundLab(in: app), named: "pinned mid-slide Sound Lab panel")
-        attachAppStoreScreenshot(named: "bakeoff_sound_lab_mid")
 
         // Ad Detection queue in Downloads with one running and two pending items.
-        app.launchEnvironment.removeValue(forKey: "OPENCAST_PIN_APP_STORE_SOUND_LAB_REVEAL")
         app.launchEnvironment[Self.queueOverrideEnvironmentKey] =
             "transcribing:\(Self.pipelineEpisodeID)|app-store-kitchen-table-episode-2|app-store-half-time-episode-2"
         app.launchEnvironment[Self.queueOverrideProgressEnvironmentKey] = "1822/2940"
@@ -802,14 +775,6 @@ final class AppStoreScreenshotUITests: XCTestCase {
         _ = app.buttons["Play"].firstMatch.existsOrWait(timeout: 3)
     }
 
-    @MainActor
-    private func openNowPlayingFromMiniPlayer(in app: XCUIApplication) {
-        let miniPlayer = miniPlayer(in: app)
-        assertExists(miniPlayer, named: "mini player")
-        miniPlayer.tap()
-        assertNowPlayingOverlay(in: app)
-    }
-
     // MARK: - Navigation
 
     @MainActor
@@ -1045,45 +1010,9 @@ final class AppStoreScreenshotUITests: XCTestCase {
 
     // MARK: - Assertions
 
-    // Fails the lane loudly if the seeded analysis did not wire up as exactly
-    // three auto-skip zones — the guard behind both the marked Now Playing
-    // timeline and the Sound Lab shot.
-    @MainActor
-    private func assertSeededSkipZonesMarked(in app: XCUIApplication) {
-        let control = app.descendants(matching: .any)["Skip Promos & Ads"].firstMatch
-        assertExists(control, named: "Skip Promos & Ads control")
-        let expectation = XCTNSPredicateExpectation(
-            predicate: NSPredicate(format: "value == %@", "3 zones marked."),
-            object: control
-        )
-        XCTAssertEqual(
-            XCTWaiter.wait(for: [expectation], timeout: 5),
-            .completed,
-            "Skip Promos & Ads control should report \"3 zones marked.\" from the seeded analysis, got \(String(describing: control.value))"
-        )
-    }
-
-    @MainActor
-    private func assertCompletedTranscriptReady(in app: XCUIApplication) {
-        let control = app.descendants(matching: .any)["Show Transcript"].firstMatch
-        assertExists(control, named: "Show Transcript control")
-        XCTAssertTrue(control.isEnabled, "Show Transcript control should be ready to open")
-    }
-
     @MainActor
     private func assertNowPlayingOverlay(in app: XCUIApplication) {
         assertExists(nowPlayingOverlay(in: app), named: "Now Playing overlay")
-    }
-
-    // MARK: - Now Playing gestures
-
-    @MainActor
-    private func revealNowPlayingSoundLab(in app: XCUIApplication) {
-        let artwork = nowPlayingArtwork(in: app)
-        assertExists(artwork, named: "Now Playing artwork before Sound Lab reveal")
-        let start = artwork.coordinate(withNormalizedOffset: CGVector(dx: 0.88, dy: 0.52))
-        let end = artwork.coordinate(withNormalizedOffset: CGVector(dx: 0.52, dy: 0.48))
-        start.press(forDuration: 0.10, thenDragTo: end)
     }
 
     // MARK: - Elements
@@ -1151,16 +1080,6 @@ final class AppStoreScreenshotUITests: XCTestCase {
     @MainActor
     private func nowPlayingOverlay(in app: XCUIApplication) -> XCUIElement {
         app.descendants(matching: .any)["Now Playing"]
-    }
-
-    @MainActor
-    private func nowPlayingArtwork(in app: XCUIApplication) -> XCUIElement {
-        app.descendants(matching: .any)["Now Playing Artwork"]
-    }
-
-    @MainActor
-    private func nowPlayingSoundLab(in app: XCUIApplication) -> XCUIElement {
-        app.descendants(matching: .any)["Now Playing Sound Lab"]
     }
 
     @MainActor

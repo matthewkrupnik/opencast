@@ -18,10 +18,6 @@ struct OpenCastApp: App {
                     \.pinsAppStoreAutoSkipPill,
                     runtime.launchConfiguration.pinsAppStoreAutoSkipPill
                 )
-                .environment(
-                    \.appStoreSoundLabRevealProgress,
-                    runtime.launchConfiguration.appStoreSoundLabRevealProgress
-                )
                 .modelContainer(runtime.modelContainer)
                 .preferredColorScheme(preferredColorScheme)
         }

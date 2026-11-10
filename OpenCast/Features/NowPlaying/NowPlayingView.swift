@@ -14,38 +14,13 @@ struct NowPlayingView: View {
     @State private var notePlaybackSession: EpisodeNotePlaybackSession?
     @State private var noteDraft: EpisodeNoteDraft?
     @State private var utilitySheet: PlayerUtilitySheet?
-    @State private var soundLabHandoff: PlayerUtilitySheet.Handoff?
     @State private var isVoiceBoostEnabled = true
-    @State private var noticeGate = AnalysisKeyNoticeGate()
-    @State private var naturalContentHeight: CGFloat?
-    @State private var contentMeasurements = NowPlayingContentMeasurements()
-    /// Laptop's controls below the band, without an expanded pane.
-    @State private var foldedControlsHeight: CGFloat?
-    /// The visible toast's height, so its occlusion check uses its real
-    /// bounds; both toasts are at least this tall before the first reading.
-    @State private var toastHeight: CGFloat = 60
-    @State private var scrollPosition = ScrollPosition(edge: .top)
-    /// Laptop's controls scroll on their own below the band.
-    @State private var controlsScrollPosition = ScrollPosition(edge: .top)
-    @State private var scrolledAwayAreas: Set<ScrollArea> = []
-    @State private var secondaryPaneFrames: [SecondaryPaneSlot: CGRect] = [:]
-    @State private var isSecondaryPaneExpanded = false
-    /// The arrangement's pane style as it stands now, for work that finishes
-    /// after an await (a captured view value would be the old arrangement).
-    @State private var livePaneStyle = NowPlayingSecondaryPaneStyle.entryPointsOnly
-    @SceneStorage(NowPlayingSecondaryPane.sceneStorageKey) private var storedSecondaryPane: String?
+    /// The auto-skip pill is showing, so the source pill steps aside for it.
+    @State private var isAutoSkipPillVisible = false
     @ScaledMetric(relativeTo: .body) private var playButtonScaledDiameter = NowPlayingTransportControls.playButtonBaseDiameter
 
-    /// Today's card, or the player across a foldable scene's window-sized
-    /// surface; a split places each half from its own allocation instead.
-    let cardGeometry: NowPlayingCardGeometry
-    let arrangement: NowPlayingArrangement
-    let surface: NowPlayingSurface
-    @Binding var isSoundLabInteractionActive: Bool
-    @Binding var isContentScrolledToTop: Bool
-    /// Global frames where a drag belongs to the secondary pane, never to
-    /// the card's dismiss drag.
-    @Binding var dismissDragExcludedFrames: [CGRect]
+    /// The window's safe area as it falls on the card.
+    let safeAreaInsets: EdgeInsets
     let isTrackingDismissDrag: Bool
     let onDismiss: () -> Void
     let onOpenEpisode: () -> Void
@@ -53,457 +28,199 @@ struct NowPlayingView: View {
     let onOpenPlaylist: () -> Void
     let onStopPlayback: () -> Void
 
-    fileprivate enum ScrollArea {
-        case player
-        case media
-        case controls
-    }
+    /// The fixed row above the title: the source pill, or the auto-skip pill
+    /// or a toast laid over it.
+    private static let statusSlotHeight: CGFloat = NowPlayingSourcePill.height
+    /// The Finished screen's artwork.
+    private static let finishedArtworkSide: CGFloat = 240
 
-    fileprivate enum SecondaryPaneSlot {
-        case beside
-        case inline
-    }
-
-    // The presenters and the player's state live here, above the switch
-    // between arrangements, so a pose change re-lays the player out without
-    // dropping a sheet, an alert or a draft.
     var body: some View {
-        GeometryReader { proxy in
-            arrangedContent(size: proxy.size)
-                .tint(.accentColor)
-                .foregroundStyle(.primary)
-                .analysisKeyNotice(gate: noticeGate)
-                .sensoryFeedback(.impact(flexibility: .soft), trigger: playPauseFeedback)
-                .sensoryFeedback(.selection, trigger: skipFeedback)
-                .accessibilityAction(.escape) {
-                    onDismiss()
-                }
-                .sheet(item: $noteDraft, onDismiss: resumePlaybackAfterNote) { draft in
-                    AddEpisodeNoteSheet(draft: draft)
-                        .modelContext(modelContext)
-                }
-                .sheet(item: $utilitySheet, onDismiss: completeSoundLabHandoff) { sheet in
-                    switch sheet {
-                    case .audio:
-                        NowPlayingAudioSheet(
-                            voiceBoostEnabled: $isVoiceBoostEnabled,
-                            voiceBoostControlEnabled: appModel.playbackSettings.canChangeCurrentEpisodeVoiceBoost
-                        )
-                            .environment(appModel)
-                            .modelContext(modelContext)
-                            .presentationDetents([.medium, .large])
-                            .presentationDragIndicator(.visible)
-                    case .sleep:
-                        SleepTimerView()
-                            .environment(appModel)
-                            .modelContext(modelContext)
-                            .presentationDetents([.medium, .large])
-                            .presentationDragIndicator(.visible)
-                    case .chapters:
-                        NowPlayingChaptersView()
-                            .environment(appModel)
-                            .modelContext(modelContext)
-                            .presentationDetents([.medium, .large])
-                            .presentationDragIndicator(.visible)
-                    case .notes:
-                        NavigationStack {
-                            if let episode = appModel.playback.currentEpisode {
-                                EpisodeNotesList(episode: EpisodeListItemSnapshot(episode: episode)) { timestamp in
-                                    playNote(at: timestamp, episodeID: episode.id.rawValue)
-                                }
-                                .navigationTitle("Private Notes")
-                                .navigationSubtitle(episode.title)
-                                .navigationBarTitleDisplayMode(.inline)
-                                .accessibilityAction(.escape) { utilitySheet = nil }
-                            } else {
-                                ContentUnavailableView("Nothing Playing", systemImage: "play.circle")
-                            }
-                        }
-                        .modelContext(modelContext)
-                        .presentationDetents([.medium, .large])
-                        .presentationDragIndicator(.visible)
-                    case .transcript:
-                        NavigationStack {
-                            if let currentEpisodeID {
-                                EpisodeTranscriptView(episodeID: currentEpisodeID)
-                            } else {
-                                ContentUnavailableView("Nothing Playing", systemImage: "play.circle")
-                            }
-                        }
-                        .environment(appModel)
-                        .modelContext(modelContext)
-                        .presentationDetents([.large])
-                        .presentationDragIndicator(.visible)
-                    case .history:
-                        NavigationStack {
-                            ListeningHistoryView()
-                        }
-                        .environment(appModel)
-                        .modelContext(modelContext)
-                        .presentationDetents([.medium, .large])
-                        .presentationDragIndicator(.visible)
-                    case .soundLab:
-                        NowPlayingSoundLabPanelHost(
-                            presentation: .sheet,
-                            voiceBoostEnabled: $isVoiceBoostEnabled,
-                            voiceBoostControlEnabled: appModel.playbackSettings.canChangeCurrentEpisodeVoiceBoost,
-                            onAdFreePassAction: handOffAdFreePass,
-                            onTranscriptAction: handOffTranscriptAction,
-                            onAdFreePassBackgroundProbe: startAdFreePassBackgroundProbe
-                        )
-                        .environment(appModel)
-                        .alert(
-                            "Sound Lab Error",
-                            item: soundLabError(whileSoundLabSheetShown: true)
-                        ) { _ in
-                        } message: { message in
-                            Text(message)
-                        }
-                        .accessibilityAction(.escape) { utilitySheet = nil }
-                        .presentationDetents([.medium, .large])
-                        .presentationDragIndicator(.visible)
-                    }
-                }
-                .onChange(of: appModel.isNowPlayingPresented) { _, isPresented in
-                    if !isPresented { resetPresentation() }
-                }
-                .onChange(of: appModel.playbackSettings.isVoiceBoostEnabled) { _, _ in
-                    syncVoiceBoostEnabledFromStore()
-                }
-                .onChange(of: isVoiceBoostEnabled) { _, newValue in
-                    applyVoiceBoostEnabled(newValue)
-                }
-                .task(id: currentEpisodeID) {
-                    syncVoiceBoostEnabledFromStore()
-                }
-                .onChange(of: arrangement.paneStyle, initial: true) { _, style in
-                    livePaneStyle = style
-                }
-                .alert(
-                    "Sound Lab Error",
-                    item: soundLabError(whileSoundLabSheetShown: false)
-                ) { _ in
-                } message: { message in
-                    Text(message)
-                }
-        }
-    }
-
-    /// Laptop's stack split around its band, or one container for the card,
-    /// the split and the tall open display: the player is its first child in
-    /// all three, so a change between them moves the player without
-    /// rebuilding it.
-    @ViewBuilder
-    private func arrangedContent(size: CGSize) -> some View {
-        if isFoldedLayout,
-           let fold = cardGeometry.horizontalFold,
-           let episode = appModel.playback.currentEpisode {
-            foldedPlayer(episode: episode, fold: fold, size: size)
-        } else {
-            let allocations = NowPlayingAllocations(
-                arrangement: arrangement,
-                bounds: size,
-                safeAreaInsets: surface.safeAreaInsets
-            )
-            let container = NowPlayingArrangementContainer(allocations: allocations)
-            container {
-                playerColumn(geometry: playerGeometry(in: allocations.player), size: allocations.player.size)
-
-                if let pane = allocations.pane {
-                    NowPlayingSecondaryPaneView(
-                        selection: secondaryPaneSelection,
-                        content: secondaryPresentation.content,
-                        contentInsets: surface.paneGeometry(allocation: pane).contentInsets
-                    )
-                    .reportsSecondaryPaneFrame(slot: .beside, update: updateSecondaryPaneFrame)
-                }
+        content
+            .tint(.accentColor)
+            .foregroundStyle(.primary)
+            .sensoryFeedback(.impact(flexibility: .soft), trigger: playPauseFeedback)
+            .sensoryFeedback(.selection, trigger: skipFeedback)
+            .accessibilityAction(.escape) {
+                onDismiss()
             }
-        }
+            .sheet(item: $noteDraft, onDismiss: resumePlaybackAfterNote) { draft in
+                AddEpisodeNoteSheet(draft: draft)
+                    .modelContext(modelContext)
+            }
+            .sheet(item: $utilitySheet) { sheet in
+                utilitySheetContent(sheet)
+            }
+            .onChange(of: appModel.isNowPlayingPresented) { _, isPresented in
+                if !isPresented { resetPresentation() }
+            }
+            .onChange(of: appModel.playbackSettings.isVoiceBoostEnabled) { _, _ in
+                syncVoiceBoostEnabledFromStore()
+            }
+            .onChange(of: isVoiceBoostEnabled) { _, newValue in
+                applyVoiceBoostEnabled(newValue)
+            }
+            .task(id: currentEpisodeID) {
+                syncVoiceBoostEnabledFromStore()
+            }
+            .alert(
+                "Playback Settings Error",
+                item: playbackSettingsError
+            ) { _ in
+            } message: { message in
+                Text(message)
+            }
     }
 
-    /// Today's card where the arrangement is the card; on a window-sized
-    /// surface, the player placed from its allocation.
-    private func playerGeometry(in allocation: CGRect) -> NowPlayingCardGeometry {
-        arrangement.usesWindowSizedSurface ? surface.playerGeometry(allocation: allocation) : cardGeometry
-    }
+    // MARK: Layout
 
-    /// The whole stack in one scroll view: today's card, the player beside
-    /// the pane, and the tall open display with the pane's row below the
-    /// controls.
     @ViewBuilder
-    private func playerColumn(geometry: NowPlayingCardGeometry, size: CGSize) -> some View {
-        let metrics = NowPlayingContentMetrics(
-            containerSize: size,
-            cardGeometry: geometry,
-            dynamicTypeSize: dynamicTypeSize,
-            horizontalSizeClass: horizontalSizeClass,
-            measurements: contentMeasurements,
-            // The artwork gives up the source pill's room, so a playlist
-            // start always shows where it came from.
-            reservedBottomHeight: appModel.currentPlaylistSource == nil ? 0 : NowPlayingSourcePill.minimumSpareHeight
-        )
-        let presentation = secondaryPresentation
-        let paneHeight = NowPlayingSecondaryPanePresentation.inlineHeight(
-            viewportHeight: size.height - geometry.contentInsets.top - geometry.contentInsets.bottom
-        )
-        let paneAllowance = presentation.isExpanded ? paneHeight + metrics.contentSpacing : 0
-        // Everything in the stack that is not a measured row.
-        let unmeasuredStackHeight = metrics.artworkSize
-            + metrics.titleBlockTopSpacer
-            + metrics.progressSectionTopSpacer
-            + paneAllowance
-        ScrollView {
-            if let episode = appModel.playback.currentEpisode {
-                VStack(spacing: metrics.contentSpacing) {
-                    if metrics.titleLeadsStack {
-                        titleBlock(for: episode, metrics: metrics)
-                            .layoutPriority(0)
-                    }
-
-                    artwork(
-                        for: episode,
-                        size: metrics.artworkSize,
-                        openContext: NowPlayingSoundLabOpenPanel.CardContext(
-                            cardGeometry: geometry,
-                            contentWidth: metrics.contentWidth,
-                            viewport: CGRect(origin: .zero, size: size)
-                        )
-                    )
-
-                    if !metrics.titleLeadsStack {
-                        titleBlock(for: episode, metrics: metrics)
-                            .padding(.top, metrics.titleBlockTopSpacer)
-                            .layoutPriority(0)
-                    }
-
-                    progressSection(for: episode)
-                        .padding(.top, metrics.progressSectionTopSpacer + metrics.artworkProgressGap)
-                        .layoutPriority(2)
-
-                    failureBlock
-
-                    transport(containerHeight: size.height)
-
-                    secondaryDisclosure(presentation, paneHeight: paneHeight)
-
-                    toolbarRoom
-                }
-                .onGeometryChange(for: CGFloat.self) { geometry in
-                    geometry.size.height - unmeasuredStackHeight
-                } action: { height in
-                    // Pixel rounding of the artwork moves this by a fraction
-                    // of a point; only a real change in the rows refits it.
-                    updateMeasurement(\.rowsHeight, to: height, tolerance: 1)
-                }
-                .frame(maxWidth: metrics.contentWidth)
-                .padding(.leading, metrics.leadingPadding)
-                .padding(.trailing, metrics.trailingPadding)
-                .padding(.top, metrics.topContentPadding)
-                .padding(.bottom, metrics.bottomContentPadding)
-                // Measured before the min-height frame and without the
-                // source pill, so showing the pill never moves this value.
-                .onGeometryChange(for: CGFloat.self) { geometry in
-                    geometry.size.height
-                } action: { height in
-                    updateNaturalContentHeight(height)
-                }
-                .frame(maxWidth: .infinity)
-                .frame(minHeight: metrics.containerHeight, alignment: .top)
-                .overlay(alignment: .bottom) {
-                    bottomBar(
-                        spareHeight: naturalContentHeight.map { metrics.containerHeight - $0 },
-                        metrics: metrics,
-                        bottomPadding: metrics.bottomContentPadding
-                    )
-                }
-                .animation(
-                    accessibilityReduceMotion ? nil : .easeOut(duration: 0.2),
-                    value: isPlaybackFailed
-                )
-            } else if let finishedPlaybackPresentation = appModel.finishedPlaybackPresentation {
+    private var content: some View {
+        if !appModel.isNowPlayingPresented {
+            // The card is off screen: nothing is mounted, so none of its
+            // controls stay in the accessibility tree. It builds again as the
+            // card starts to present.
+            Color.clear
+        } else if let episode = appModel.playback.currentEpisode {
+            player(for: episode)
+        } else if let finishedPlaybackPresentation = appModel.finishedPlaybackPresentation {
+            ScrollView {
                 FinishedPlaybackView(
                     presentation: finishedPlaybackPresentation,
-                    metrics: metrics,
+                    artworkSide: Self.finishedArtworkSide,
                     onReplay: replayFinishedPlayback,
                     onDone: onDismiss
                 )
-            } else {
-                ContentUnavailableView("Nothing Playing", systemImage: "play.circle")
-                    .padding()
+                .contentFrame(width: contentWidth)
+                .padding(contentInsets)
             }
-        }
-        .scrollIndicators(.hidden)
-        .scrollPosition($scrollPosition)
-        .scrollDisabled(isTrackingDismissDrag)
-        .tracksScrolledToTop(area: .player, update: updateScrolledToTop)
-        .coordinateSpace(.named(NowPlayingSoundLabOpenPanel.CardContext.coordinateSpaceName))
-        .overlay(alignment: .top) {
-            autoSkipFeedback(geometry: geometry)
-        }
-        .overlay(alignment: .top) {
-            toast(geometry: geometry)
-        }
-        .animation(
-            accessibilityReduceMotion ? .easeOut(duration: 0.2) : .bouncy,
-            value: transcriptionRequest?.id
-        )
-    }
-
-    /// Laptop: one card across the band, the media in the viewport above it
-    /// and the controls in the viewport below it. Each scrolls on its own and
-    /// is clipped at the band.
-    @ViewBuilder
-    private func foldedPlayer(episode: Episode, fold: ClosedRange<CGFloat>, size: CGSize) -> some View {
-        let metrics = NowPlayingContentMetrics(
-            containerSize: size,
-            cardGeometry: cardGeometry,
-            dynamicTypeSize: dynamicTypeSize,
-            horizontalSizeClass: horizontalSizeClass,
-            measurements: contentMeasurements
-        )
-        let presentation = secondaryPresentation
-        let paneHeight = NowPlayingSecondaryPanePresentation.inlineHeight(
-            viewportHeight: size.height - fold.upperBound - cardGeometry.contentInsets.bottom
-        )
-        let paneAllowance = presentation.isExpanded ? paneHeight + metrics.contentSpacing : 0
-        let layout = NowPlayingFoldedLayout(
-            cardHeight: size.height,
-            fold: fold,
-            cardGeometry: cardGeometry,
-            artworkUpperBound: metrics.artworkUpperBound,
-            contentSpacing: metrics.contentSpacing,
-            isAccessibilitySize: dynamicTypeSize.isAccessibilitySize,
-            titleBlockHeight: contentMeasurements.titleBlockHeight,
-            controlsHeight: foldedControlsHeight,
-            expandedPaneHeight: paneAllowance
-        )
-        VStack(spacing: 0) {
-            ScrollView {
-                VStack(spacing: metrics.contentSpacing) {
-                    artwork(
-                        for: episode,
-                        size: layout.artworkSize,
-                        openContext: NowPlayingSoundLabOpenPanel.CardContext(
-                            cardGeometry: cardGeometry,
-                            contentWidth: metrics.contentWidth,
-                            viewport: CGRect(
-                                x: 0,
-                                y: layout.mediaViewport.lowerBound,
-                                width: size.width,
-                                height: layout.mediaViewportHeight
-                            )
-                        )
-                    )
-                    titleBlock(for: episode, metrics: metrics)
-                }
-                .frame(maxWidth: metrics.contentWidth)
-                .padding(.leading, metrics.leadingPadding)
-                .padding(.trailing, metrics.trailingPadding)
-                .padding(.top, layout.mediaTopPadding)
-                .padding(.bottom, layout.mediaBottomPadding)
-                .frame(maxWidth: .infinity)
-            }
-            .frame(height: layout.mediaViewportHeight)
             .scrollIndicators(.hidden)
-            .scrollPosition($scrollPosition)
-            .scrollDisabled(isTrackingDismissDrag)
-            .tracksScrolledToTop(area: .media, update: updateScrolledToTop)
-
-            Color.clear
-                .frame(height: layout.foldGap)
-                .accessibilityHidden(true)
-
-            ScrollView {
-                VStack(spacing: metrics.contentSpacing) {
-                    progressSection(for: episode)
-                    failureBlock
-                    transport(containerHeight: size.height)
-                    secondaryDisclosure(presentation, paneHeight: paneHeight)
-                    toolbarRoom
-                }
-                .onGeometryChange(for: CGFloat.self) { geometry in
-                    geometry.size.height - paneAllowance
-                } action: { height in
-                    updateFoldedControlsHeight(height)
-                }
-                .frame(maxWidth: metrics.contentWidth)
-                .padding(.leading, metrics.leadingPadding)
-                .padding(.trailing, metrics.trailingPadding)
-                .padding(.top, layout.controlsTopPadding)
-                .padding(.bottom, layout.controlsBottomPadding)
-                .frame(maxWidth: .infinity)
-                .frame(minHeight: layout.controlsViewportHeight, alignment: .top)
-                .overlay(alignment: .bottom) {
-                    bottomBar(
-                        spareHeight: layout.controlsSpareHeight,
-                        metrics: metrics,
-                        bottomPadding: layout.controlsBottomPadding
-                    )
-                }
-                .animation(
-                    accessibilityReduceMotion ? nil : .easeOut(duration: 0.2),
-                    value: isPlaybackFailed
-                )
-            }
-            .frame(height: layout.controlsViewportHeight)
-            .scrollIndicators(.hidden)
-            .scrollPosition($controlsScrollPosition)
-            .scrollDisabled(isTrackingDismissDrag)
-            .tracksScrolledToTop(area: .controls, update: updateScrolledToTop)
-        }
-        .frame(width: size.width, height: size.height, alignment: .top)
-        .coordinateSpace(.named(NowPlayingSoundLabOpenPanel.CardContext.coordinateSpaceName))
-        .overlay(alignment: .top) {
-            autoSkipFeedback(geometry: cardGeometry)
-        }
-        .overlay(alignment: .top) {
-            toast(geometry: cardGeometry)
-        }
-        .animation(
-            accessibilityReduceMotion ? .easeOut(duration: 0.2) : .bouncy,
-            value: transcriptionRequest?.id
-        )
-    }
-
-    @ViewBuilder
-    private func artwork(
-        for episode: Episode,
-        size: CGFloat,
-        openContext: NowPlayingSoundLabOpenPanel.CardContext
-    ) -> some View {
-        if appModel.replacesNowPlayingArtworkWithPlaybackDiagnostics {
-            NowPlayingPlaybackDiagnosticsView(
-                text: appModel.playback.playbackDiagnosticsText
-                    + appModel.playbackSourceIdentityDiagnostics,
-                size: size
-            )
         } else {
-            NowPlayingSoundLabArtwork(
-                title: episode.podcastTitle,
-                imageURL: episode.artworkURL?.absoluteString,
-                size: size,
-                voiceBoostEnabled: $isVoiceBoostEnabled,
-                voiceBoostControlEnabled: appModel.playbackSettings.canChangeCurrentEpisodeVoiceBoost,
-                onAdFreePassAction: startAdFreePass,
-                onTranscriptAction: performTranscriptAction,
-                onAdFreePassBackgroundProbe: startAdFreePassBackgroundProbe,
-                onRequestSoundLabSheet: presentSoundLabSheet,
-                isSoundLabInteractionActive: $isSoundLabInteractionActive,
-                isCardDismissDragActive: isTrackingDismissDrag,
-                openContext: openContext
-            )
+            ContentUnavailableView("Nothing Playing", systemImage: "play.circle")
+                .padding()
         }
     }
 
-    private func titleBlock(for episode: Episode, metrics: NowPlayingContentMetrics) -> some View {
-        VStack(spacing: metrics.metadataSpacing) {
+    /// The player never scrolls. The artwork takes the height the other
+    /// rows leave and steps aside when that is too little; past that the
+    /// title shrinks. Text stops growing at the first accessibility size.
+    /// The toolbar stays on the card's bottom edge.
+    private func player(for episode: Episode) -> some View {
+        VStack(spacing: 0) {
+            stack(for: episode)
+                .contentFrame(width: contentWidth)
+                .frame(maxHeight: .infinity)
+
+            toolbar
+                .contentFrame(width: contentWidth)
+                .padding(.top, 38)
+        }
+        .padding(contentInsets)
+        .dynamicTypeSize(...DynamicTypeSize.accessibility1)
+        .overlay(alignment: .top) {
+            toast
+                .padding(.top, contentInsets.top)
+        }
+        .overlay(alignment: .top) {
+            autoSkipFeedback
+                .padding(.top, contentInsets.top)
+        }
+        .animation(
+            accessibilityReduceMotion ? .easeOut(duration: 0.2) : .bouncy,
+            value: transcriptionRequest?.id
+        )
+        .animation(
+            accessibilityReduceMotion ? nil : .easeOut(duration: 0.2),
+            value: isPlaybackFailed
+        )
+    }
+
+    private func stack(for episode: Episode) -> some View {
+        PlayerStackLayout(minimumArtworkSide: 64) {
+            statusSlot
+
+            titleBlock(for: episode)
+                .padding(.top, 12)
+                .layoutValue(key: PlayerRow.self, value: .title)
+
+            artwork(for: episode)
+                .padding(.top, 12)
+                .layoutValue(key: PlayerRow.self, value: .artwork)
+
+            NowPlayingProgressSection(episodeID: episode.id.rawValue, onShowChapters: showChapters)
+                .padding(.top, 32)
+
+            failureBlock
+
+            transport
+                .padding(.top, 26)
+        }
+    }
+
+    /// Insets from the card's edges: below the safe top, above the safe
+    /// bottom, and the content's own clearances.
+    private var contentInsets: EdgeInsets {
+        let isRegular = horizontalSizeClass == .regular
+        let sidePadding: CGFloat = isRegular ? 36 : 24
+        return EdgeInsets(
+            top: max(safeAreaInsets.top + 8, 16),
+            leading: safeAreaInsets.leading + sidePadding,
+            bottom: isRegular ? safeAreaInsets.bottom + 24 : max(safeAreaInsets.bottom, 16) + 4,
+            trailing: safeAreaInsets.trailing + sidePadding
+        )
+    }
+
+    private var contentWidth: CGFloat {
+        horizontalSizeClass == .regular ? 500 : 430
+    }
+
+    // MARK: Rows
+
+    /// The row above the title, at a fixed height: the source pill, which
+    /// steps aside while the auto-skip pill or a toast shows over the slot.
+    private var statusSlot: some View {
+        ZStack {
+            if let source = appModel.currentPlaylistSource,
+               allowsSourcePill,
+               !isAutoSkipPillVisible,
+               transcriptionRequest == nil {
+                NowPlayingSourcePill(name: source.name, action: openPlaylist)
+                    .transition(.opacity)
+            }
+        }
+        .frame(maxWidth: .infinity)
+        .frame(height: Self.statusSlotHeight)
+        .animation(.easeOut(duration: 0.2), value: isAutoSkipPillVisible)
+        .animation(.easeOut(duration: 0.2), value: transcriptionRequest == nil)
+    }
+
+    @ViewBuilder
+    private func artwork(for episode: Episode) -> some View {
+        if appModel.replacesNowPlayingArtworkWithPlaybackDiagnostics {
+            Color.clear
+                .aspectRatio(1, contentMode: .fit)
+                .overlay {
+                    GeometryReader { proxy in
+                        NowPlayingPlaybackDiagnosticsView(
+                            text: appModel.playback.playbackDiagnosticsText
+                                + appModel.playbackSourceIdentityDiagnostics,
+                            size: proxy.size.width
+                        )
+                    }
+                }
+        } else {
+            NowPlayingArtwork(title: episode.podcastTitle, imageURL: episode.artworkURL)
+        }
+    }
+
+    private func titleBlock(for episode: Episode) -> some View {
+        let isAccessibilitySize = dynamicTypeSize.isAccessibilitySize
+        return VStack(spacing: 6) {
             Button(action: openEpisode) {
                 Text(episode.title)
-                    .font(metrics.titleFont)
+                    .font(isAccessibilitySize ? .headline : .title2)
                     .multilineTextAlignment(.center)
-                    .lineLimit(metrics.titleLineLimit)
-                    .minimumScaleFactor(metrics.titleMinimumScaleFactor)
-                    .fixedSize(horizontal: false, vertical: true)
+                    .lineLimit(isAccessibilitySize ? 3 : 2)
+                    .minimumScaleFactor(0.5)
             }
             .buttonStyle(.plain)
             .disabled(!canOpenCurrentEpisode)
@@ -512,32 +229,16 @@ struct NowPlayingView: View {
 
             Button(action: openPodcast) {
                 Text(episode.podcastTitle)
-                    .font(metrics.podcastFont)
+                    .font(isAccessibilitySize ? .subheadline : .title3)
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
-                    .lineLimit(metrics.podcastLineLimit)
-                    .minimumScaleFactor(metrics.podcastMinimumScaleFactor)
-                    .fixedSize(horizontal: false, vertical: true)
+                    .lineLimit(isAccessibilitySize ? 2 : 1)
+                    .minimumScaleFactor(0.5)
             }
             .buttonStyle(.plain)
             .disabled(!canOpenCurrentPodcast)
             .accessibilityHint("Opens the show in your library")
             .accessibilityIdentifier("Now Playing Podcast Title")
-        }
-        .onGeometryChange(for: CGFloat.self) { geometry in
-            geometry.size.height
-        } action: { height in
-            updateMeasurement(\.titleBlockHeight, to: height)
-        }
-    }
-
-    private func progressSection(for episode: Episode) -> some View {
-        NowPlayingProgressSection(episodeID: episode.id.rawValue, onShowChapters: showChapters)
-        .padding(.top, 4)
-        .onGeometryChange(for: CGFloat.self) { geometry in
-            geometry.size.height
-        } action: { height in
-            updateMeasurement(\.progressSectionHeight, to: height)
         }
     }
 
@@ -557,35 +258,27 @@ struct NowPlayingView: View {
                     .buttonStyle(.glass)
             }
             .frame(maxWidth: .infinity)
-            .padding(.top, 2)
+            .padding(.top, 12)
             .accessibilityElement(children: .combine)
             .transition(.opacity)
         }
     }
 
-    private func transport(containerHeight: CGFloat) -> some View {
+    private var transport: some View {
         NowPlayingTransportControls(
-            playButtonDiameter: playButtonDiameter,
+            playButtonDiameter: NowPlayingTransportControls.resolvedPlayButtonDiameter(
+                scaled: playButtonScaledDiameter,
+                isAccessibilitySize: dynamicTypeSize.isAccessibilitySize
+            ),
             skipBackwardInterval: appModel.playbackSettings.skipBackwardOption.seconds,
             skipForwardInterval: appModel.playbackSettings.skipForwardOption.seconds,
-            showsPauseButton: showsPauseButton,
+            showsPauseButton: appModel.playback.state.showsPauseButton,
             showsLoadingIndicator: appModel.playback.state.showsLoadingIndicator,
             playbackStateText: appModel.playback.state.accessibilityDescription,
             onSkipBackward: skipBackward,
             onTogglePlayPause: togglePlayPause,
             onSkipForward: skipForward
         )
-        .padding(.top, transportTopPadding(containerHeight: containerHeight))
-        .layoutPriority(2)
-    }
-
-    /// Keeps the toolbar's height clear at the end of the stack: the fit rule
-    /// counts it as a row, and the content never comes to rest under the
-    /// toolbar drawn over it.
-    private var toolbarRoom: some View {
-        Color.clear
-            .frame(height: NowPlayingUtilityControls<EmptyView>.height)
-            .accessibilityHidden(true)
     }
 
     private var toolbar: some View {
@@ -605,76 +298,29 @@ struct NowPlayingView: View {
                 onTranscriptAction: performTranscriptAction,
                 onAddNote: addTimestampedNote,
                 onShowNotes: { utilitySheet = .notes },
-                onShowDescription: showDescription,
+                onShowDescription: openEpisode,
                 onShowShow: openPodcast,
                 onShowPlaylist: openPlaylist,
                 onShowHistory: { utilitySheet = .history },
-                onStopPlayback: stopPlayback
+                onStopPlayback: onStopPlayback
             )
         }
     }
 
-    /// The pane collapsed to its row below the controls, and the same pane
-    /// inline in a bounded area once expanded.
+    /// The auto-skip pill, centered in the status slot. It draws over a toast.
     @ViewBuilder
-    private func secondaryDisclosure(
-        _ presentation: NowPlayingSecondaryPanePresentation,
-        paneHeight: CGFloat
-    ) -> some View {
-        if presentation.style == .disclosure {
-            NowPlayingSecondaryDisclosureRow(
-                selection: presentation.selection,
-                isExpanded: presentation.isExpanded,
-                action: toggleSecondaryPane
-            )
-
-            if presentation.isExpanded {
-                NowPlayingSecondaryPaneView(
-                    selection: secondaryPaneSelection,
-                    content: presentation.content
-                )
-                .frame(height: paneHeight)
-                .background(.quinary, in: .rect(cornerRadius: 24))
-                .clipShape(.rect(cornerRadius: 24))
-                .transition(.opacity)
-                .reportsSecondaryPaneFrame(slot: .inline, update: updateSecondaryPaneFrame)
-            }
-        }
-    }
-
-    /// The toolbar on the content's bottom edge, which rests on the card's,
-    /// with the source pill just above it when there is room.
-    private func bottomBar(
-        spareHeight: CGFloat?,
-        metrics: NowPlayingContentMetrics,
-        bottomPadding: CGFloat
-    ) -> some View {
-        VStack(spacing: metrics.contentSpacing) {
-            if let source = appModel.currentPlaylistSource, showsSourcePill(spareHeight: spareHeight) {
-                NowPlayingSourcePill(name: source.name, action: openPlaylist)
-                    .transition(.opacity)
-            }
-            toolbar
-        }
-        .frame(maxWidth: metrics.contentWidth)
-        .padding(.leading, metrics.leadingPadding)
-        .padding(.trailing, metrics.trailingPadding)
-        .padding(.bottom, bottomPadding)
-    }
-
-    /// The auto-skip pill, centered at the card's top.
-    @ViewBuilder
-    private func autoSkipFeedback(geometry: NowPlayingCardGeometry) -> some View {
+    private var autoSkipFeedback: some View {
         if let episodeID = appModel.playback.currentEpisode?.id {
-            NowPlayingAutoSkipFeedbackView()
+            NowPlayingAutoSkipFeedbackView(isShowingPill: $isAutoSkipPillVisible)
                 .id(episodeID)
-                .frame(maxWidth: .infinity)
-                .padding(.top, geometry.moreOrigin.y + 8)
+                .frame(maxWidth: .infinity, minHeight: Self.statusSlotHeight)
         }
     }
 
+    /// A toast starts at the status slot's top and runs down over the title
+    /// while it shows.
     @ViewBuilder
-    private func toast(geometry: NowPlayingCardGeometry) -> some View {
+    private var toast: some View {
         if let transcriptionRequest {
             NowPlayingTranscriptionToast(
                 request: transcriptionRequest,
@@ -682,17 +328,7 @@ struct NowPlayingView: View {
                 onOpenEpisode: openEpisodeFromTranscriptionToast,
                 onDismiss: dismissTranscriptionToast
             )
-            .padding(.leading, geometry.toastLeadingPadding)
-            .padding(.trailing, geometry.toastTrailingPadding)
-            // Its own height, whatever room the top padding leaves, so
-            // a move below a region cannot shrink it back above.
-            .fixedSize(horizontal: false, vertical: true)
-            .onGeometryChange(for: CGFloat.self) { proxy in
-                proxy.size.height
-            } action: { height in
-                toastHeight = height
-            }
-            .padding(.top, geometry.toastTop(height: toastHeight))
+            .padding(.horizontal, 16)
             .transition(
                 accessibilityReduceMotion
                     ? .opacity
@@ -701,135 +337,77 @@ struct NowPlayingView: View {
         }
     }
 
-    // MARK: The secondary pane
-
-    private var secondaryPane: NowPlayingSecondaryPane {
-        NowPlayingSecondaryPane(storedValue: storedSecondaryPane)
-    }
-
-    /// The picker's selection, stored as scene state.
-    private var secondaryPaneSelection: Binding<NowPlayingSecondaryPane> {
-        Binding(
-            get: { NowPlayingSecondaryPane(storedValue: storedSecondaryPane) },
-            set: { storedSecondaryPane = $0.rawValue }
-        )
-    }
-
-    private var secondaryPresentation: NowPlayingSecondaryPanePresentation {
-        NowPlayingSecondaryPanePresentation(
-            arrangement: arrangement,
-            selection: secondaryPane,
-            isDisclosureExpanded: isSecondaryPaneExpanded,
-            presentedSheet: utilitySheet
-        )
-    }
-
-    private func showChapters() {
-        open(.chapters)
-    }
-
-    private func showDescription() {
-        open(.showDescription)
-    }
-
-    private func open(_ destination: NowPlayingSecondaryDestination) {
-        follow(NowPlayingSecondaryRoute(destination: destination, paneStyle: arrangement.paneStyle))
-    }
-
-    private func follow(_ route: NowPlayingSecondaryRoute) {
-        switch route {
-        case .selectPane(let pane):
-            storedSecondaryPane = pane.rawValue
-        case .presentSheet(let sheet):
-            utilitySheet = sheet
-        case .openEpisode:
-            openEpisode()
-        case .generateTranscript:
-            appModel.requestTranscriptForCurrentEpisode(modelContext: modelContext)
-        }
-    }
-
-    /// The row's expansion grows the stack; under Reduce Motion it appears
-    /// without the animation. Expanding scrolls the pane into view.
-    private func toggleSecondaryPane() {
-        withAnimation(accessibilityReduceMotion ? nil : .easeOut(duration: 0.2)) {
-            isSecondaryPaneExpanded.toggle()
-            if isSecondaryPaneExpanded {
-                if isFoldedLayout {
-                    controlsScrollPosition.scrollTo(edge: .bottom)
+    @ViewBuilder
+    private func utilitySheetContent(_ sheet: PlayerUtilitySheet) -> some View {
+        switch sheet {
+        case .audio:
+            NowPlayingAudioSheet(
+                voiceBoostEnabled: $isVoiceBoostEnabled,
+                voiceBoostControlEnabled: appModel.playbackSettings.canChangeCurrentEpisodeVoiceBoost
+            )
+            .environment(appModel)
+            .modelContext(modelContext)
+            .presentationDetents([.medium, .large])
+            .presentationDragIndicator(.visible)
+        case .sleep:
+            SleepTimerView()
+                .environment(appModel)
+                .modelContext(modelContext)
+                .presentationDetents([.medium, .large])
+                .presentationDragIndicator(.visible)
+        case .chapters:
+            NowPlayingChaptersView()
+                .environment(appModel)
+                .modelContext(modelContext)
+                .presentationDetents([.medium, .large])
+                .presentationDragIndicator(.visible)
+        case .notes:
+            NavigationStack {
+                if let episode = appModel.playback.currentEpisode {
+                    EpisodeNotesList(episode: EpisodeListItemSnapshot(episode: episode)) { timestamp in
+                        playNote(at: timestamp, episodeID: episode.id.rawValue)
+                    }
+                    .navigationTitle("Private Notes")
+                    .navigationSubtitle(episode.title)
+                    .navigationBarTitleDisplayMode(.inline)
+                    .accessibilityAction(.escape) { utilitySheet = nil }
                 } else {
-                    scrollPosition.scrollTo(edge: .bottom)
+                    ContentUnavailableView("Nothing Playing", systemImage: "play.circle")
                 }
             }
+            .modelContext(modelContext)
+            .presentationDetents([.medium, .large])
+            .presentationDragIndicator(.visible)
+        case .transcript:
+            NavigationStack {
+                if let currentEpisodeID {
+                    EpisodeTranscriptView(episodeID: currentEpisodeID)
+                } else {
+                    ContentUnavailableView("Nothing Playing", systemImage: "play.circle")
+                }
+            }
+            .environment(appModel)
+            .modelContext(modelContext)
+            .presentationDetents([.large])
+            .presentationDragIndicator(.visible)
+        case .history:
+            NavigationStack {
+                ListeningHistoryView()
+            }
+            .environment(appModel)
+            .modelContext(modelContext)
+            .presentationDetents([.medium, .large])
+            .presentationDragIndicator(.visible)
         }
     }
 
-    /// Laptop: the stack split around a horizontal band across the card.
-    private var isFoldedLayout: Bool {
-        if case .single(let band) = arrangement, band != nil, cardGeometry.horizontalFold != nil {
-            true
-        } else {
-            false
-        }
-    }
+    // MARK: State
 
-    private func updateSecondaryPaneFrame(_ frame: CGRect?, slot: SecondaryPaneSlot) {
-        secondaryPaneFrames[slot] = frame
-        dismissDragExcludedFrames = Array(secondaryPaneFrames.values)
-    }
-
-    private func updateScrolledToTop(_ isAtTop: Bool, area: ScrollArea) {
-        if isAtTop {
-            scrolledAwayAreas.remove(area)
-        } else {
-            scrolledAwayAreas.insert(area)
-        }
-        isContentScrolledToTop = scrolledAwayAreas.isEmpty
-    }
-
-    private func updateFoldedControlsHeight(_ height: CGFloat) {
-        if let foldedControlsHeight, abs(foldedControlsHeight - height) <= 1 {
-            return
-        }
-        foldedControlsHeight = height
-    }
-
-    private func addTimestampedNote() {
-        guard let episode = appModel.playback.currentEpisode else { return }
-        beginNote(episode: EpisodeListItemSnapshot(episode: episode))
-    }
-
-    private func beginNote(episode: EpisodeListItemSnapshot) {
-        let session = EpisodeNotePlaybackSession(
-            episode: episode,
-            timestamp: appModel.playback.position,
-            state: appModel.playback.state, pause: appModel.playback.pause,
-            playbackIntentRevision: { appModel.playback.playbackIntentRevision }
-        )
-        notePlaybackSession = session
-        noteDraft = session.draft
-    }
-
-    private func playNote(at timestamp: TimeInterval, episodeID: String) {
-        guard appModel.playback.currentEpisode?.id.rawValue == episodeID else { return }
-        appModel.playback.seek(to: timestamp, intent: .scrub)
-        appModel.playback.play()
-        utilitySheet = nil
-    }
-
-    private func resumePlaybackAfterNote() {
-        let session = notePlaybackSession
-        notePlaybackSession = nil
-        session?.finish(
-            currentEpisodeID: appModel.playback.currentEpisode?.id.rawValue,
-            state: appModel.playback.state,
-            playbackIntentRevision: appModel.playback.playbackIntentRevision,
-            play: appModel.playback.play
-        )
-    }
-
-    private var showsPauseButton: Bool {
-        appModel.playback.state.showsPauseButton
+    /// The pill's footnote capsule outgrows its 44 pt frame at accessibility
+    /// sizes, and compact height has no room to spare, so the More menu's
+    /// "Show <playlist>" item is the route back there.
+    private var allowsSourcePill: Bool {
+        !dynamicTypeSize.isAccessibilitySize && verticalSizeClass != .compact
     }
 
     private var isPlaybackFailed: Bool {
@@ -863,61 +441,6 @@ struct NowPlayingView: View {
         return appModel.library.isActivelySubscribed(to: currentPodcastID)
     }
 
-    /// The source pill is extra information, so it only takes room the
-    /// controls leave free below the utility row. Otherwise, and always at
-    /// accessibility sizes and in compact height, the More menu's
-    /// "Show <playlist>" item is the route back to the source.
-    private func showsSourcePill(spareHeight: CGFloat?) -> Bool {
-        guard !dynamicTypeSize.isAccessibilitySize,
-              verticalSizeClass != .compact,
-              let spareHeight
-        else {
-            return false
-        }
-        return spareHeight >= NowPlayingSourcePill.minimumSpareHeight
-    }
-
-    /// The first measurement lands while the card is still presenting; later
-    /// changes (Dynamic Type, a failure message, another episode's titles)
-    /// animate the artwork to the size the fit rule gives it.
-    private func updateMeasurement(
-        _ keyPath: WritableKeyPath<NowPlayingContentMeasurements, CGFloat?>,
-        to height: CGFloat,
-        tolerance: CGFloat = 0
-    ) {
-        let current = contentMeasurements[keyPath: keyPath]
-        if let current, abs(current - height) <= tolerance {
-            return
-        }
-        guard current != nil, !accessibilityReduceMotion else {
-            contentMeasurements[keyPath: keyPath] = height
-            return
-        }
-        withAnimation(.easeOut(duration: 0.2)) {
-            contentMeasurements[keyPath: keyPath] = height
-        }
-    }
-
-    private var playButtonDiameter: Double {
-        NowPlayingTransportControls.resolvedPlayButtonDiameter(
-            scaled: playButtonScaledDiameter,
-            isAccessibilitySize: dynamicTypeSize.isAccessibilitySize
-        )
-    }
-
-    /// The first measurement lands while the card is still presenting, so the
-    /// pill arrives with it; later changes (Dynamic Type, rotation, a failure
-    /// message) fade it in or out.
-    private func updateNaturalContentHeight(_ height: CGFloat) {
-        guard naturalContentHeight != nil else {
-            naturalContentHeight = height
-            return
-        }
-        withAnimation(.easeOut(duration: 0.2)) {
-            naturalContentHeight = height
-        }
-    }
-
     private var hasCompletedTranscript: Bool {
         guard appModel.isNowPlayingPresented,
               let currentEpisodeID,
@@ -933,16 +456,9 @@ struct NowPlayingView: View {
         return appModel.episodeSnapshot(for: currentEpisodeID)
     }
 
-    /// The Voice Boost error shows over whatever is in front: the Sound Lab
-    /// sheet while it is up, the player otherwise.
-    private func soundLabError(whileSoundLabSheetShown sheetShown: Bool) -> Binding<String?> {
+    private var playbackSettingsError: Binding<String?> {
         Binding(
-            get: {
-                guard appModel.isNowPlayingPresented, (utilitySheet == .soundLab) == sheetShown else {
-                    return nil
-                }
-                return appModel.playbackSettings.lastErrorMessage
-            },
+            get: { appModel.isNowPlayingPresented ? appModel.playbackSettings.lastErrorMessage : nil },
             set: { if $0 == nil { appModel.playbackSettings.clearLastError() } }
         )
     }
@@ -958,40 +474,33 @@ struct NowPlayingView: View {
         return request
     }
 
-    /// A completed transcript opens where this arrangement shows it (the
-    /// pane beside the player, else its sheet) once its document loads; a
-    /// missing one keeps the request flow.
+    // MARK: Actions
+
+    private func showChapters() {
+        utilitySheet = .chapters
+    }
+
+    /// A completed transcript opens in its sheet once its document loads; a
+    /// missing one starts the request flow.
     private func performTranscriptAction() {
         guard let currentEpisodeID else {
             return
         }
         let record = appModel.transcriptions.record(for: currentEpisodeID)
-        let relativePath = record?.state == .completed ? record?.transcriptRelativePath : nil
-        guard let relativePath else {
-            follow(NowPlayingSecondaryRoute.transcriptAction(hasCompletedTranscript: false, paneStyle: livePaneStyle))
+        guard record?.state == .completed, let relativePath = record?.transcriptRelativePath else {
+            appModel.requestTranscriptForCurrentEpisode(modelContext: modelContext)
             return
         }
 
         Task {
             do {
                 _ = try await appModel.transcriptions.loadDocument(for: currentEpisodeID)
-                guard canCompleteTranscriptAction(
-                    episodeID: currentEpisodeID,
-                    relativePath: relativePath
-                ) else {
+                guard canCompleteTranscriptAction(episodeID: currentEpisodeID, relativePath: relativePath) else {
                     return
                 }
-                // Routed where the arrangement shows it now, not where it
-                // was when the load began.
-                follow(NowPlayingSecondaryRoute.transcriptAction(
-                    hasCompletedTranscript: true,
-                    paneStyle: livePaneStyle
-                ))
+                utilitySheet = .transcript
             } catch {
-                guard canCompleteTranscriptAction(
-                    episodeID: currentEpisodeID,
-                    relativePath: relativePath
-                ) else {
+                guard canCompleteTranscriptAction(episodeID: currentEpisodeID, relativePath: relativePath) else {
                     return
                 }
                 appModel.transcriptions.markTranscriptDocumentUnavailable(
@@ -1003,10 +512,7 @@ struct NowPlayingView: View {
         }
     }
 
-    private func canCompleteTranscriptAction(
-        episodeID: String,
-        relativePath: String
-    ) -> Bool {
+    private func canCompleteTranscriptAction(episodeID: String, relativePath: String) -> Bool {
         guard appModel.isNowPlayingPresented,
               utilitySheet == nil,
               currentEpisodeID == episodeID,
@@ -1032,12 +538,34 @@ struct NowPlayingView: View {
         openEpisode()
     }
 
-    private func transportTopPadding(containerHeight: CGFloat) -> CGFloat {
-        if dynamicTypeSize.isAccessibilitySize {
-            return 8
-        }
+    private func addTimestampedNote() {
+        guard let episode = appModel.playback.currentEpisode else { return }
+        let session = EpisodeNotePlaybackSession(
+            episode: EpisodeListItemSnapshot(episode: episode),
+            timestamp: appModel.playback.position,
+            state: appModel.playback.state, pause: appModel.playback.pause,
+            playbackIntentRevision: { appModel.playback.playbackIntentRevision }
+        )
+        notePlaybackSession = session
+        noteDraft = session.draft
+    }
 
-        return containerHeight > 780 ? 12 : 10
+    private func playNote(at timestamp: TimeInterval, episodeID: String) {
+        guard appModel.playback.currentEpisode?.id.rawValue == episodeID else { return }
+        appModel.playback.seek(to: timestamp, intent: .scrub)
+        appModel.playback.play()
+        utilitySheet = nil
+    }
+
+    private func resumePlaybackAfterNote() {
+        let session = notePlaybackSession
+        notePlaybackSession = nil
+        session?.finish(
+            currentEpisodeID: appModel.playback.currentEpisode?.id.rawValue,
+            state: appModel.playback.state,
+            playbackIntentRevision: appModel.playback.playbackIntentRevision,
+            play: appModel.playback.play
+        )
     }
 
     private func retryPlayback() {
@@ -1063,70 +591,9 @@ struct NowPlayingView: View {
         appModel.playback.skip(by: appModel.playbackSettings.skipForwardOption.seconds)
     }
 
-    /// A tap held by the key notice acts only on the episode it was made
-    /// for: playback may have moved on while the notice was up.
-    private func startAdFreePass() {
-        let episodeID = currentEpisodeID
-        noticeGate.run(appModel: appModel) {
-            guard currentEpisodeID == episodeID else {
-                return
-            }
-            appModel.startOrContinueAdFreePassForCurrentEpisode(modelContext: modelContext)
-        }
-    }
-
-    private func presentSoundLabSheet() {
-        guard appModel.isNowPlayingPresented, utilitySheet == nil else {
-            return
-        }
-        utilitySheet = .soundLab
-    }
-
-    private func handOffAdFreePass() {
-        handOffFromSoundLabSheet(.adFreePass)
-    }
-
-    private func handOffTranscriptAction() {
-        handOffFromSoundLabSheet(.transcriptAction)
-    }
-
-    /// A Sound Lab sheet action dismisses the sheet first; the flow it opens
-    /// starts in `completeSoundLabHandoff` once the sheet is gone, so the
-    /// other presenters and the transcript's completion guard see no sheet.
-    private func handOffFromSoundLabSheet(_ action: PlayerUtilitySheet.Handoff.Action) {
-        soundLabHandoff = PlayerUtilitySheet.Handoff(action: action, episodeID: currentEpisodeID)
-        utilitySheet = nil
-    }
-
-    private func completeSoundLabHandoff() {
-        let handoff = soundLabHandoff
-        soundLabHandoff = nil
-        switch handoff?.action(
-            isNowPlayingPresented: appModel.isNowPlayingPresented,
-            presentedSheet: utilitySheet,
-            currentEpisodeID: currentEpisodeID
-        ) {
-        case .adFreePass:
-            startAdFreePass()
-        case .transcriptAction:
-            performTranscriptAction()
-        case nil:
-            break
-        }
-    }
-
-    private func startAdFreePassBackgroundProbe() {
-        #if DEBUG
-        AdFreePassBackgroundProbe.startFromUserAction()
-        #endif
-    }
-
     private func resetPresentation() {
         withTransaction(\.disablesAnimations, true) {
-            scrollPosition.scrollTo(edge: .top)
-            controlsScrollPosition.scrollTo(edge: .top)
             utilitySheet = nil
-            soundLabHandoff = nil
         }
     }
 
@@ -1140,13 +607,6 @@ struct NowPlayingView: View {
 
     private func openPlaylist() {
         onOpenPlaylist()
-    }
-
-    /// The unload, and so the audio stop, lands in the exit animation's
-    /// completion. Pausing on the tap held the first frame of the exit for
-    /// well over 100 ms, so audio trails the tap by the animation instead.
-    private func stopPlayback() {
-        onStopPlayback()
     }
 
     private func syncVoiceBoostEnabledFromStore() {
@@ -1178,37 +638,72 @@ struct NowPlayingView: View {
 }
 
 private extension View {
-    /// Reports whether this scroll view rests at its top, and that it does
-    /// once it leaves the hierarchy, so the card's dismiss drag starts only
-    /// when every visible scroll area is at its top.
-    func tracksScrolledToTop(
-        area: NowPlayingView.ScrollArea,
-        update: @escaping @MainActor (Bool, NowPlayingView.ScrollArea) -> Void
-    ) -> some View {
-        onScrollGeometryChange(for: Bool.self) { geometry in
-            // At rest, a scroll view's top offset is the negative top inset.
-            geometry.contentOffset.y <= -geometry.contentInsets.top + 1
-        } action: { _, isAtTop in
-            update(isAtTop, area)
-        }
-        .onDisappear {
-            update(true, area)
+    /// Centers the content at no more than `width`.
+    func contentFrame(width: CGFloat) -> some View {
+        frame(maxWidth: width)
+            .frame(maxWidth: .infinity)
+    }
+}
+
+nonisolated private enum PlayerRow: LayoutValueKey {
+    case other, title, artwork
+    static let defaultValue = PlayerRow.other
+}
+
+/// A vertical stack exactly the proposed height tall. The artwork row is a
+/// square taking the height the other rows leave, as wide as the stack at
+/// most; below `minimumArtworkSide` it steps aside. If the other rows still
+/// do not fit, the title row gets what is left and its text shrinks. Rows
+/// space themselves with their own top padding.
+nonisolated private struct PlayerStackLayout: Layout {
+    let minimumArtworkSide: CGFloat
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        let width = proposal.width ?? 0
+        let rows = rows(width: width, height: proposal.height, subviews: subviews)
+        return CGSize(width: width, height: proposal.height ?? rows.heights.reduce(0, +))
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        let rows = rows(width: bounds.width, height: bounds.height, subviews: subviews)
+        var y = bounds.minY
+        for (index, subview) in subviews.enumerated() {
+            let height = rows.heights[index]
+            let width = subview[PlayerRow.self] == .artwork ? rows.artworkSide : bounds.width
+            subview.place(
+                at: CGPoint(x: bounds.midX, y: y),
+                anchor: .top,
+                proposal: ProposedViewSize(width: width, height: height)
+            )
+            y += height
         }
     }
 
-    /// Reports the pane's global frame while it is shown, so a drag that
-    /// starts in it scrolls the pane instead of dismissing the card.
-    func reportsSecondaryPaneFrame(
-        slot: NowPlayingView.SecondaryPaneSlot,
-        update: @escaping @MainActor (CGRect?, NowPlayingView.SecondaryPaneSlot) -> Void
-    ) -> some View {
-        onGeometryChange(for: CGRect.self) { geometry in
-            geometry.frame(in: .global)
-        } action: { frame in
-            update(frame, slot)
+    private func rows(width: CGFloat, height viewportHeight: CGFloat?, subviews: Subviews) -> (heights: [CGFloat], artworkSide: CGFloat) {
+        var heights = subviews.map { subview in
+            subview[PlayerRow.self] == .artwork
+                ? 0
+                : subview.sizeThatFits(ProposedViewSize(width: width, height: nil)).height
         }
-        .onDisappear {
-            update(nil, slot)
+        guard let viewportHeight else {
+            return (heights, 0)
         }
+        var room = viewportHeight - heights.reduce(0, +)
+        var artworkSide: CGFloat = 0
+        if let index = subviews.firstIndex(where: { $0[PlayerRow.self] == .artwork }) {
+            // The row includes its top padding; the square is what the
+            // padding leaves of it.
+            let padding = subviews[index].sizeThatFits(ProposedViewSize(width: 0, height: 0)).height
+            let side = min(width, room - padding)
+            if side >= minimumArtworkSide {
+                artworkSide = side
+                heights[index] = side + padding
+                room -= side + padding
+            }
+        }
+        if room < 0, let index = subviews.firstIndex(where: { $0[PlayerRow.self] == .title }) {
+            heights[index] = max(0, heights[index] + room)
+        }
+        return (heights, artworkSide)
     }
 }
