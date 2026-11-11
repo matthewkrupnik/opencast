@@ -1966,6 +1966,9 @@ final class OpenCastUITests: XCTestCase {
 
     @MainActor
     func testSeededCompactLibraryGridSortAndNewEpisodeBadges() throws {
+        // On iOS 27.2 the View Options menus keep the app from idling, so XCUITest waits
+        // up to 60 s before taps; a slow runner overruns the default 180 s.
+        executionTimeAllowance = 600
         let app = makeSeededApp(
             seedsArtworkPreview: true,
             seedsVariedArtworkPreviews: true,
@@ -3192,7 +3195,12 @@ final class OpenCastUITests: XCTestCase {
         downloadsTab.tap()
 
         assertScreen("Downloads", named: "Downloads navigation bar", in: app)
-        assertExists(app.staticTexts["Downloaded"], named: "Downloaded section")
+        // Downloads lists completed episodes under their show; there is no
+        // separate "Downloaded" section.
+        assertExists(
+            app.buttons.matching(identifier: Self.seededEpisodeRowIdentifier).firstMatch,
+            named: "downloaded episode row"
+        )
         let options = app.navigationBars["Downloads"].buttons["Download Options"]
         assertHittable(options, named: "Download Options menu")
         options.tap()
@@ -5244,7 +5252,9 @@ final class OpenCastUITests: XCTestCase {
         openLibrary(in: app)
         let showRow = app.descendants(matching: .any)
             .matching(identifier: Self.seededSubscriptionRowIdentifier).firstMatch
-        assertExists(showRow, named: "Seeded show row")
+        // A first launch after a simulator boot can take longer than the
+        // default wait to draw; still well inside the episode load delay.
+        assertExists(showRow, named: "Seeded show row", timeout: 15)
         assertLibraryPlaylistCount(3, in: app)
         // Playlist counts need the episodes, so their absence shows the
         // rows drew before the delayed episode load finished.
@@ -5634,6 +5644,9 @@ final class OpenCastUITests: XCTestCase {
     /// and unchecking the last listed show returns the rule to All Shows.
     @MainActor
     func testSeededSmartPlaylistShowsPickerKeepsItsPlaceAcrossPicks() throws {
+        // On iOS 27.2 the playlist and picker sheets' menus keep the app from idling, so XCUITest waits
+        // up to 60 s before taps; a slow runner overruns the default 180 s.
+        executionTimeAllowance = 600
         let app = makeSeededApp(seedsPlaylists: true, extraFeedCount: 30)
         app.launch()
 
@@ -7578,23 +7591,23 @@ final class OpenCastUITests: XCTestCase {
         let targetHandle = target.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Reorder")).firstMatch
         assertHittable(handle, named: "moving show's reorder handle", file: file, line: line)
         assertExists(targetHandle, named: "target show's reorder handle", file: file, line: line)
-        // Drop at the target row's top edge: just above its center sits on
-        // the list's swap threshold and can leave the row where it was.
-        let start = handle.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
-        let dropOffset = target.frame.minY + 4 - handle.frame.midY
-        start
-            .press(
-                forDuration: 0.8,
-                thenDragTo: start.withOffset(CGVector(dx: 0, dy: dropOffset)),
-                withVelocity: .slow,
-                thenHoldForDuration: 0.5
-            )
-        XCTAssertTrue(
-            waitUntil { moving.frame.midY < target.frame.midY },
-            "The dragged show should move above its target",
-            file: file,
-            line: line
-        )
+        // Drop clearly above the target row: its top edge sits on the list's
+        // swap threshold and can leave the row where it was. A pickup the
+        // list misses on a slow runner gets one more try.
+        var moved = false
+        for _ in 0..<2 where !moved {
+            let start = handle.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+            let dropOffset = target.frame.minY - 12 - handle.frame.midY
+            start
+                .press(
+                    forDuration: 1.2,
+                    thenDragTo: start.withOffset(CGVector(dx: 0, dy: dropOffset)),
+                    withVelocity: .slow,
+                    thenHoldForDuration: 1.0
+                )
+            moved = waitUntil { moving.frame.midY < target.frame.midY }
+        }
+        XCTAssertTrue(moved, "The dragged show should move above its target", file: file, line: line)
         attachSmokeScreenshot(named: "playlists_shows_play_order_moved")
 
         let pickShows = app.navigationBars["Play Order"].buttons["Shows Picker Reorder"]

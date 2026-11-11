@@ -148,35 +148,45 @@ final class OpenCastPadUITests: XCTestCase {
     }
 
     @MainActor
-    func testSeededPadLibraryGridSwipeRemovalCanCancelAndConfirm() throws {
+    func testSeededPadLibrarySwipeRemovalCanCancelAndConfirm() throws {
         try skipUnlessPad()
         let app = makeSeededApp()
         app.launch()
         openLibrary(in: app)
+        // The Library is the split's sidebar column, where Automatic lists.
+        // Its compact grid tiles have no swipe action; their removal is the
+        // context-menu test's.
+        assertExists(libraryContainer("Library List", in: app), named: "Library list in the sidebar")
         let tile = seededSubscriptionTile(in: app)
-        assertHittable(tile, named: "library tile before swipe")
+        assertHittable(tile, named: "library row before swipe")
         tile.swipeLeft()
         let confirmation = app.buttons["Remove & Clear History"]
         if !confirmation.existsOrWait(timeout: 2) {
             app.buttons["Remove Podcast Swipe Action"].firstMatch.tap()
         }
-        assertExists(confirmation, named: "tile removal history choice")
-        attachSmokeScreenshot(named: "ipad_grid_swipe_confirmation")
+        assertExists(confirmation, named: "row removal history choice")
+        attachSmokeScreenshot(named: "ipad_library_swipe_confirmation")
         let cancel = app.buttons["Cancel"].firstMatch
         if cancel.exists, cancel.isHittable {
             cancel.tap()
         } else {
             // iPad confirmation popovers dismiss when tapped outside instead
-            // of displaying the compact presentation's Cancel button.
-            app.navigationBars["Library"].staticTexts["Library"].tap()
+            // of displaying the compact presentation's Cancel button. The
+            // popover covers the sidebar, so tap outside it, in the detail.
+            let dismissRegion = app.otherElements["PopoverDismissRegion"].firstMatch
+            if dismissRegion.exists {
+                dismissRegion.tap()
+            } else {
+                app.coordinate(withNormalizedOffset: CGVector(dx: 0.75, dy: 0.5)).tap()
+            }
         }
-        assertHittable(tile, named: "tile retained after cancelling removal")
-        attachSmokeScreenshot(named: "ipad_grid_swipe_cancelled")
+        assertHittable(tile, named: "row retained after cancelling removal")
+        attachSmokeScreenshot(named: "ipad_library_swipe_cancelled")
         tile.swipeLeft()
         if !confirmation.existsOrWait(timeout: 2) {
             app.buttons["Remove Podcast Swipe Action"].firstMatch.tap()
         }
-        assertExists(confirmation, named: "second tile removal confirmation")
+        assertExists(confirmation, named: "second row removal confirmation")
         app.buttons["Remove Podcast"].firstMatch.tap()
         assertExists(app.staticTexts["No Subscriptions"], named: "empty Library after confirmed swipe removal")
     }
@@ -233,9 +243,10 @@ final class OpenCastPadUITests: XCTestCase {
         let list = libraryContainer("Library List", in: app)
         let grid = libraryContainer("Library Grid", in: app)
 
-        // Automatic resolves to the grid at regular width.
-        assertExists(grid, named: "Library grid under Automatic")
-        assertDoesNotExist(list, named: "Library list under Automatic")
+        // At regular width the Library is the split's sidebar column, where
+        // Automatic resolves to the list.
+        assertExists(list, named: "Library list under Automatic")
+        assertDoesNotExist(grid, named: "Library grid under Automatic")
 
         chooseLibraryViewOption("List", in: app)
         assertExists(list, named: "Library list after choosing List")
@@ -249,24 +260,23 @@ final class OpenCastPadUITests: XCTestCase {
         assertDoesNotExist(list, named: "Library list after choosing Grid", timeout: 5)
 
         chooseLibraryViewOption("Automatic", in: app)
-        assertExists(grid, named: "Library grid after choosing Automatic at regular width")
-        assertDoesNotExist(list, named: "Library list after choosing Automatic at regular width")
+        assertExists(list, named: "Library list after choosing Automatic in the sidebar")
+        assertDoesNotExist(grid, named: "Library grid after choosing Automatic in the sidebar", timeout: 5)
 
-        // Automatic follows the window: narrowing it to compact width swaps
-        // in the list with no further choice.
-        XCTAssertTrue(
-            waitForNavigationItem("Playlists", symbol: Self.playlistsSymbol, toExist: true, in: app),
-            "Playlists, offered only at regular width, should exist before the window resize"
-        )
+        // Automatic follows the window: narrowing it to compact width keeps
+        // the list. The split's empty detail exists only at regular width,
+        // so it proves the app window itself narrowed.
+        let detailPlaceholder = app.descendants(matching: .any)["Library Detail Placeholder"]
+        assertExists(detailPlaceholder, named: "split detail placeholder before the window resize")
         _ = narrowWindow(of: app)
-        XCTAssertTrue(
-            waitForNavigationItem("Playlists", symbol: Self.playlistsSymbol, toExist: false, in: app),
-            "The app window itself must be narrow, not just the Simulator scale: Playlists, offered only at regular width, should be gone"
+        assertDoesNotExist(
+            detailPlaceholder,
+            named: "split detail placeholder in a narrow window (the app window itself must be narrow)",
+            timeout: 10
         )
         XCTAssertTrue(
-            navigationItemExists("Library", symbol: Self.librarySymbol, in: app)
-                && !navigationItemExists("Playlists", symbol: Self.playlistsSymbol, in: app),
-            "The narrow window's navigation should be up, offering Library, with Playlists still gone"
+            navigationItemExists("Library", symbol: Self.librarySymbol, in: app),
+            "The narrow window's navigation should be up, offering Library"
         )
         assertExists(list, named: "Library list under Automatic in a narrow window")
         assertDoesNotExist(grid, named: "Library grid under Automatic in a narrow window", timeout: 5)
