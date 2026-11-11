@@ -93,7 +93,9 @@ struct OpenCastRootLayerView<Content: View>: View {
     private var nowPlayingPresented: Binding<Bool> {
         Binding(
             get: { appModel.isNowPlayingPresented },
-            set: { if !$0 { dismissNowPlaying() } }
+            // SwiftUI writes false here after any dismissal, including ours:
+            // never clear the pending action from this path.
+            set: { if !$0 { appModel.isNowPlayingPresented = false } }
         )
     }
 
