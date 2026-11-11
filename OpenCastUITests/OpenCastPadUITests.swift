@@ -837,13 +837,10 @@ final class OpenCastPadUITests: XCTestCase {
 
     @MainActor
     private func dragDismissNowPlayingOverlay(in app: XCUIApplication) {
-        // The regular-width card is bottom-anchored below the top of a portrait
-        // screen. Start on the card itself: on the iPadOS 27.2 runtime a drag
-        // that starts on the dimmed backdrop above it does not dismiss.
+        // Now Playing is a full-screen cover on iPad too; the swipe down
+        // starts below the status bar band.
         let overlay = nowPlayingOverlay(in: app)
-        let start = overlay.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.06))
-        let end = app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.98))
-        start.press(forDuration: 0.05, thenDragTo: end)
+        dragNowPlayingCard(overlay, travelling: 0.70)
         assertDoesNotExist(overlay, named: "Now Playing overlay after drag dismissal", timeout: 5)
     }
 

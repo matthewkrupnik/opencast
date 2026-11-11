@@ -13,7 +13,7 @@ extension XCTestCase {
         containing requiredEvent: String? = nil,
         timeout: TimeInterval = 15
     ) -> String {
-        let element = app.descendants(matching: .any)["Frame Pacing Summary"]
+        let element = app.descendants(matching: .any).matching(identifier: "Frame Pacing Summary").firstMatch
         let deadline = Date().addingTimeInterval(timeout)
         var value = ""
         while Date() < deadline {
@@ -36,7 +36,7 @@ extension XCTestCase {
 
     @MainActor
     func frameSummaryValue(in app: XCUIApplication) -> String {
-        let element = app.descendants(matching: .any)["Frame Pacing Summary"]
+        let element = app.descendants(matching: .any).matching(identifier: "Frame Pacing Summary").firstMatch
         guard element.existsOrWait(timeout: 10) else {
             return "frame probe element missing"
         }

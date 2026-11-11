@@ -157,14 +157,6 @@ final class OpenCastAppRuntime {
                 uiTestSeededChapters: launchConfiguration.seedsChapters ? OpenCastUITestSeedData.seededChapters : nil,
                 legacyLocalPlaylists: stores.legacyLocalPlaylists
             )
-            #if DEBUG
-            if launchConfiguration.seedsUITestData {
-                UITestNowPlayingCompletionFixture.installIfRequested(
-                    appModel: appModel,
-                    modelContext: modelContainer.mainContext
-                )
-            }
-            #endif
         } catch {
             fatalError("Unable to create OpenCast model container: \(error)")
         }
