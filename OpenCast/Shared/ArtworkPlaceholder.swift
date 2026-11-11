@@ -8,6 +8,9 @@ struct ArtworkPlaceholder: View {
     let cacheKind: ArtworkCacheKind
     let preview: ArtworkPreview?
     let contentMode: ContentMode
+    /// Shrinks to the size its parent proposes, up to `displaySize`, still
+    /// decoding for `displaySize` so one bitmap serves every size.
+    let shrinksToFit: Bool
     let onPreviewResolved: ((ArtworkPreview) -> Void)?
 
     @State private var imageState = ArtworkImageState()
@@ -21,6 +24,7 @@ struct ArtworkPlaceholder: View {
         cacheKind: ArtworkCacheKind = .show,
         preview: ArtworkPreview? = nil,
         contentMode: ContentMode = .fill,
+        shrinksToFit: Bool = false,
         onPreviewResolved: ((ArtworkPreview) -> Void)? = nil
     ) {
         self.init(
@@ -31,6 +35,7 @@ struct ArtworkPlaceholder: View {
             cacheKind: cacheKind,
             preview: preview,
             contentMode: contentMode,
+            shrinksToFit: shrinksToFit,
             onPreviewResolved: onPreviewResolved
         )
     }
@@ -43,6 +48,7 @@ struct ArtworkPlaceholder: View {
         cacheKind: ArtworkCacheKind = .show,
         preview: ArtworkPreview? = nil,
         contentMode: ContentMode = .fill,
+        shrinksToFit: Bool = false,
         onPreviewResolved: ((ArtworkPreview) -> Void)? = nil
     ) {
         self.title = title
@@ -52,6 +58,7 @@ struct ArtworkPlaceholder: View {
         self.cacheKind = cacheKind
         self.preview = preview
         self.contentMode = contentMode
+        self.shrinksToFit = shrinksToFit
         self.onPreviewResolved = onPreviewResolved
     }
 
@@ -64,7 +71,12 @@ struct ArtworkPlaceholder: View {
             preview: imageState.resolvedPreview(for: request, fallbackPreview: preview),
             contentMode: contentMode
         )
-            .frame(width: displaySize.width, height: displaySize.height)
+            .frame(
+                minWidth: shrinksToFit ? 0 : displaySize.width,
+                maxWidth: displaySize.width,
+                minHeight: shrinksToFit ? 0 : displaySize.height,
+                maxHeight: displaySize.height
+            )
             .clipShape(.rect(cornerRadius: 8))
             .accessibilityHidden(true)
             .task(id: request) {

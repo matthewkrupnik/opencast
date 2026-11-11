@@ -16,17 +16,20 @@ struct PodcastHeroHeaderView: View {
     let onPreviewResolved: (ArtworkPreview) -> Void
     var onTitleMaxYChange: (CGFloat) -> Void = { _ in }
 
-    @State private var artworkLength: CGFloat = 220
-
     var body: some View {
         VStack(spacing: 16) {
             ArtworkPlaceholder(
                 title: subscription.title,
                 imageURL: podcast?.artworkURL ?? subscription.artworkURL,
-                size: artworkLength,
+                size: 300,
                 preview: artworkPreview,
+                shrinksToFit: true,
                 onPreviewResolved: onPreviewResolved
             )
+            .aspectRatio(1, contentMode: .fit)
+            .containerRelativeFrame(.horizontal) { width, _ in
+                min(max(width * 0.55, 120), 300)
+            }
             .shadow(color: .black.opacity(0.16), radius: 18, y: 8)
 
             VStack(spacing: 5) {
@@ -67,10 +70,5 @@ struct PodcastHeroHeaderView: View {
             }
         }
         .frame(maxWidth: .infinity)
-        .onGeometryChange(for: CGFloat.self) { proxy in
-            proxy.size.width
-        } action: { width in
-            artworkLength = min(max(width * 0.55, 120), 300)
-        }
     }
 }
