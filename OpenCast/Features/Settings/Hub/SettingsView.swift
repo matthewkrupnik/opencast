@@ -13,7 +13,6 @@ struct SettingsView: View {
         }
         .labelStyle(SettingsLabelStyle())
         .navigationTitle("Settings")
-        .tabAccessoryBottomClearance()
         .task {
             appModel.appIcon.load()
             await appModel.syncStatus.refreshAccountStatus()

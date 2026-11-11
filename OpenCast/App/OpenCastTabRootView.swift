@@ -7,7 +7,6 @@ struct OpenCastTabRootView: View {
     @Environment(SceneLibraryLayouts.self) private var inheritedSceneLayouts: SceneLibraryLayouts?
 
     @State private var isSearchPresented = false
-    @State private var accessoryGeometryStore = TabAccessoryGeometryStore()
     /// The window as the two-pane root's reader last reported it.
     @State private var rootWindow = TwoPaneRootWindow.unmeasured
     /// `TwoPaneRootRule`'s answer for the window and the fold latch: the
@@ -119,21 +118,13 @@ struct OpenCastTabRootView: View {
         .tabBarMinimizeBehavior(tabBarMinimizeBehavior)
         .tabViewBottomAccessory(isEnabled: showsTabAccessory) {
             tabAccessory
-                .reportsTabAccessoryGeometry(updateAccessoryGeometry)
         }
-        .environment(accessoryGeometryStore)
         .sensoryFeedback(.success, trigger: appModel.library.subscriptionAddedToken)
         .sensoryFeedback(trigger: appModel.library.refreshCompletedToken) { _, _ in
             appModel.library.lastRefreshWasOffline ? .warning : .success
         }
         .onChange(of: selectedTab, initial: true) { _, selectedTab in
             isSearchPresented = selectedTab == .search
-        }
-        .onChange(of: showsTabAccessory, initial: true) { _, isShown in
-            accessoryGeometryStore.isShown = isShown
-            if !isShown {
-                accessoryGeometryStore.report = nil
-            }
         }
         .focusedSceneValue(\.openCastCommandActions, commandActions)
     }
@@ -193,10 +184,6 @@ struct OpenCastTabRootView: View {
 
     private var showsTabAccessory: Bool {
         appModel.playback.currentEpisode != nil
-    }
-
-    private func updateAccessoryGeometry(_ geometry: TabAccessoryGeometry) {
-        accessoryGeometryStore.report = geometry
     }
 
     private var tabAccessory: some View {

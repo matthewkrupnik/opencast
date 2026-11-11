@@ -53,7 +53,6 @@ struct LibrarySubscriptionGridView<Header: View>: View {
             .swipeActionsContainer()
             .accessibilityIdentifier("Library Grid")
             .contentMargins(.horizontal, metrics.horizontalMargin, for: .scrollContent)
-            .tabAccessoryBottomClearance(rowSpacing: metrics.rowSpacing)
         }
     }
 }

@@ -293,7 +293,6 @@ struct PodcastDetailView: View {
                 .background(alignment: .top) {
                     EpisodeArtworkGlowBackground(preview: podcastArtworkPreview)
                 }
-                .tabAccessoryBottomClearance()
                 .animation(listAnimation, value: Array(model.animationKey.prefix(visibleEpisodeCount)))
                 .animation(listAnimation, value: appModel.library.state)
                 .onScrollGeometryChange(for: Bool.self) { geometry in

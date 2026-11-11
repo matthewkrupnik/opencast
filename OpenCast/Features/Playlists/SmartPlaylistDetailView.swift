@@ -49,7 +49,6 @@ struct SmartPlaylistDetailView: View {
                 EpisodeCatalogContinuation(totalCount: evaluation.count, visibleCount: $visibleEpisodeCount)
             }
         }
-        .tabAccessoryBottomClearance()
         .animation(listAnimation, value: visibleEpisodes.map(\.episodeID))
         .navigationTitle(summary.name)
         .navigationBarTitleDisplayMode(.inline)
