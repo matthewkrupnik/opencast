@@ -6,7 +6,7 @@ struct LibrarySubscriptionTileView: View {
     @State private var isConfirmingRemoval = false
 
     let subscription: SubscriptionRecord
-    let metrics: LibraryGridMetrics
+    let isCompact: Bool
     let showsNewEpisodeCount: Bool
 
     private var newEpisodeCount: Int {
@@ -16,8 +16,8 @@ struct LibrarySubscriptionTileView: View {
     var body: some View {
         let newEpisodeCount = newEpisodeCount
 
-        TwoPaneRootLink(route: .podcastDetail(feedURL: subscription.feedURL), selectionStyle: .tile) {
-            SubscriptionTileView(subscription: subscription, metrics: metrics, badgeCount: newEpisodeCount)
+        LibrarySidebarLink(route: .podcastDetail(feedURL: subscription.feedURL)) {
+            SubscriptionTileView(subscription: subscription, isCompact: isCompact, badgeCount: newEpisodeCount)
         }
         .buttonStyle(.plain)
         .accessibilityValue(LibraryNewEpisodeBadge.accessibilityValue(count: newEpisodeCount))
@@ -27,7 +27,7 @@ struct LibrarySubscriptionTileView: View {
                 isConfirmingRemoval: $isConfirmingRemoval,
                 subscription: subscription,
                 // Compact tiles are too narrow for a trailing swipe action.
-                supportsSwipeAction: !metrics.isCompact,
+                supportsSwipeAction: !isCompact,
                 supportsContextMenu: true
             )
         )

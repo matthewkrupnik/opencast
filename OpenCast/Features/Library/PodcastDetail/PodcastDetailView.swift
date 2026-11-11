@@ -11,11 +11,9 @@ struct PodcastDetailView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.modelContext) private var modelContext
     @Environment(\.dismiss) private var dismiss
-    /// Set when this page is a two-pane split's detail root, where `dismiss`
-    /// cannot remove it.
-    @Environment(\.twoPaneRootClose) private var rootClose
-    /// Inside a two-pane root, the visit ledger above its containers.
-    @Environment(\.twoPaneRootVisit) private var rootVisit
+    /// Set when this page is the Library split's detail root, where
+    /// `dismiss` cannot remove it.
+    @Environment(\.librarySplitDetailClose) private var rootClose
     @State private var feedMigrationErrorMessage: String?
     @State private var isShowingFeedMigrationError = false
     @State private var isConfirmingUnsubscribe = false
@@ -27,14 +25,12 @@ struct PodcastDetailView: View {
     @State private var sheetDestination: SheetDestination?
     @State private var heroTitleMaxY: CGFloat?
     @State private var listContentTopY: CGFloat = 0
-    /// This visit's settings in the page's own state: the truth when no
-    /// two-pane root holds the visit, a mirror of the ledger's when one does.
-    @State private var localVisit: PodcastDetailVisit
+    /// This visit's settings: the episode search, shown or not.
+    @State private var visit = PodcastDetailVisit()
 
     let feedURL: String
     let onOpenEpisode: (String) -> Void
-    /// The route this page was opened with: its identity, and the key of
-    /// its visit in a two-pane root's ledger.
+    /// The route this page was opened with: its identity.
     private let route: AppRoute
 
     init(
@@ -43,29 +39,11 @@ struct PodcastDetailView: View {
     ) {
         self.feedURL = feedURL
         self.onOpenEpisode = onOpenEpisode
-        let route = AppRoute.podcastDetail(feedURL: feedURL)
-        self.route = route
-        _localVisit = State(initialValue: PodcastDetailVisit(route: route))
-    }
-
-    /// The visit as a two-pane root's ledger holds it, above its containers,
-    /// so a fold or rotation that rebuilds this page keeps it. Nil outside a
-    /// two-pane root, and while the path holds this route more than once.
-    private var ledgerVisit: PodcastDetailVisit? {
-        rootVisit?.podcastDetailVisit(for: route)
-    }
-
-    private var visit: PodcastDetailVisit {
-        ledgerVisit ?? localVisit
+        self.route = AppRoute.podcastDetail(feedURL: feedURL)
     }
 
     private func updateVisit(_ change: (inout PodcastDetailVisit) -> Void) {
-        var updated = visit
-        change(&updated)
-        localVisit = updated
-        if ledgerVisit != nil {
-            rootVisit?.setPodcastDetailVisit(updated, for: route)
-        }
+        change(&visit)
     }
 
     private var isSearchVisible: Bool {
@@ -332,16 +310,8 @@ struct PodcastDetailView: View {
                 hideSearch()
             }
         }
-        .onChange(of: ledgerVisit, initial: true) { _, ledgerVisit in
-            // The page's own state follows the ledger's visit, so it holds
-            // the visit's settings should the ledger stop holding this route.
-            if let ledgerVisit {
-                localVisit = ledgerVisit
-            }
-        }
         .onAppear {
-            // A search this visit kept through a rebuild (a two-pane switch)
-            // comes back active, as it was.
+            // A search this visit kept comes back active, as it was.
             if isSearchVisible, !isSearchPresented {
                 isSearchPresented = true
             }
@@ -503,9 +473,8 @@ struct PodcastDetailView: View {
         setFilter(.all)
     }
 
-    /// Leaves this page: a pushed page pops; a two-pane split's detail root
-    /// clears its section's path, since `dismiss` cannot remove a stack's
-    /// root.
+    /// Leaves this page: a pushed page pops; the Library split's detail root
+    /// clears the Library path, since `dismiss` cannot remove a stack's root.
     private func close() {
         if let rootClose, rootClose.route == route {
             rootClose.close()
@@ -538,4 +507,17 @@ struct PodcastDetailView: View {
     private func dismissSearchKeyboard() {
         KeyboardDismissal.dismiss()
     }
+}
+
+/// The show page's per-visit settings: its episode search (shown or not,
+/// its query and mode).
+struct PodcastDetailVisit: Equatable {
+    /// The page's episode search while it is shown.
+    struct Search: Equatable {
+        var query = ""
+        var mode = EpisodeSearchMode.episodes
+    }
+
+    /// Nil while the search is hidden.
+    var search: Search?
 }

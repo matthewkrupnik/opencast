@@ -22,9 +22,7 @@ struct EpisodeRowContextMenuModifier: ViewModifier {
             }
             Button("View Episode Details", systemImage: "info.circle", action: viewDetails)
             if showsGoToShow {
-                // In a two-pane split's sidebar (the Inbox's episode list)
-                // the show opens as the detail; elsewhere it is pushed.
-                TwoPaneRootLink(route: .podcastDetail(feedURL: episode.podcastID), selectionStyle: .menuItem) {
+                NavigationLink(value: AppRoute.podcastDetail(feedURL: episode.podcastID)) {
                     Label("Go to Show", systemImage: "rectangle.stack")
                 }
             }

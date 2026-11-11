@@ -9,7 +9,7 @@ struct SubscriptionTileView: View {
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     let subscription: SubscriptionRecord
-    let metrics: LibraryGridMetrics
+    let isCompact: Bool
     /// The count ball over the artwork; zero shows nothing.
     var badgeCount = 0
 
@@ -32,26 +32,33 @@ struct SubscriptionTileView: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: metrics.isCompact ? 6 : 10) {
-            ArtworkPlaceholder(
-                title: subscription.title,
-                imageURL: podcastCache?.artworkURL ?? subscription.artworkURL,
-                size: metrics.tileWidth,
-                preview: podcastCache.flatMap { appModel.library.artworkPreview(for: $0) },
-                onPreviewResolved: updateArtworkPreview
-            )
-            .overlay(alignment: .topLeading) {
-                refreshStatusOverlay
-            }
-            .overlay(alignment: .topTrailing) {
-                if badgeCount > 0 {
-                    LibraryNewEpisodeBadge(count: badgeCount)
-                        .padding(4)
+        VStack(alignment: .leading, spacing: isCompact ? 6 : 10) {
+            // A square as wide as the grid's column.
+            Color.clear
+                .aspectRatio(1, contentMode: .fit)
+                .overlay {
+                    GeometryReader { proxy in
+                        ArtworkPlaceholder(
+                            title: subscription.title,
+                            imageURL: podcastCache?.artworkURL ?? subscription.artworkURL,
+                            size: proxy.size.width,
+                            preview: podcastCache.flatMap { appModel.library.artworkPreview(for: $0) },
+                            onPreviewResolved: updateArtworkPreview
+                        )
+                    }
                 }
-            }
+                .overlay(alignment: .topLeading) {
+                    refreshStatusOverlay
+                }
+                .overlay(alignment: .topTrailing) {
+                    if badgeCount > 0 {
+                        LibraryNewEpisodeBadge(count: badgeCount)
+                            .padding(4)
+                    }
+                }
 
             Text(subscription.title)
-                .font(metrics.isCompact ? .subheadline : .headline)
+                .font(isCompact ? .subheadline : .headline)
                 .foregroundStyle(.primary)
                 .lineLimit(dynamicTypeSize.isAccessibilitySize ? 4 : 2)
                 .fixedSize(horizontal: false, vertical: true)
