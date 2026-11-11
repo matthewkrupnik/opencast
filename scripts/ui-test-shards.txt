@@ -132,7 +132,6 @@ shard2 OpenCastUITests/OpenCastUITests/testSeededDownloadsGroupByShowSectionShow
 serial OpenCastUITests/OpenCastUITests/testNowPlayingFramePacing
 serial OpenCastUITests/OpenCastUITests/testSeededCompletionDuringCancelledDismissDragReturnsFinishedCard
 serial OpenCastUITests/OpenCastUITests/testSeededCompletionDuringDismissDragCompletesDismissal
-serial OpenCastUITests/OpenCastUITests/testSeededCompletionDuringExitAnimationLeavesInteractiveTabs
 serial OpenCastUITests/OpenCastUITests/testSeededNearEndCompletionDuringEntranceShowsFinishedCard
 
 # --- excluded from routine iPhone lane (opt-in / live / device / AirPlay) ---
