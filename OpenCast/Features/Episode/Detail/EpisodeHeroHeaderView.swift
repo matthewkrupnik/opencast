@@ -5,19 +5,22 @@ struct EpisodeHeroHeaderView: View {
     let chips: [EpisodeMetadataChip]
     let onPreviewResolved: (ArtworkPreview) -> Void
 
-    @State private var artworkLength: CGFloat = 220
-
     var body: some View {
         VStack(spacing: 14) {
             NavigationLink(value: AppRoute.episodeArtwork(id: episode.episodeID)) {
                 ArtworkPlaceholder(
                     title: episode.podcastTitle,
                     imageURL: episode.artworkURL,
-                    size: artworkLength,
+                    size: 340,
                     cacheKind: .episode,
                     preview: episode.artworkPreview,
+                    shrinksToFit: true,
                     onPreviewResolved: onPreviewResolved
                 )
+                .aspectRatio(1, contentMode: .fit)
+                .containerRelativeFrame(.horizontal) { width, _ in
+                    min(max(width * 0.6, 120), 340)
+                }
             }
             .buttonStyle(.plain)
             .accessibilityLabel("View Episode Artwork")
@@ -46,11 +49,6 @@ struct EpisodeHeroHeaderView: View {
             }
         }
         .frame(maxWidth: .infinity)
-        .onGeometryChange(for: CGFloat.self) { proxy in
-            proxy.size.width
-        } action: { width in
-            artworkLength = min(max(width * 0.6, 120), 340)
-        }
     }
 }
 

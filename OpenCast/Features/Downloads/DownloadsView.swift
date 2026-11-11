@@ -151,7 +151,6 @@ struct DownloadsView: View {
             }
         }
         .scrollDismissesKeyboard(.immediately)
-        .safeAreaHorizontalContentMargins(regular: 32)
         .navigationTitle("Downloads")
         .toolbarMinimizationBehavior(
             editMode.isEditing || isSearchVisible ? .never : .onScrollDown,
