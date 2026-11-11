@@ -10,9 +10,9 @@ struct EpisodeDetailView: View {
 
     @Environment(OpenCastAppModel.self) private var appModel
     @Environment(\.dismiss) private var dismiss
-    /// Set when this page is a two-pane split's detail root, where `dismiss`
-    /// cannot remove it.
-    @Environment(\.twoPaneRootClose) private var rootClose
+    /// Set when this page is the Library split's detail root, where
+    /// `dismiss` cannot remove it.
+    @Environment(\.librarySplitDetailClose) private var rootClose
     @Environment(\.modelContext) private var modelContext
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
 
@@ -38,8 +38,8 @@ struct EpisodeDetailView: View {
         appModel.episodeSnapshot(for: episodeID)
     }
 
-    /// A pushed page pops; a two-pane split's detail root clears its
-    /// section's path, since `dismiss` cannot remove a stack's root.
+    /// A pushed page pops; the Library split's detail root clears the
+    /// Library path, since `dismiss` cannot remove a stack's root.
     private func goBack() {
         if let rootClose, rootClose.route == .episodeDetail(id: episodeID) {
             rootClose.close()

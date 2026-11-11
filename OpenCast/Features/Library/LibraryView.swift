@@ -10,7 +10,7 @@ struct LibraryView: View {
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @Environment(\.modelContext) private var modelContext
     @Environment(\.scenePhase) private var scenePhase
-    @Environment(SceneLibraryLayouts.self) private var sceneLibraryLayouts: SceneLibraryLayouts?
+    @Environment(\.librarySidebar) private var sidebar
     @State private var sampleSubscriptionErrorMessage: String?
     @State private var isSubscribingSample = false
     @State private var namePromptRequest: PlaylistNamePromptRequest?
@@ -31,10 +31,13 @@ struct LibraryView: View {
     }
 
     private var layout: LibraryLayout {
-        let preference = displaySettings.layout
-        let isRegularWidth = horizontalSizeClass == .regular
-        return sceneLibraryLayouts?.layout(of: .library, for: preference, isRegularWidth: isRegularWidth)
-            ?? preference.resolved(isRegularWidth: isRegularWidth)
+        displaySettings.layout.resolved(isRegularWidth: horizontalSizeClass == .regular)
+    }
+
+    /// The split sidebar's selection, which its `NavigationLink(value:)`
+    /// rows set.
+    private var selection: Binding<AppRoute?> {
+        sidebar?.selection ?? .constant(nil)
     }
 
     var body: some View {
@@ -96,9 +99,6 @@ struct LibraryView: View {
                 appModel.library.advanceNewEpisodeReferenceDate()
                 adDetectionIndicatorAppearance += 1
             }
-            .onChange(of: displaySettings.layout, initial: true) { _, preference in
-                sceneLibraryLayouts?.observe(preference, on: .library, isRegularWidth: horizontalSizeClass == .regular)
-            }
             .onChange(of: scenePhase) { _, scenePhase in
                 if scenePhase == .active {
                     appModel.library.advanceNewEpisodeReferenceDate()
@@ -113,7 +113,7 @@ struct LibraryView: View {
     private func content(subscriptions: [SubscriptionRecord]) -> some View {
         switch appModel.library.state {
         case .loading where subscriptions.isEmpty:
-            List {
+            List(selection: selection) {
                 // Loaded before the library, so they draw at once.
                 playlistsSection
                 ProgressView()
@@ -128,7 +128,7 @@ struct LibraryView: View {
             }
         default:
             if subscriptions.isEmpty {
-                List {
+                List(selection: selection) {
                     // Playlists outlive their shows, so they stay while
                     // there are no shows.
                     playlistsSection
@@ -162,7 +162,7 @@ struct LibraryView: View {
                 }
                 .transition(.opacity)
             } else {
-                List {
+                List(selection: selection) {
                     offlineNoticeSection
 
                     playlistsSection
@@ -246,7 +246,7 @@ struct LibraryView: View {
             .contentShape(.rect)
         }
         .buttonStyle(.plain)
-        .twoPaneRootSelection(.notes, style: .inline)
+        .librarySidebarSelection(.notes, style: .inline)
         .accessibilityValue((notesCount ?? 0) > 0 ? (notesCount ?? 0).formatted() : "")
         .accessibilityIdentifier("Library Notes Row")
     }
@@ -282,7 +282,7 @@ struct LibraryView: View {
                     ForEach(playlists) { summary in
                         LibraryPlaylistTileView(
                             summary: summary,
-                            metrics: metrics,
+                            isCompact: metrics.isCompact,
                             episodeCount: playlistEpisodeCount(for: summary),
                             hasUnplayedEpisodes: playlistHasUnplayedEpisodes(summary)
                         )

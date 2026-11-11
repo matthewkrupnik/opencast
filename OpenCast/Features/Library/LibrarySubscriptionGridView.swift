@@ -23,37 +23,30 @@ struct LibrarySubscriptionGridView<Header: View>: View {
     }
 
     var body: some View {
-        // Reads the width in the same layout pass, so the first frame
-        // already has its final column count.
-        GeometryReader { proxy in
-            let metrics = LibraryGridMetrics.resolve(
-                in: proxy,
-                horizontalSizeClass: horizontalSizeClass,
-                verticalSizeClass: verticalSizeClass,
-                isAccessibilitySize: dynamicTypeSize.isAccessibilitySize
-            )
+        let metrics = LibraryGridMetrics(
+            isCompact: horizontalSizeClass == .compact || verticalSizeClass == .compact,
+            isAccessibilitySize: dynamicTypeSize.isAccessibilitySize
+        )
 
-            ScrollView {
-                VStack(alignment: .leading, spacing: 0) {
-                    header(metrics)
+        ScrollView {
+            VStack(alignment: .leading, spacing: 0) {
+                header(metrics)
 
-                    LazyVGrid(columns: metrics.columns, spacing: metrics.rowSpacing) {
-                        ForEach(subscriptions) { subscription in
-                            LibrarySubscriptionTileView(
-                                subscription: subscription,
-                                metrics: metrics,
-                                showsNewEpisodeCount: showsNewEpisodeCount
-                            )
-                        }
+                LazyVGrid(columns: metrics.columns, spacing: metrics.rowSpacing) {
+                    ForEach(subscriptions) { subscription in
+                        LibrarySubscriptionTileView(
+                            subscription: subscription,
+                            isCompact: metrics.isCompact,
+                            showsNewEpisodeCount: showsNewEpisodeCount
+                        )
                     }
-                    .libraryGridPlacement(metrics)
-                    .padding(.vertical, 8)
                 }
+                .padding(.vertical, 8)
             }
-            .swipeActionsContainer()
-            .accessibilityIdentifier("Library Grid")
-            .contentMargins(.horizontal, metrics.horizontalMargin, for: .scrollContent)
-            .tabAccessoryBottomClearance(rowSpacing: metrics.rowSpacing)
         }
+        .swipeActionsContainer()
+        .accessibilityIdentifier("Library Grid")
+        .contentMargins(.horizontal, metrics.horizontalMargin, for: .scrollContent)
+        .tabAccessoryBottomClearance(rowSpacing: metrics.rowSpacing)
     }
 }

@@ -2,59 +2,30 @@ import SwiftUI
 
 struct OpenCastTabRootView: View {
     @Environment(OpenCastAppModel.self) private var appModel
-    /// The scene's fold mark as the root layer publishes it; nil until it
-    /// does.
-    @Environment(SceneLibraryLayouts.self) private var inheritedSceneLayouts: SceneLibraryLayouts?
 
     @State private var isSearchPresented = false
     @State private var accessoryGeometryStore = TabAccessoryGeometryStore()
-    /// The window as the two-pane root's reader last reported it.
-    @State private var rootWindow = TwoPaneRootWindow.unmeasured
-    /// `TwoPaneRootRule`'s answer for the window and the fold latch: the
-    /// container the Library root uses.
-    @State private var rootContainer = TwoPaneRootContainer.stack
 
     @Binding var selectedTab: AppSection
     @Binding var navigationPaths: AppNavigationPaths
     let onAdd: () -> Void
     let onPresentNowPlaying: () -> Void
 
-    var body: some View {
-        ZStack {
-            // A sibling of the tab view, above every tab's container, so the
-            // two-pane rule reads the window without Now Playing open.
-            TwoPaneRootWindowReader { window in
-                rootWindow = window
-            }
-            tabView
-        }
-        .onChange(of: rootWindow, initial: true) {
-            updateRootContainer()
-        }
-        .onChange(of: inheritedSceneLayouts?.isFoldable == true) {
-            updateRootContainer()
-        }
-    }
-
     // The fork has four tabs, which fit the iPhone Duo's bottom bar with
     // their titles, so it keeps titled tabs everywhere.
-    private var tabView: some View {
+    var body: some View {
         TabView(selection: $selectedTab) {
             Tab(AppSection.library.title, systemImage: AppSection.library.systemImage, value: AppSection.library) {
-                TwoPaneRoot(
-                    section: .library,
-                    container: $rootContainer,
+                LibrarySplitView(
                     path: $navigationPaths[.library],
-                    placeholder: .library,
-                    openFromRoot: openFromRoot(on: .library),
                     onOpenEpisode: openEpisode(on: .library),
                     onOpenPlaylist: openPlaylist(on: .library)
                 ) {
                     LibraryView(
                         onAdd: onAdd,
-                        onOpenPlaylist: { openFromRoot(on: .library)(.playlistDetail(id: $0)) },
+                        onOpenPlaylist: { navigationPaths[.library] = [.playlistDetail(id: $0)] },
                         onOpenAdDetectionQueue: openAdDetection,
-                        onOpenNotes: { openFromRoot(on: .library)(.notes) }
+                        onOpenNotes: { navigationPaths[.library] = [.notes] }
                     )
                 }
                 .publishesActiveTabBarPlacement()
@@ -147,36 +118,6 @@ struct OpenCastTabRootView: View {
     private func openAdDetection() {
         selectedTab = .downloads
         navigationPaths[.downloads] = []
-    }
-
-    /// The rule's container for the current window and latch; every change
-    /// is logged with the inputs that made it.
-    private func updateRootContainer() {
-        let isFoldableScene = inheritedSceneLayouts?.isFoldable == true
-        let container = TwoPaneRootRule.container(
-            pose: rootWindow.pose,
-            isFoldableScene: isFoldableScene,
-            windowSize: rootWindow.size
-        )
-        TwoPaneRootLog.inputs(rootWindow, isFoldableScene: isFoldableScene, container: container)
-        guard container != rootContainer else {
-            return
-        }
-        TwoPaneRootLog.containerChange(from: rootContainer, to: container)
-        rootContainer = container
-    }
-
-    /// A route opened from a two-pane root's own content (its rows, tiles,
-    /// collection entries, callbacks and context menus): the detail's new
-    /// root in the split, a push in the stack (`TwoPaneRootPath`).
-    private func openFromRoot(on section: AppSection) -> (AppRoute) -> Void {
-        { route in
-            navigationPaths[section] = TwoPaneRootPath.openingFromRoot(
-                route,
-                in: navigationPaths[section],
-                container: rootContainer
-            )
-        }
     }
 
     private func openEpisode(on section: AppSection) -> (String) -> Void {
