@@ -19,9 +19,6 @@ struct NowPlayingView: View {
     @State private var isAutoSkipPillVisible = false
     @ScaledMetric(relativeTo: .body) private var playButtonScaledDiameter = NowPlayingTransportControls.playButtonBaseDiameter
 
-    /// The window's safe area as it falls on the card.
-    let safeAreaInsets: EdgeInsets
-    let isTrackingDismissDrag: Bool
     let onDismiss: () -> Void
     let onOpenEpisode: () -> Void
     let onOpenPodcast: () -> Void
@@ -33,6 +30,8 @@ struct NowPlayingView: View {
     private static let statusSlotHeight: CGFloat = NowPlayingSourcePill.height
     /// The Finished screen's artwork.
     private static let finishedArtworkSide: CGFloat = 240
+    /// The mini player's zoom source for the full-screen cover.
+    static let transitionSourceID = "Now Playing"
 
     var body: some View {
         content
@@ -75,12 +74,7 @@ struct NowPlayingView: View {
 
     @ViewBuilder
     private var content: some View {
-        if !appModel.isNowPlayingPresented {
-            // The card is off screen: nothing is mounted, so none of its
-            // controls stay in the accessibility tree. It builds again as the
-            // card starts to present.
-            Color.clear
-        } else if let episode = appModel.playback.currentEpisode {
+        if let episode = appModel.playback.currentEpisode {
             player(for: episode)
         } else if let finishedPlaybackPresentation = appModel.finishedPlaybackPresentation {
             ScrollView {
@@ -103,7 +97,7 @@ struct NowPlayingView: View {
     /// The player never scrolls. The artwork takes the height the other
     /// rows leave and steps aside when that is too little; past that the
     /// title shrinks. Text stops growing at the first accessibility size.
-    /// The toolbar stays on the card's bottom edge.
+    /// The toolbar stays on the bottom edge.
     private func player(for episode: Episode) -> some View {
         VStack(spacing: 0) {
             stack(for: episode)
@@ -134,17 +128,25 @@ struct NowPlayingView: View {
         )
     }
 
+    /// The artwork, laid out last, is the square the other rows leave; below
+    /// 64 pt it steps aside.
     private func stack(for episode: Episode) -> some View {
-        PlayerStackLayout(minimumArtworkSide: 64) {
+        VStack(spacing: 0) {
             statusSlot
 
             titleBlock(for: episode)
                 .padding(.top, 12)
-                .layoutValue(key: PlayerRow.self, value: .title)
 
-            artwork(for: episode)
-                .padding(.top, 12)
-                .layoutValue(key: PlayerRow.self, value: .artwork)
+            ViewThatFits(in: .vertical) {
+                artwork(for: episode)
+                    .aspectRatio(1, contentMode: .fit)
+                    .frame(minHeight: 64, idealHeight: 64, maxHeight: .infinity)
+                Color.clear
+                    .frame(height: 0)
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.top, 12)
+            .layoutPriority(-1)
 
             NowPlayingProgressSection(episodeID: episode.id.rawValue, onShowChapters: showChapters)
                 .padding(.top, 32)
@@ -156,16 +158,15 @@ struct NowPlayingView: View {
         }
     }
 
-    /// Insets from the card's edges: below the safe top, above the safe
-    /// bottom, and the content's own clearances.
+    /// The content's own clearances inside the safe area.
     private var contentInsets: EdgeInsets {
         let isRegular = horizontalSizeClass == .regular
         let sidePadding: CGFloat = isRegular ? 36 : 24
         return EdgeInsets(
-            top: max(safeAreaInsets.top + 8, 16),
-            leading: safeAreaInsets.leading + sidePadding,
-            bottom: isRegular ? safeAreaInsets.bottom + 24 : max(safeAreaInsets.bottom, 16) + 4,
-            trailing: safeAreaInsets.trailing + sidePadding
+            top: 8,
+            leading: sidePadding,
+            bottom: isRegular ? 24 : 4,
+            trailing: sidePadding
         )
     }
 
@@ -642,68 +643,5 @@ private extension View {
     func contentFrame(width: CGFloat) -> some View {
         frame(maxWidth: width)
             .frame(maxWidth: .infinity)
-    }
-}
-
-nonisolated private enum PlayerRow: LayoutValueKey {
-    case other, title, artwork
-    static let defaultValue = PlayerRow.other
-}
-
-/// A vertical stack exactly the proposed height tall. The artwork row is a
-/// square taking the height the other rows leave, as wide as the stack at
-/// most; below `minimumArtworkSide` it steps aside. If the other rows still
-/// do not fit, the title row gets what is left and its text shrinks. Rows
-/// space themselves with their own top padding.
-nonisolated private struct PlayerStackLayout: Layout {
-    let minimumArtworkSide: CGFloat
-
-    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
-        let width = proposal.width ?? 0
-        let rows = rows(width: width, height: proposal.height, subviews: subviews)
-        return CGSize(width: width, height: proposal.height ?? rows.heights.reduce(0, +))
-    }
-
-    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
-        let rows = rows(width: bounds.width, height: bounds.height, subviews: subviews)
-        var y = bounds.minY
-        for (index, subview) in subviews.enumerated() {
-            let height = rows.heights[index]
-            let width = subview[PlayerRow.self] == .artwork ? rows.artworkSide : bounds.width
-            subview.place(
-                at: CGPoint(x: bounds.midX, y: y),
-                anchor: .top,
-                proposal: ProposedViewSize(width: width, height: height)
-            )
-            y += height
-        }
-    }
-
-    private func rows(width: CGFloat, height viewportHeight: CGFloat?, subviews: Subviews) -> (heights: [CGFloat], artworkSide: CGFloat) {
-        var heights = subviews.map { subview in
-            subview[PlayerRow.self] == .artwork
-                ? 0
-                : subview.sizeThatFits(ProposedViewSize(width: width, height: nil)).height
-        }
-        guard let viewportHeight else {
-            return (heights, 0)
-        }
-        var room = viewportHeight - heights.reduce(0, +)
-        var artworkSide: CGFloat = 0
-        if let index = subviews.firstIndex(where: { $0[PlayerRow.self] == .artwork }) {
-            // The row includes its top padding; the square is what the
-            // padding leaves of it.
-            let padding = subviews[index].sizeThatFits(ProposedViewSize(width: 0, height: 0)).height
-            let side = min(width, room - padding)
-            if side >= minimumArtworkSide {
-                artworkSide = side
-                heights[index] = side + padding
-                room -= side + padding
-            }
-        }
-        if room < 0, let index = subviews.firstIndex(where: { $0[PlayerRow.self] == .title }) {
-            heights[index] = max(0, heights[index] + room)
-        }
-        return (heights, artworkSide)
     }
 }

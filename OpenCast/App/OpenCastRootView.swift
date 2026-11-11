@@ -10,6 +10,7 @@ struct OpenCastRootView: View {
     @Environment(OpenCastAppModel.self) private var appModel
     @Environment(\.modelContext) private var modelContext
     @Environment(\.scenePhase) private var scenePhase
+    @Namespace private var nowPlayingNamespace
 
     @State private var selectedTab = AppSection.library
     @State private var navigationPaths = AppNavigationPaths()
@@ -41,6 +42,7 @@ struct OpenCastRootView: View {
 
     var body: some View {
         OpenCastRootLayerView(
+            nowPlayingNamespace: nowPlayingNamespace,
             onDismissNowPlaying: dismissNowPlaying,
             onOpenCurrentEpisode: openCurrentEpisodeFromNowPlaying,
             onOpenCurrentPodcast: openCurrentPodcastFromNowPlaying,
@@ -50,6 +52,7 @@ struct OpenCastRootView: View {
             OpenCastTabRootView(
                 selectedTab: $selectedTab,
                 navigationPaths: $navigationPaths,
+                nowPlayingNamespace: nowPlayingNamespace,
                 onAdd: presentAddPodcast,
                 onPresentNowPlaying: presentNowPlaying
             )

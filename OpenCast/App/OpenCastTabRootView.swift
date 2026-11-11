@@ -15,6 +15,7 @@ struct OpenCastTabRootView: View {
 
     @Binding var selectedTab: AppSection
     @Binding var navigationPaths: AppNavigationPaths
+    let nowPlayingNamespace: Namespace.ID
     let onAdd: () -> Void
     let onPresentNowPlaying: () -> Void
 
@@ -190,6 +191,7 @@ struct OpenCastTabRootView: View {
         MiniPlayerView(
             onExpand: onPresentNowPlaying
         )
+        .matchedTransitionSource(id: NowPlayingView.transitionSourceID, in: nowPlayingNamespace)
     }
 
     private var commandActions: OpenCastCommandActions {

@@ -584,9 +584,10 @@ extension XCTestCase {
     /// window point the drags always started from; 0.06, where the iPad suite's bottom-anchored card
     /// starts, lands in a tall phone's status bar band (y ≈ 52 on the iPhone
     /// 18 Pro), which does not hand the drag to the card.
-    /// The dismissal is distance-based (`NowPlayingOverlayView`: 0.28 of the
-    /// dismiss distance, or a predicted 0.56), so each caller keeps its former
-    /// drag's travel, velocity and hold rather than its end point.
+    /// Now Playing is a full-screen cover with a zoom transition, whose
+    /// interactive dismissal the system decides from travel and velocity, so
+    /// each caller keeps its former drag's travel, velocity and hold rather
+    /// than its end point.
     @MainActor
     func dragNowPlayingCard(
         _ card: XCUIElement,
