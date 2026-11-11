@@ -17,13 +17,8 @@ struct OpenCastRootPresentationModifier: ViewModifier {
                     .environment(appModel)
                     .modelContext(modelContext)
             }
-            .alert(
-                "Playback Failed",
-                item: $appModel.lastPlaybackError
-            ) { _ in
-            } message: { message in
-                Text(message)
-            }
+            // Now Playing's full-screen cover presents this alert while it is up.
+            .playbackFailedAlert(isActive: !appModel.isNowPlayingPresented)
             .alert(
                 "Playlist Error",
                 item: $appModel.lastPlaylistError
@@ -42,5 +37,32 @@ struct OpenCastRootPresentationModifier: ViewModifier {
 
     private func dismissSheet() {
         sheetDestination = nil
+    }
+}
+
+extension View {
+    /// The "Playback Failed" alert, presented from whichever layer is on top:
+    /// the root, or Now Playing's full-screen cover while it is up.
+    func playbackFailedAlert(isActive: Bool) -> some View {
+        modifier(PlaybackFailedAlert(isActive: isActive))
+    }
+}
+
+private struct PlaybackFailedAlert: ViewModifier {
+    @Environment(OpenCastAppModel.self) private var appModel
+
+    let isActive: Bool
+
+    func body(content: Content) -> some View {
+        content.alert(
+            "Playback Failed",
+            item: Binding(
+                get: { isActive ? appModel.lastPlaybackError : nil },
+                set: { appModel.lastPlaybackError = $0 }
+            )
+        ) { _ in
+        } message: { message in
+            Text(message)
+        }
     }
 }

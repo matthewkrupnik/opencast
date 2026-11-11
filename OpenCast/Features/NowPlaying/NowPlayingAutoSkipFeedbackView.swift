@@ -1,7 +1,7 @@
 import SwiftUI
 
-/// Scoped to one episode by the host's identity. Hidden events are consumed
-/// without replaying feedback when the prepared card becomes visible again.
+/// Scoped to one episode by the host's identity. It mounts with Now Playing,
+/// so a skip that happened while it was closed never replays on opening.
 struct NowPlayingAutoSkipFeedbackView: View {
     @Environment(OpenCastAppModel.self) private var appModel
     @Environment(\.pinsAppStoreAutoSkipPill) private var pinsAutoSkipPill
@@ -21,7 +21,7 @@ struct NowPlayingAutoSkipFeedbackView: View {
         .onChange(of: showsPill || pinsAutoSkipPill, initial: true) { _, isShowing in
             isShowingPill = isShowing
         }
-        .onChange(of: appModel.playback.lastAutoSkipEvent, initial: true) { _, event in
+        .onChange(of: appModel.playback.lastAutoSkipEvent) { _, event in
             guard event != nil, appModel.isNowPlayingPresented else { return }
             feedback += 1
             AccessibilityNotification.Announcement("Skipped promo").post()

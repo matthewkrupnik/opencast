@@ -55,6 +55,7 @@ struct OpenCastRootLayerView<Content: View>: View {
                     // The cover hides the screen beneath from accessibility,
                     // so it carries its own copy of the diagnostics readouts.
                     .overlay { diagnosticsStatus }
+                    .playbackFailedAlert(isActive: true)
                 }
 
             diagnosticsStatus
