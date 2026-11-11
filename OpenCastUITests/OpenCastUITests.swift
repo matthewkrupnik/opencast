@@ -4352,6 +4352,9 @@ final class OpenCastUITests: XCTestCase {
 
     @MainActor
     func testAddPodcastRSSClipboardPrefillScreenshots() throws {
+        // On iOS 27.2 the Add menu keeps the app from idling, so XCUITest
+        // waits its full 60 s before each tap; this test opens it twice.
+        executionTimeAllowance = 600
         try verifyAddPodcastRSSClipboardPrefill(
             forcesDarkMode: true,
             forcesLightMode: false,
