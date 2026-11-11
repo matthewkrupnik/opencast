@@ -352,7 +352,6 @@ struct EpisodeDetailView: View {
         .background(alignment: .top) {
             EpisodeArtworkGlowBackground(preview: episode.artworkPreview)
         }
-        .tabAccessoryBottomClearance(rowSpacing: Self.contentSpacing)
     }
 
     private func togglePlayback(_ episode: EpisodeListItemSnapshot) {

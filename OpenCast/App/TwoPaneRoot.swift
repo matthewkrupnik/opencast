@@ -148,9 +148,5 @@ private struct TwoPaneRootDetailHost: View {
             .withOpenCastDestinations(onOpenEpisode: onOpenEpisode, onOpenPlaylist: onOpenPlaylist)
         }
         .environment(\.twoPaneRootVisit, writer.visitScope(visitState))
-        // The detail column is a viewport the shell did not have: its pages
-        // take the accessory clearance from their own scroll views; this
-        // records the column against the accessory.
-        .twoPaneRootClearanceProbe("detail-\(section.rawValue)")
     }
 }

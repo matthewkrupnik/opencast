@@ -17,7 +17,7 @@ struct HelpTopicView: View {
                 missingTopic
             }
         }
-        .settingsSubscreen(title: topic?.title ?? "Help", rowSpacing: Self.blockSpacing)
+        .settingsSubscreen(title: topic?.title ?? "Help")
     }
 
     private func topicContent(_ topic: HelpTopic) -> some View {
