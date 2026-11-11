@@ -1,12 +1,11 @@
 import SwiftUI
 
-/// The Library tab: a `NavigationSplitView` over the Library's
-/// `AppNavigationPaths` slot. The sidebar is the Library; the detail is a
+/// The Library tab over the Library's `AppNavigationPaths` slot. At regular
+/// width a `NavigationSplitView`: the sidebar is the Library; the detail is a
 /// stack whose root is the page for `path.first` (the sidebar's selection)
-/// with the rest of the path pushed on it. At regular width both columns
-/// show; at compact width the split collapses into one stack, showing the
-/// detail while the path holds a route, and going back to the sidebar clears
-/// the path.
+/// with the rest of the path pushed on it. At compact width a plain
+/// `NavigationStack` over the Library, where the same path is a push stack:
+/// a collapsed split pops its detail root and the page above it together.
 struct LibrarySplitView<Sidebar: View>: View {
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
 
@@ -16,35 +15,50 @@ struct LibrarySplitView<Sidebar: View>: View {
     @ViewBuilder let sidebar: () -> Sidebar
 
     var body: some View {
-        let head = path.first
-        NavigationSplitView(preferredCompactColumn: compactColumn) {
-            sidebar()
-                .environment(\.librarySidebar, LibrarySidebar(selectedRoute: head) { route in
-                    path = [route]
-                })
-        } detail: {
-            NavigationStack(path: detailPath) {
-                Group {
-                    if let head {
-                        RouteDestinationView(route: head, onOpenEpisode: onOpenEpisode, onOpenPlaylist: onOpenPlaylist)
-                            .environment(\.librarySplitDetailClose, LibrarySplitDetailClose(route: head) {
-                                path = []
-                            })
-                    } else {
-                        ContentUnavailableView(
-                            "No Show Selected",
-                            systemImage: "square.stack",
-                            description: Text("Choose a show in the Library.")
-                        )
-                        .accessibilityIdentifier("Library Detail Placeholder")
-                    }
-                }
-                .withOpenCastDestinations(onOpenEpisode: onOpenEpisode, onOpenPlaylist: onOpenPlaylist)
+        if horizontalSizeClass == .compact {
+            NavigationStack(path: $path) {
+                library
+                    .withOpenCastDestinations(onOpenEpisode: onOpenEpisode, onOpenPlaylist: onOpenPlaylist)
             }
-            // A new selection is a new detail stack.
-            .id(head)
+        } else {
+            NavigationSplitView {
+                library
+            } detail: {
+                NavigationStack(path: detailPath) {
+                    detailRoot
+                        .withOpenCastDestinations(onOpenEpisode: onOpenEpisode, onOpenPlaylist: onOpenPlaylist)
+                }
+            }
+            .navigationSplitViewStyle(.balanced)
         }
-        .navigationSplitViewStyle(.balanced)
+    }
+
+    private var library: some View {
+        sidebar()
+            .environment(\.librarySidebar, LibrarySidebar(selectedRoute: path.first) { route in
+                path = [route]
+            })
+    }
+
+    @ViewBuilder
+    private var detailRoot: some View {
+        if let head = path.first {
+            RouteDestinationView(route: head, onOpenEpisode: onOpenEpisode, onOpenPlaylist: onOpenPlaylist)
+                .environment(\.librarySplitDetailClose, LibrarySplitDetailClose(route: head) {
+                    path = []
+                })
+                // A new selection is a new page with fresh state. The stack
+                // keeps its identity: rebuilding it strands the navigation
+                // bar's search field on the old page.
+                .id(head)
+        } else {
+            ContentUnavailableView(
+                "No Show Selected",
+                systemImage: "square.stack",
+                description: Text("Choose a show in the Library.")
+            )
+            .accessibilityIdentifier("Library Detail Placeholder")
+        }
     }
 
     /// The routes pushed on the detail root.
@@ -52,19 +66,6 @@ struct LibrarySplitView<Sidebar: View>: View {
         Binding(
             get: { Array(path.dropFirst()) },
             set: { path = Array(path.prefix(1)) + $0 }
-        )
-    }
-
-    /// The collapsed split shows the detail while the path holds a route;
-    /// going back to the sidebar clears it.
-    private var compactColumn: Binding<NavigationSplitViewColumn> {
-        Binding(
-            get: { path.isEmpty ? .sidebar : .detail },
-            set: { column in
-                if column == .sidebar, horizontalSizeClass == .compact {
-                    path = []
-                }
-            }
         )
     }
 }
