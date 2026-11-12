@@ -107,6 +107,23 @@ struct OpenCastSystemActionTests {
         #expect(fixture.model.playback.position == 37)
     }
 
+    @Test func pauseStopsCurrentPlaybackAndKeepsTheEpisode() async throws {
+        let fixture = try await OpenCastSystemActionFixture.make()
+        try await fixture.model.systemActions.perform(.playLatest(OpenCastSystemActionFixture.feed), modelContext: fixture.context)
+        defer { fixture.model.playback.pause() }
+        #expect(fixture.model.playback.state.showsPauseButton)
+        try await fixture.model.systemActions.perform(.pause, modelContext: fixture.context)
+        #expect(!fixture.model.playback.state.showsPauseButton)
+        #expect(fixture.model.playback.currentEpisode?.id.rawValue == "episode-2")
+    }
+
+    @Test func pauseWithNothingLoadedThrowsNothingPlaying() async throws {
+        let fixture = try await OpenCastSystemActionFixture.make()
+        await #expect(throws: OpenCastSystemActionError.nothingPlaying) {
+            try await fixture.model.systemActions.perform(.pause, modelContext: fixture.context)
+        }
+    }
+
     @Test func playPlaylistReplacesQueueAndStartsSilently() async throws {
         let fixture = try await OpenCastSystemActionFixture.make(episodeCount: 4)
         let playlists = try await fixture.seedPlaylists()
@@ -165,7 +182,7 @@ struct OpenCastSystemActionTests {
         #expect(entities.map(\.id) == [playlists.commuteID, playlists.allPlayedID, playlists.emptyID, playlists.smartID])
         #expect(entities.prefix(3).map(\.episodeCountText) == ["2 episodes", "1 episode", "No episodes"])
         #expect(entities.prefix(3).map(\.episodeCount) == [2, 1, 0])
-        #expect(entities.first?.name == "Commute")
+        #expect(entities.first?.title == "Commute")
     }
 
     @Test func playPlaylistQueueFailureAfterStartIsAQueueError() async throws {

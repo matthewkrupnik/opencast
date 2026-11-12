@@ -37,6 +37,9 @@ final class OpenCastSystemActionRouter {
                 throw OpenCastSystemActionError.unavailable
             }
             try play(availableEpisode(id), modelContext: modelContext)
+        case .pause:
+            guard appModel.playback.currentEpisode != nil else { throw OpenCastSystemActionError.nothingPlaying }
+            appModel.playback.pause()
         case .playPlaylist(let playlistID):
             guard appModel.playlist(playlistID) != nil else { throw OpenCastSystemActionError.unavailable }
             guard appModel.hasPlaylistPlaybackCandidates(playlistID) else {

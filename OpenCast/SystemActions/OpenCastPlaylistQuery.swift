@@ -10,7 +10,7 @@ nonisolated struct OpenCastPlaylistQuery: EntityStringQuery {
 
     func entities(matching string: String) async throws -> [OpenCastPlaylistEntity] {
         let playlists = try await OpenCastIntentAccess.playlists()
-        return Array(playlists.filter { $0.name.localizedStandardContains(string) }.prefix(OpenCastEntityCatalog.queryLimit))
+        return Array(playlists.filter { $0.title.localizedStandardContains(string) }.prefix(OpenCastEntityCatalog.queryLimit))
     }
 
     func suggestedEntities() async throws -> [OpenCastPlaylistEntity] {

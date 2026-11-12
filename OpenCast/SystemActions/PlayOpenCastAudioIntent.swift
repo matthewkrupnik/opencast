@@ -20,6 +20,7 @@ struct PlayOpenCastAudioIntent: AudioPlaybackIntent {
         let action: OpenCastSystemAction = switch audioEntity {
         case .episode(let episode): .playEpisode(episode.id)
         case .show(let show): .playLatest(show.id)
+        case .playlist(let playlist): .playPlaylist(playlist.id)
         }
         try await OpenCastIntentAccess.perform(action)
         return .result()

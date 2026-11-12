@@ -9,6 +9,7 @@ nonisolated enum OpenCastSystemActionError: Error, CustomLocalizedStringResource
     case queryTooLarge
     case unsupportedPlaybackOptions
     case playlistHasNoUnplayedEpisodes
+    case nothingPlaying
 
     var localizedStringResource: LocalizedStringResource {
         switch self {
@@ -20,6 +21,7 @@ nonisolated enum OpenCastSystemActionError: Error, CustomLocalizedStringResource
         case .queryTooLarge: "Choose up to 100 items at a time."
         case .unsupportedPlaybackOptions: "OpenCast cannot apply those playback or queue options to this content."
         case .playlistHasNoUnplayedEpisodes: "Nothing to play. Every episode in this playlist is played or unavailable."
+        case .nothingPlaying: "Nothing is playing in OpenCast."
         }
     }
 }

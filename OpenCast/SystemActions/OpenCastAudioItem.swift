@@ -8,8 +8,9 @@ nonisolated enum OpenCastAudioItem {
     enum Value {
         case episode(OpenCastEpisodeEntity)
         case show(OpenCastPodcastEntity)
+        case playlist(OpenCastPlaylistEntity)
 
         static var typeDisplayRepresentation: TypeDisplayRepresentation { "Podcast Content" }
-        static let caseDisplayRepresentations: [Cases: DisplayRepresentation] = [.episode: "Episode", .show: "Show"]
+        static let caseDisplayRepresentations: [Cases: DisplayRepresentation] = [.episode: "Episode", .show: "Show", .playlist: "Playlist"]
     }
 }
