@@ -95,9 +95,13 @@ final class PodcastAutoDownloadCoordinator {
 
     /// A new-episode push woke the app: one pass outside the foreground gate,
     /// so its downloads start on the background session before iOS suspends
-    /// the app. Joins a pass already running instead of starting another.
+    /// the app. Joins a pass already running instead of starting another,
+    /// asking it to run once more: it may have read the library before this
+    /// wake's refresh landed. Like a scheduled pass, it honors requests made
+    /// while it runs.
     func runWakePass(modelContext: ModelContext) async {
         if let passTask {
+            rerunRequested = true
             await passTask.value
             return
         }
@@ -107,7 +111,7 @@ final class PodcastAutoDownloadCoordinator {
             guard let self else {
                 return
             }
-            await runPassOnce(generation: generation, modelContext: modelContext)
+            await runScheduledPasses(generation: generation, modelContext: modelContext)
         }
         passTask = task
         await task.value

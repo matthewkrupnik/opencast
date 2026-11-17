@@ -399,6 +399,47 @@ struct PodcastAutoDownloadCoordinatorTests {
         #expect(fixture.startedEpisodeIDs == [fixture.id(2)])
     }
 
+    @Test("A request made while a push wake's pass runs gets its own follow-up pass")
+    func requestDuringWakePassRunsAfterIt() async throws {
+        let fixture = try await AutoDownloadFixture.make(releaseDays: [1, 2, 3])
+        defer { fixture.tearDown() }
+        // Off Wi-Fi the candidates stay, so each pass reads the path once.
+        fixture.network.path = NetworkPathSnapshot(isSatisfied: true, isExpensive: true, isConstrained: false)
+        fixture.network.isHeld = true
+        let scene = UUID()
+        fixture.coordinator.setScene(scene, isActive: false)
+        fixture.coordinator.enableAutoDownload(forPodcastID: fixture.feedURL, modelContext: fixture.context)
+        let wake = Task { await fixture.coordinator.runWakePass(modelContext: fixture.context) }
+        #expect(await waitUntil { fixture.network.callCount == 1 })
+
+        // The app comes forward and a refresh lands while the wake holds the pass.
+        fixture.coordinator.setScene(scene, isActive: true)
+        fixture.coordinator.schedulePass(modelContext: fixture.context)
+        fixture.network.isHeld = false
+        await wake.value
+
+        #expect(fixture.network.callCount == 2)
+    }
+
+    @Test("A push wake that joins a pass in flight gets a follow-up pass")
+    func wakeJoiningPassRequestsFollowUp() async throws {
+        let fixture = try await AutoDownloadFixture.make(releaseDays: [1, 2, 3])
+        defer { fixture.tearDown() }
+        fixture.network.path = NetworkPathSnapshot(isSatisfied: true, isExpensive: true, isConstrained: false)
+        fixture.network.isHeld = true
+        fixture.coordinator.enableAutoDownload(forPodcastID: fixture.feedURL, modelContext: fixture.context)
+        #expect(await waitUntil { fixture.network.callCount == 1 })
+
+        let wake = Task { await fixture.coordinator.runWakePass(modelContext: fixture.context) }
+        for _ in 0..<5 {
+            await Task.yield()
+        }
+        fixture.network.isHeld = false
+        await wake.value
+
+        #expect(fixture.network.callCount == 2)
+    }
+
     @Test("With two windows, one going inactive leaves passes running for the active one")
     func activeSceneKeepsGateOpen() async throws {
         let fixture = try await AutoDownloadFixture.make(releaseDays: [1, 2, 3])
