@@ -94,7 +94,7 @@ struct EpisodeTranscriptionPlanResolverTests {
         let plan = try await harness.resolver.resolve(requestedEngine: .productDefault, podcastLanguageCode: "en-US")
 
         #expect(plan.runEngine == .whisper)
-        #expect(plan.modelIdentity.modelIdentifier == OpenCastWhisperModel.largeV3.rawValue)
+        #expect(plan.modelIdentity.modelIdentifier == OpenCastWhisperModel.tinyEnglish.rawValue)
         #expect(plan.runLanguageCode == "en")
         #expect(!plan.isEngineStrict)
         #expect(plan.requiresInstalledWhisperModel)
@@ -122,7 +122,7 @@ struct EpisodeTranscriptionPlanResolverTests {
         let plan = try await harness.resolver.resolve(requestedEngine: .productDefault, podcastLanguageCode: "en-US")
 
         #expect(plan.runEngine == .whisper)
-        #expect(plan.modelIdentity.modelIdentifier == OpenCastWhisperModel.largeV3.rawValue)
+        #expect(plan.modelIdentity.modelIdentifier == OpenCastWhisperModel.tinyEnglish.rawValue)
     }
 
     @Test("Fallback without an installed Whisper model throws missingSpeechModel")
@@ -157,7 +157,7 @@ struct EpisodeTranscriptionPlanResolverTests {
 
         #expect(plan.runEngine == .whisper)
         #expect(plan.isEngineStrict)
-        #expect(plan.modelIdentity.modelIdentifier == OpenCastWhisperModel.largeV3.rawValue)
+        #expect(plan.modelIdentity.modelIdentifier == OpenCastWhisperModel.tinyEnglish.rawValue)
         #expect(plan.languageCode == "en")
     }
 
@@ -197,8 +197,8 @@ struct EpisodeTranscriptionPlanResolverTests {
 private final class FakeResolverModelInstaller: TranscriptionModelInstalling, @unchecked Sendable {
     var isInstalled: Bool
     private let summary = OpenCastWhisperModelInstalledSummary(
-        modelIdentifier: OpenCastWhisperModel.largeV3.rawValue,
-        version: OpenCastWhisperModel.largeV3.defaultRemoteVersion,
+        modelIdentifier: OpenCastWhisperModel.tinyEnglish.rawValue,
+        version: OpenCastWhisperModel.tinyEnglish.defaultRemoteVersion,
         totalByteCount: 10,
         treeSHA256: String(repeating: "a", count: 64)
     )

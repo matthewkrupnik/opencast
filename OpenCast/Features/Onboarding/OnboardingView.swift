@@ -3,8 +3,6 @@ import SwiftData
 import SwiftUI
 
 struct OnboardingView: View {
-    private static let whisperModelInstallToastDuration: Duration = .seconds(4)
-
     @Environment(OpenCastAppModel.self) private var appModel
     @Environment(\.modelContext) private var modelContext
 
@@ -28,8 +26,6 @@ struct OnboardingView: View {
     @State private var isSampleConfirmationPresented = false
     @State private var importedNotificationFeedbackToken = 0
     @State private var announcedImportedNotificationID: Int?
-    @State private var isWhisperModelInstallToastPresented = false
-    @State private var whisperModelInstallToastFeedbackToken = 0
     @FocusState private var focusedField: OnboardingFocusedField?
 
     init(
@@ -87,16 +83,14 @@ struct OnboardingView: View {
             .navigationTitle("Setup")
             .navigationBarTitleDisplayMode(.inline)
             .safeAreaInset(edge: .top, spacing: 0) {
-                if isWhisperModelInstallToastPresented || appModel.importedSubscriptionsNotification != nil {
+                if appModel.importedSubscriptionsNotification != nil {
                     OnboardingTopToastStack(
-                        isWhisperModelInstallToastPresented: isWhisperModelInstallToastPresented,
                         importedSubscriptionsNotification: appModel.importedSubscriptionsNotification
                     )
                     .transition(.move(edge: .top).combined(with: .opacity))
                 }
             }
             .animation(.bouncy, value: appModel.importedSubscriptionsNotification?.id)
-            .animation(.bouncy, value: isWhisperModelInstallToastPresented)
         }
         .sheet(item: Bindable(subscriptionFlow).pendingChoice) { pending in
             DirectoryFeedChoiceView(
@@ -109,7 +103,6 @@ struct OnboardingView: View {
         }
         .interactiveDismissDisabled(!appModel.onboardingState.isCompleted)
         .sensoryFeedback(.success, trigger: importedNotificationFeedbackToken)
-        .sensoryFeedback(.success, trigger: whisperModelInstallToastFeedbackToken)
         .onChange(of: appModel.importedSubscriptionsNotification?.id) { _, notificationID in
             guard let notificationID,
                   let notification = appModel.importedSubscriptionsNotification
@@ -119,9 +112,6 @@ struct OnboardingView: View {
 
             importedNotificationFeedbackToken += 1
             announceImportedNotification(notification, id: notificationID)
-        }
-        .task(id: whisperModelInstallToastFeedbackToken) {
-            await dismissWhisperModelInstallToastAfterDelay()
         }
         .onDisappear(perform: handleDisappear)
         .accessibilityIdentifier("Onboarding")
@@ -151,11 +141,6 @@ struct OnboardingView: View {
                 onSubscribeRawFeed: subscribeToRawFeed,
                 onSubscribeSearchResult: subscribeToSearchResult,
                 onSubscribeSample: subscribeToSuggestion
-            )
-        case .transcriptionModelSetup:
-            OnboardingTranscriptionModelSetupPage(
-                modelState: appModel.transcriptionModels.state,
-                onInstall: installWhisperModel
             )
         case .notificationSetup:
             OnboardingNotificationSetupPage(
@@ -302,47 +287,6 @@ struct OnboardingView: View {
         } catch {
             subscriptionErrorMessage = error.localizedDescription
         }
-    }
-
-    private func installWhisperModel() {
-        guard appModel.installTranscriptionModel() else {
-            return
-        }
-
-        presentWhisperModelInstallToast()
-
-        withAnimation(.bouncy) {
-            selectedPage = .notificationSetup
-        }
-    }
-
-    private func presentWhisperModelInstallToast() {
-        whisperModelInstallToastFeedbackToken += 1
-        isWhisperModelInstallToastPresented = true
-
-        AccessibilityNotification.Announcement(
-            WhisperModelInstallToast.accessibilityAnnouncement
-        ).post()
-    }
-
-    private func dismissWhisperModelInstallToastAfterDelay() async {
-        guard isWhisperModelInstallToastPresented else {
-            return
-        }
-
-        do {
-            try await Task.sleep(for: Self.whisperModelInstallToastDuration)
-        } catch is CancellationError {
-            return
-        } catch {
-            return
-        }
-
-        guard !Task.isCancelled else {
-            return
-        }
-
-        isWhisperModelInstallToastPresented = false
     }
 
     private func subscribeToFallbackAndComplete() {

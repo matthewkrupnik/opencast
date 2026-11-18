@@ -898,8 +898,8 @@ struct DataNukeTests {
         }
 
         #expect(appModel.lastDataNukeErrorMessage != nil)
-        guard case .failed = transcriptionModels.state else {
-            Issue.record("Expected failed model state, got \(transcriptionModels.state)")
+        guard case .failed = transcriptionModels.accurateState else {
+            Issue.record("Expected failed model state, got \(transcriptionModels.accurateState)")
             return
         }
         #expect(!appModel.isNukingData)

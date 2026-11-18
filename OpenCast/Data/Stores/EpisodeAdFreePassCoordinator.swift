@@ -1367,6 +1367,9 @@ final class EpisodeAdFreePassCoordinator {
             case .installed:
                 return
             case .repairAvailable, .notInstalled, .unknown:
+                guard !didStartInstall else {
+                    throw PassFailure("The built-in Whisper model is unavailable.")
+                }
                 didStartInstall = try await installModelIfConsentedOrStop(transcriptionModels)
             case .failed(let message):
                 guard !didStartInstall else {
@@ -1752,17 +1755,11 @@ final class EpisodeAdFreePassCoordinator {
         return .keyRequired(reason)
     }
 
+    /// The pass's Whisper model ships with the app, so there is nothing to
+    /// download or consent to: this reads the bundled copy again.
     private func installModelIfConsentedOrStop(
         _ transcriptionModels: TranscriptionModelStore
     ) async throws -> Bool {
-        guard pendingModelConsentEpisodeID == activeEpisodeID else {
-            let byteCount = try await transcriptionModels.selectedModelRemoteByteCount()
-            pendingModelConsentByteCount = byteCount
-            pendingModelConsentEpisodeID = activeEpisodeID
-            setStage(.awaitingModelDownloadConsent(byteCount: byteCount))
-            throw PassStop.awaitingModelConsent
-        }
-
         pendingModelConsentEpisodeID = nil
         pendingModelConsentByteCount = nil
         transcriptionModels.installPinnedModel()

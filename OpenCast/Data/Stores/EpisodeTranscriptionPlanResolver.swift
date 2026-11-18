@@ -3,8 +3,9 @@ import OpenCastTranscription
 
 /// Product engine resolution: Apple Speech whenever the device
 /// and the podcast's locale support it — installing assets on demand — with
-/// Whisper large-v3 as the automatic fallback. Explicit DEBUG overrides stay
-/// engine-strict.
+/// the bundled Whisper Fast (tiny.en) model as the automatic fallback.
+/// Explicit DEBUG overrides stay engine-strict; `.selectedWhisperModel` runs
+/// the model picked in Settings (Fast or the downloaded Accurate).
 struct EpisodeTranscriptionPlanResolver {
     static let fallbackLanguageCode = "en-US"
     static let whisperRunLanguageCode = "en"

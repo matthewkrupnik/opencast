@@ -15,7 +15,8 @@ final class OpenCastUITestTranscriptionModelInstaller: TranscriptionModelInstall
     }
 
     func installedSummary(model: OpenCastWhisperModel, version: String) throws -> OpenCastWhisperModelInstalledSummary {
-        guard lock.withLock({ installed }) else {
+        // A bundled model ships with the app, installed or not.
+        guard model.isBundled || lock.withLock({ installed }) else {
             throw OpenCastTranscriptionError.modelNotInstalled(
                 modelIdentifier: model.rawValue,
                 version: version
@@ -50,6 +51,13 @@ final class OpenCastUITestTranscriptionModelInstaller: TranscriptionModelInstall
 
     private func summary(for model: OpenCastWhisperModel) -> OpenCastWhisperModelInstalledSummary {
         switch model {
+        case .tinyEnglish:
+            OpenCastWhisperModelInstalledSummary(
+                modelIdentifier: model.rawValue,
+                version: model.defaultRemoteVersion,
+                totalByteCount: 49_616_040,
+                treeSHA256: "b0e6292a712a36da8cde88e49a8b79eb9ab3ca9f676b519c42c676ac0ceed422"
+            )
         case .largeV3:
             OpenCastWhisperModelInstalledSummary(
                 modelIdentifier: model.rawValue,

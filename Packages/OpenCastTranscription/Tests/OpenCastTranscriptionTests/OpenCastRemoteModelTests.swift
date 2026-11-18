@@ -248,6 +248,37 @@ struct OpenCastRemoteModelTests {
         #expect(summary.treeSHA256 == fixture.model.treeSHA256)
     }
 
+    @Test("A model shipped in the bundled root reads as installed and is never deleted")
+    func bundledModelReadsAsInstalledAndSurvivesDelete() async throws {
+        let fixture = try RemoteModelFixture()
+        let bundledRoot = temporaryInstallRoot()
+        let downloadRoot = temporaryInstallRoot()
+        defer {
+            try? FileManager.default.removeItem(at: bundledRoot)
+            try? FileManager.default.removeItem(at: downloadRoot)
+        }
+        // Lay the bundled root out the way an install does.
+        _ = try await OpenCastWhisperModelInstaller(
+            configuration: fixture.configuration,
+            installStore: OpenCastWhisperModelInstallStore(rootDirectory: bundledRoot, bundledRootDirectory: nil),
+            limits: OpenCastWhisperModelInstallLimits(maximumFileByteCount: 1_024, maximumTotalByteCount: 2_048),
+            transport: DictionaryRemoteModelTransport(downloadBodies: fixture.downloads)
+        ).install(manifest: fixture.manifest)
+        let store = OpenCastWhisperModelInstallStore(rootDirectory: downloadRoot, bundledRootDirectory: bundledRoot)
+
+        #expect(store.isBundled(modelIdentifier: fixture.model.modelID, version: fixture.model.version))
+        let summary = try store.installedSummary(modelIdentifier: fixture.model.modelID, version: fixture.model.version)
+        #expect(summary.treeSHA256 == fixture.model.treeSHA256)
+        let location = try store.installedLocation(modelIdentifier: fixture.model.modelID, version: fixture.model.version)
+        #expect(location.modelFolder.path.hasPrefix(bundledRoot.path))
+
+        try store.deleteInstalledModel(modelIdentifier: fixture.model.modelID, version: fixture.model.version)
+        #expect(throws: Never.self) {
+            _ = try store.installedSummary(modelIdentifier: fixture.model.modelID, version: fixture.model.version)
+        }
+        #expect(!store.isBundled(modelIdentifier: "other", version: fixture.model.version))
+    }
+
     @Test("Install directories are excluded from backup")
     func installDirectoriesAreExcludedFromBackup() throws {
         let root = temporaryInstallRoot()

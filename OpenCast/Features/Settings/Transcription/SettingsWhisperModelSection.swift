@@ -1,9 +1,12 @@
 import OpenCastTranscription
+import SwiftData
 import SwiftUI
 
 struct SettingsWhisperModelSection: View {
     @Environment(OpenCastAppModel.self) private var appModel
+    @Environment(\.modelContext) private var modelContext
 
+    @State private var selectedChoice = TranscriptionModelChoice.defaultChoice
     @State private var isConfirmingInstall = false
     @State private var isConfirmingRepair = false
     @State private var isConfirmingDelete = false
@@ -11,61 +14,123 @@ struct SettingsWhisperModelSection: View {
 
     var body: some View {
         Section {
-            Text("Whisper large-v3, downloaded from Hugging Face and checked against pinned hashes.")
+            Picker("Transcript Model", selection: $selectedChoice) {
+                ForEach(TranscriptionModelChoice.allCases) { choice in
+                    Text(choice.title)
+                        .tag(choice)
+                }
+            }
+            .pickerStyle(.segmented)
+
+            Text(selectedChoice.detail)
                 .font(.footnote)
                 .foregroundStyle(.secondary)
 
-            statusRow
-
-            switch modelState {
-            case .unknown, .notInstalled, .failed:
-                Button(installButtonTitle, systemImage: "arrow.down.circle", action: confirmInstall)
-                    .confirmationDialog(
-                        installConfirmationTitle,
-                        isPresented: $isConfirmingInstall,
-                        titleVisibility: .visible
-                    ) {
-                        Button(installButtonTitle, action: installModel)
-                        Button("Cancel", role: .cancel) {}
-                    } message: {
-                        Text(installConfirmationMessage)
-                    }
-            case .checking:
-                ProgressView("Checking Model")
-            case .installing(let progress):
-                SettingsTranscriptionModelInstallProgressView(progress: progress)
-                Button("Cancel Install", systemImage: "xmark.circle", role: .cancel, action: cancelInstall)
-            case .installed:
-                Button("Check Model", systemImage: "arrow.clockwise", action: checkModel)
-                deleteButton
-            case .repairAvailable:
-                Button("Repair Model", systemImage: "wrench.and.screwdriver", action: confirmRepair)
-                    .confirmationDialog(
-                        "Repair speech model?",
-                        isPresented: $isConfirmingRepair,
-                        titleVisibility: .visible
-                    ) {
-                        Button("Repair Model", action: repairModel)
-                        Button("Cancel", role: .cancel) {}
-                    } message: {
-                        Text("The installed model does not match the pinned model files. It will be reinstalled.")
-                    }
-                deleteButton
-            case .deleting:
-                ProgressView("Deleting Model")
+            switch selectedChoice {
+            case .fastTinyEnglish:
+                fastStatusRow
+            case .accurateLargeV3:
+                statusRow
+                accurateActions
             }
         } header: {
             Text("Whisper Model")
+        } footer: {
+            Text("Transcripts made without Apple Transcription use Fast. Accurate is downloaded from Hugging Face and checked against pinned hashes.")
+        }
+        .onChange(of: selectedChoice) { _, newChoice in
+            guard newChoice != appModel.transcriptionModels.selectedChoice else {
+                return
+            }
+            if !appModel.transcriptionModels.setSelectedChoice(newChoice, modelContext: modelContext) {
+                selectedChoice = appModel.transcriptionModels.selectedChoice
+            }
+        }
+        .onChange(of: appModel.transcriptionModels.selectedChoice) { _, storeChoice in
+            guard selectedChoice != storeChoice else {
+                return
+            }
+            selectedChoice = storeChoice
         }
         .task {
+            selectedChoice = appModel.transcriptionModels.selectedChoice
             let loadedState = await Self.loadModelState(
-                modelIdentifier: TranscriptionModelStore.model.rawValue,
-                version: TranscriptionModelStore.model.defaultRemoteVersion
+                modelIdentifier: TranscriptionModelStore.accurateModel.rawValue,
+                version: TranscriptionModelStore.accurateModel.defaultRemoteVersion
             )
             guard !Task.isCancelled else {
                 return
             }
             loadedModelState = loadedState
+        }
+    }
+
+    /// The Fast model ships with the app: nothing to install or delete.
+    private var fastStatusRow: some View {
+        LabeledContent {
+            Text(fastStatusText)
+        } label: {
+            Label("Status", systemImage: fastIsInstalled ? "checkmark.circle.fill" : "exclamationmark.triangle.fill")
+        }
+    }
+
+    private var fastIsInstalled: Bool {
+        if case .installed = appModel.transcriptionModels.state {
+            true
+        } else {
+            false
+        }
+    }
+
+    private var fastStatusText: String {
+        switch appModel.transcriptionModels.state {
+        case .installed(let summary):
+            "Built In, \(byteCount(summary.totalByteCount))"
+        case .failed(let message):
+            message
+        default:
+            "Built In"
+        }
+    }
+
+    @ViewBuilder
+    private var accurateActions: some View {
+        switch modelState {
+        case .unknown, .notInstalled, .failed:
+            Button(installButtonTitle, systemImage: "arrow.down.circle", action: confirmInstall)
+                .confirmationDialog(
+                    installConfirmationTitle,
+                    isPresented: $isConfirmingInstall,
+                    titleVisibility: .visible
+                ) {
+                    Button(installButtonTitle, action: installModel)
+                    Button("Cancel", role: .cancel) {}
+                } message: {
+                    Text(installConfirmationMessage)
+                }
+        case .checking:
+            ProgressView("Checking Model")
+        case .installing(let progress):
+            SettingsTranscriptionModelInstallProgressView(progress: progress)
+            Button("Cancel Install", systemImage: "xmark.circle", role: .cancel, action: cancelInstall)
+        case .installed:
+            Button("Check Model", systemImage: "arrow.clockwise", action: checkModel)
+            deleteButton
+        case .repairAvailable:
+            Button("Repair Model", systemImage: "wrench.and.screwdriver", action: confirmRepair)
+                .confirmationDialog(
+                    "Repair speech model?",
+                    isPresented: $isConfirmingRepair,
+                    titleVisibility: .visible
+                ) {
+                    Button("Repair Model", action: repairModel)
+                    Button("Cancel", role: .cancel) {}
+                } message: {
+                    Text("The installed model does not match the pinned model files. It will be reinstalled.")
+                }
+            deleteButton
+        case .deleting:
+            ProgressView("Deleting Model")
         }
     }
 
@@ -87,15 +152,15 @@ struct SettingsWhisperModelSection: View {
                 Button(deleteButtonTitle, role: .destructive, action: deleteModel)
                 Button("Cancel", role: .cancel) {}
             } message: {
-                Text("Completed transcripts stay on this device. New Whisper transcripts require reinstalling this model.")
+                Text("Completed transcripts stay on this device. Accurate transcripts require downloading this model again.")
             }
     }
 
     private var modelState: TranscriptionModelState {
-        if case .unknown = appModel.transcriptionModels.state {
+        if case .unknown = appModel.transcriptionModels.accurateState {
             loadedModelState
         } else {
-            appModel.transcriptionModels.state
+            appModel.transcriptionModels.accurateState
         }
     }
 

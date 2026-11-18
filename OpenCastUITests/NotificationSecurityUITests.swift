@@ -117,16 +117,8 @@ final class NotificationSecurityUITests: XCTestCase {
         app.buttons["Skip"].tap()
         XCTAssertTrue(app.staticTexts["Find Podcasts"].existsOrWait(timeout: 10))
         app.buttons["Continue"].tap()
-        // The transcription step is conditional: Apple-capable
-        // devices show the Apple setup page or no page at all; only
-        // Apple-unavailable devices show the Whisper page.
+        // The Whisper model ships with the app: no transcription setup step.
         let notificationsPage = app.staticTexts["New Episode Alerts"]
-        if !notificationsPage.existsOrWait(timeout: 5) {
-            let transcriptionStepShown = app.staticTexts["On-Device Transcription"].existsOrWait(timeout: 5)
-                || app.staticTexts["Whisper Model"].existsOrWait(timeout: 5)
-            XCTAssertTrue(transcriptionStepShown, "Expected a transcription setup step before notifications")
-            app.buttons["Skip"].tap()
-        }
         XCTAssertTrue(notificationsPage.existsOrWait(timeout: 10))
 
         app.buttons["Enable Notifications"].tap()

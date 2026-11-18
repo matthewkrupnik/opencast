@@ -1731,38 +1731,38 @@ final class OpenCastAppModel {
     @discardableResult
     func installTranscriptionModel() -> Bool {
         guard !transcriptions.hasActiveJob else {
-            transcriptionModels.fail("Finish or cancel the active transcript before installing the speech model.")
+            transcriptionModels.failAccurate("Finish or cancel the active transcript before installing the speech model.")
             return false
         }
-        return transcriptionModels.installPinnedModel()
+        return transcriptionModels.installAccurateModel()
     }
 
     func cancelTranscriptionModelInstall() {
-        transcriptionModels.cancelInstall()
+        transcriptionModels.cancelAccurateInstall()
     }
 
     func checkTranscriptionModel() {
-        transcriptionModels.checkRemoteManifest()
+        transcriptionModels.checkAccurateModel()
     }
 
     @discardableResult
     func repairTranscriptionModel() -> Bool {
         guard !transcriptions.hasActiveJob else {
-            transcriptionModels.fail("Finish or cancel the active transcript before repairing the speech model.")
+            transcriptionModels.failAccurate("Finish or cancel the active transcript before repairing the speech model.")
             return false
         }
-        return transcriptionModels.repairPinnedModel()
+        return transcriptionModels.repairAccurateModel()
     }
 
     func deleteTranscriptionModel() {
         guard !transcriptions.hasActiveJob else {
-            transcriptionModels.fail("Finish or cancel the active transcript before deleting the speech model.")
+            transcriptionModels.failAccurate("Finish or cancel the active transcript before deleting the speech model.")
             return
         }
 
         Task {
             await transcriptions.unloadRuntime()
-            transcriptionModels.deleteInstalledModel()
+            transcriptionModels.deleteAccurateModel()
         }
     }
 

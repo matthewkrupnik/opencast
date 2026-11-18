@@ -1,11 +1,25 @@
 import Foundation
 
 public struct OpenCastWhisperModelInstallStore: Sendable, Equatable {
+    /// Where downloaded models are installed, and the only place this store
+    /// writes or deletes.
     public var rootDirectory: URL
+    /// Read-only models shipped in the app, laid out like `rootDirectory`.
+    /// A model found here is installed and never downloaded.
+    public var bundledRootDirectory: URL?
     private static let receiptFileName = ".opencast-install.json"
 
-    public init(rootDirectory: URL = Self.defaultRootDirectory()) {
+    public init(
+        rootDirectory: URL = Self.defaultRootDirectory(),
+        bundledRootDirectory: URL? = Self.defaultBundledRootDirectory()
+    ) {
         self.rootDirectory = rootDirectory
+        self.bundledRootDirectory = bundledRootDirectory
+    }
+
+    /// The app's `WhisperModels.bundle`, when it has one.
+    public static func defaultBundledRootDirectory() -> URL? {
+        Bundle.main.url(forResource: "WhisperModels", withExtension: "bundle")
     }
 
     public static func defaultRootDirectory() -> URL {
@@ -19,7 +33,7 @@ public struct OpenCastWhisperModelInstallStore: Sendable, Equatable {
     }
 
     public func installedLocation(modelIdentifier: String, version: String) throws -> OpenCastWhisperModelLocation {
-        let installDirectory = installDirectory(modelIdentifier: modelIdentifier, version: version)
+        let installDirectory = readDirectory(modelIdentifier: modelIdentifier, version: version)
         guard let receipt = try validReceipt(
             in: installDirectory,
             modelIdentifier: modelIdentifier,
@@ -56,7 +70,7 @@ public struct OpenCastWhisperModelInstallStore: Sendable, Equatable {
     }
 
     public func installedSummary(modelIdentifier: String, version: String) throws -> OpenCastWhisperModelInstalledSummary {
-        let installDirectory = installDirectory(modelIdentifier: modelIdentifier, version: version)
+        let installDirectory = readDirectory(modelIdentifier: modelIdentifier, version: version)
         guard let receipt = try validReceipt(
             in: installDirectory,
             modelIdentifier: modelIdentifier,
@@ -81,6 +95,30 @@ public struct OpenCastWhisperModelInstallStore: Sendable, Equatable {
         rootDirectory
             .appending(path: modelIdentifier)
             .appending(path: version)
+    }
+
+    /// Whether the app ships this model, receipt and all.
+    public func isBundled(modelIdentifier: String, version: String) -> Bool {
+        bundledDirectory(modelIdentifier: modelIdentifier, version: version) != nil
+    }
+
+    /// The bundled copy when the app ships one, else the downloaded one.
+    private func readDirectory(modelIdentifier: String, version: String) -> URL {
+        bundledDirectory(modelIdentifier: modelIdentifier, version: version)
+            ?? installDirectory(modelIdentifier: modelIdentifier, version: version)
+    }
+
+    private func bundledDirectory(modelIdentifier: String, version: String) -> URL? {
+        guard let bundledRootDirectory else {
+            return nil
+        }
+        let directory = bundledRootDirectory
+            .appending(path: modelIdentifier)
+            .appending(path: version)
+        guard FileManager.default.fileExists(atPath: receiptURL(in: directory).path) else {
+            return nil
+        }
+        return directory
     }
 
     func makeStagingDirectory() throws -> URL {

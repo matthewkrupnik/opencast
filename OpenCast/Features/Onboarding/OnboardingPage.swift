@@ -4,7 +4,6 @@ enum OnboardingPage: Int, CaseIterable, Identifiable {
     case welcome
     case importOPML
     case podcastSetup
-    case transcriptionModelSetup
     case notificationSetup
 
     var id: Int {
@@ -33,18 +32,16 @@ enum OnboardingPage: Int, CaseIterable, Identifiable {
             "Skip"
         case .podcastSetup:
             "Continue"
-        case .transcriptionModelSetup:
-            "Skip"
         case .notificationSetup:
             "Done"
         }
     }
 
-    /// Pages whose own card holds the main action (importing, downloading the
-    /// model) only offer a way past it here, which must not outweigh that card.
+    /// Pages whose own card holds the main action (importing) only offer a
+    /// way past it here, which must not outweigh that card.
     var isPrimaryActionSecondary: Bool {
         switch self {
-        case .importOPML, .transcriptionModelSetup:
+        case .importOPML:
             true
         case .welcome, .podcastSetup, .notificationSetup:
             false
@@ -59,8 +56,6 @@ enum OnboardingPage: Int, CaseIterable, Identifiable {
             "forward"
         case .podcastSetup:
             "chevron.right"
-        case .transcriptionModelSetup:
-            "forward"
         case .notificationSetup:
             "checkmark"
         }

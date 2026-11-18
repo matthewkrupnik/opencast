@@ -556,18 +556,10 @@ final class OpenCastUITests: XCTestCase {
         assertExists(app.staticTexts["The Rest Is Science"], named: "The Rest Is Science sample")
         attachSmokeScreenshot(named: "onboarding_podcast_setup_dark")
 
+        // The Whisper model ships with the app: no download step.
         app.buttons["Continue"].tap()
-        assertExists(app.staticTexts["Whisper Model"], named: "Whisper onboarding screen")
-        let installModelButton = app.buttons["Install Model"]
-        assertExists(installModelButton, named: "Install Model onboarding action")
-        XCTAssertTrue(installModelButton.isHittable, "Install Model should be visible without scrolling")
-        attachSmokeScreenshot(named: "onboarding_whisper_setup_dark")
-        installModelButton.tap()
-        assertExists(
-            app.descendants(matching: .any)["Whisper Install Toast"],
-            named: "Whisper install toast"
-        )
         assertExists(app.staticTexts["New Episode Alerts"], named: "notification onboarding screen")
+        XCTAssertFalse(app.buttons["Install Model"].exists)
         assertExists(app.buttons["Enable Notifications"], named: "Enable Notifications onboarding action")
         attachSmokeScreenshot(named: "onboarding_notification_setup_dark")
 
@@ -605,8 +597,6 @@ final class OpenCastUITests: XCTestCase {
         XCTAssertFalse(app.staticTexts["Sample Podcasts"].exists)
         attachSmokeScreenshot(named: "settings_debug_onboarding_podcast_setup_light")
         app.buttons["Continue"].tap()
-        assertExists(app.staticTexts["Whisper Model"], named: "debug Whisper setup")
-        app.buttons["Skip"].tap()
         assertExists(app.staticTexts["New Episode Alerts"], named: "debug notification setup")
         attachSmokeScreenshot(named: "settings_debug_onboarding_notification_setup_light")
         app.buttons["Done"].tap()
@@ -631,15 +621,6 @@ final class OpenCastUITests: XCTestCase {
         assertExists(app.staticTexts["UI Test Show"], named: "imported subscription row")
         attachSmokeScreenshot(named: "onboarding_imported_podcast_setup_light")
         app.buttons["Continue"].tap()
-        assertExists(app.staticTexts["Whisper Model"], named: "Whisper onboarding screen")
-        let installModelButton = app.buttons["Install Model"]
-        assertExists(installModelButton, named: "Install Model onboarding action")
-        XCTAssertTrue(installModelButton.isHittable, "Install Model should be visible without scrolling")
-        installModelButton.tap()
-        assertExists(
-            app.descendants(matching: .any)["Whisper Install Toast"],
-            named: "Whisper install toast"
-        )
         assertExists(app.staticTexts["New Episode Alerts"], named: "notification onboarding screen")
         app.buttons["Done"].tap()
 
@@ -667,8 +648,8 @@ final class OpenCastUITests: XCTestCase {
                 guard let app = object as? XCUIApplication else {
                     return false
                 }
-                return app.buttons["Install Model"].exists
-                    || app.buttons["Check Model"].exists
+                // The Fast/Accurate picker heads the Whisper section.
+                return app.buttons["Accurate"].exists
             }
             let modelManagementExpectation = XCTNSPredicateExpectation(
                 predicate: modelManagementAvailable,
@@ -2457,43 +2438,6 @@ final class OpenCastUITests: XCTestCase {
     }
 
     @MainActor
-    func testSeededAdDetectionIndicatorOpensDownloadsWithConsentAffordance() throws {
-        let app = makeSeededApp()
-        app.launch()
-
-        let indicator = app.buttons["Ad Detection Queue Indicator"]
-        assertDoesNotExist(indicator, named: "indicator while the queue is idle")
-
-        openAllPlaylist(in: app)
-        let episodeRow = seededEpisodeRow(in: app)
-        assertExists(episodeRow, named: "seeded inbox episode row")
-        episodeRow.press(forDuration: 1.2)
-        let detectAction = app.buttons["Detect Ads"].firstMatch
-        assertExists(detectAction, named: "Detect Ads context action")
-        detectAction.tap()
-
-        // On the simulator the pass deterministically pauses at whisper model
-        // consent (Apple transcriber unavailable), a stable paused state.
-        // The indicator sits on the Library root, not inside All.
-        openSection("Library", in: app)
-        assertExists(indicator, named: "indicator after enqueue", timeout: 10)
-        attachSmokeScreenshot(named: "adqueue_indicator_paused_consent")
-        indicator.tap()
-
-        assertExists(app.navigationBars["Downloads"], named: "Downloads root")
-        assertExists(app.staticTexts["Ad Detection"], named: "Ad Detection section header")
-        let consentButton = app.buttons.matching(
-            NSPredicate(format: "label BEGINSWITH %@", "Download Model")
-        ).firstMatch
-        assertExists(consentButton, named: "model consent affordance", timeout: 10)
-        assertDoesNotExist(
-            app.buttons["Continue in Background"],
-            named: "Continue in Background while paused for consent"
-        )
-        attachSmokeScreenshot(named: "adqueue_downloads_consent")
-    }
-
-    @MainActor
     func testDetectAdsFirstTapStartsOnDeviceDetection() throws {
         let app = makeSeededApp()
         app.launch()
@@ -2506,8 +2450,8 @@ final class OpenCastUITests: XCTestCase {
         assertExists(detectAction, named: "Detect Ads context action")
         detectAction.tap()
 
-        // The on-device pass starts directly (parks at whisper model consent
-        // on the simulator) — no mode dialog.
+        // The on-device pass starts directly, on the bundled Whisper model —
+        // no mode dialog and no model download.
         assertDoesNotExist(
             app.buttons["Detect On This Device"],
             named: "mode dialog on first tap",
@@ -3543,11 +3487,19 @@ final class OpenCastUITests: XCTestCase {
         app.launch()
 
         openSettingsScreen("Transcription", in: app)
-        // One Whisper model: no Fast/Accurate picker.
-        assertDoesNotExist(app.buttons["Fast"], named: "Fast model picker", timeout: 1)
+        // Fast ships with the app; Accurate is the downloaded model.
+        let fastChoice = app.buttons["Fast"]
+        scrollUntilExists(fastChoice, in: app)
+        assertExists(fastChoice, named: "Fast model choice")
+        assertExists(elementContaining(label: "Built In", in: app), named: "built-in Fast model status")
+        assertDoesNotExist(app.buttons["Install Model"], named: "Install Model for the built-in Fast model", timeout: 1)
+        app.buttons["Accurate"].tap()
         let installedStatus = elementContaining(label: "Installed", in: app)
         scrollUntilExists(installedStatus, in: app)
-        assertExists(installedStatus, named: "installed speech model status")
+        assertExists(installedStatus, named: "installed Accurate model status")
+        assertExists(app.buttons["Delete Model"], named: "Delete Model for the downloaded Accurate model")
+        attachSmokeScreenshot(named: "settings_whisper_accurate_installed")
+        app.buttons["Fast"].tap()
 
         openAllPlaylist(in: app)
         let inboxEpisode = seededEpisodeRow(in: app)
@@ -4369,8 +4321,6 @@ final class OpenCastUITests: XCTestCase {
         assertExists(app.staticTexts["Find Podcasts"], named: "Find Podcasts onboarding screen")
 
         app.buttons["Continue"].tap()
-        assertExists(app.staticTexts["Whisper Model"], named: "Whisper onboarding screen")
-        app.buttons["Skip"].tap()
         assertExists(app.staticTexts["New Episode Alerts"], named: "notification onboarding screen")
         app.buttons["Done"].tap()
         let addThisAmericanLife = app.buttons["Add This American Life"]
@@ -4408,8 +4358,6 @@ final class OpenCastUITests: XCTestCase {
         assertExists(app.staticTexts["This American Life"], named: "This American Life sample suggestion")
 
         app.buttons["Continue"].tap()
-        assertExists(app.staticTexts["Whisper Model"], named: "Whisper onboarding screen")
-        app.buttons["Skip"].tap()
         assertExists(app.staticTexts["New Episode Alerts"], named: "notification onboarding screen")
         app.buttons["Done"].tap()
         let addThisAmericanLife = app.buttons["Add This American Life"]
@@ -4487,8 +4435,6 @@ final class OpenCastUITests: XCTestCase {
         assertExists(app.staticTexts["Find Podcasts"], named: "Find Podcasts onboarding screen")
 
         app.buttons["Continue"].tap()
-        assertExists(app.staticTexts["Whisper Model"], named: "Whisper onboarding screen")
-        app.buttons["Skip"].tap()
         assertExists(app.staticTexts["New Episode Alerts"], named: "notification onboarding screen")
         app.buttons["Done"].tap()
         let addThisAmericanLife = app.buttons["Add This American Life"]

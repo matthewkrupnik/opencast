@@ -28,30 +28,14 @@ struct EpisodeAdFreePassCoordinatorTests {
         #expect(EpisodeAdFreePassPresentation.queued(ahead: 0).statusText == "Queued")
     }
 
-    @Test("First tap downloads episode and parks at model consent; second tap finishes transcript and analysis")
-    func consentThenCompletesOneTapPass() async throws {
+    @Test("Without the Accurate download, one tap finishes on the built-in Fast model with no consent")
+    func passRunsOnBundledFastModelWithoutConsent() async throws {
         let fixture = try await makeFixture(
             downloader: ImmediateEpisodeAudioDownloader(contents: Data("downloaded audio".utf8)),
             modelInstalled: false
         )
-        let episode = makeEpisode(episodeID: "ad-free-consent")
+        let episode = makeEpisode(episodeID: "ad-free-bundled-fast")
         var refreshCount = 0
-
-        fixture.enqueue(episode, refreshSkipZones: {
-            refreshCount += 1
-            return 1
-        })
-
-        #expect(await waitUntil {
-            fixture.coordinator.pendingModelConsentEpisodeID == episode.episodeID
-        })
-        #expect(fixture.downloads.record(for: episode.episodeID)?.state == .completed)
-        #expect(fixture.coordinator.pendingModelConsentByteCount == 78_900_000)
-        #expect(fixture.coordinator.queueState == .awaitingModelConsent)
-        #expect(fixture.coordinator.queueItems.map(\.episodeID) == [episode.episodeID])
-        let consentPresentation = fixture.presentation(for: episode)
-        #expect(consentPresentation.stage == .awaitingModelDownloadConsent(byteCount: 78_900_000))
-        #expect(consentPresentation.primaryActionTitle.contains("Download Model"))
 
         fixture.enqueue(episode, refreshSkipZones: {
             refreshCount += 1
@@ -62,15 +46,11 @@ struct EpisodeAdFreePassCoordinatorTests {
             fixture.adAnalyses.record(for: episode.episodeID)?.state == .completed
                 && fixture.coordinator.activeEpisodeID == nil
         })
-        #expect(fixture.modelInstaller.installCallCount == 1)
+        #expect(fixture.coordinator.pendingModelConsentEpisodeID == nil)
+        #expect(fixture.modelInstaller.installCallCount == 0)
         #expect(fixture.transcriptions.document(for: episode.episodeID) != nil)
-        #expect(fixture.analysisEnvironment.resolvedRunIDs.count == 1)
         #expect(refreshCount == 1)
         #expect(fixture.coordinator.queueState == .idle)
-        #expect(await waitUntil {
-            fixture.presentation(for: episode, currentZoneCount: 1).stage
-                == .completed(zoneCount: 1)
-        })
     }
 
     @Test("Queue drains FIFO with manual tail order, auto front insertion, and no preemption")
@@ -336,38 +316,6 @@ struct EpisodeAdFreePassCoordinatorTests {
                 && fixture.coordinator.queueState == .idle
         })
         #expect(fixture.analysisEnvironment.resolvedRunIDs.count == 2)
-    }
-
-    @Test("Model consent pauses the whole queue and the consent tap resumes the drain")
-    func consentPausesQueueAndResumes() async throws {
-        let fixture = try await makeFixture(
-            downloader: ImmediateEpisodeAudioDownloader(contents: Data("downloaded audio".utf8)),
-            modelInstalled: false
-        )
-        let first = makeEpisode(episodeID: "queue-consent-1")
-        let second = makeEpisode(episodeID: "queue-consent-2")
-        var terminals: [AdFreePassQueueTerminalOutcome] = []
-        fixture.coordinator.onQueueTerminal = { terminals.append($0) }
-
-        fixture.enqueue(first)
-        fixture.enqueue(second)
-
-        #expect(await waitUntil {
-            fixture.coordinator.queueState == .awaitingModelConsent
-        })
-        #expect(fixture.coordinator.pendingModelConsentEpisodeID == first.episodeID)
-        #expect(fixture.coordinator.queueItems.map(\.episodeID) == [first.episodeID, second.episodeID])
-        #expect(terminals == [.awaitingConsent])
-
-        fixture.enqueue(first)
-
-        #expect(await waitUntil {
-            fixture.coordinator.queueState == .idle && fixture.coordinator.drainOutcomes.count == 2
-        })
-        #expect(fixture.modelInstaller.installCallCount == 1)
-        #expect(fixture.adAnalyses.record(for: first.episodeID)?.state == .completed)
-        #expect(fixture.adAnalyses.record(for: second.episodeID)?.state == .completed)
-        #expect(terminals == [.awaitingConsent, .drained(completedCount: 2, failedCount: 0)])
     }
 
     @Test("Cancel interrupts the active item, pauses the queue, and a re-tap resumes from the front")
@@ -1450,30 +1398,6 @@ struct EpisodeAdFreePassCoordinatorTests {
         #expect(presentedReasons == [.trialExhausted])
     }
 
-    @Test("The consent tap on an automatic item makes it the listener's: a key-required end opens the key screen")
-    func consentTapOnAutomaticItemPresents() async throws {
-        let analysisEnvironment = ScriptedAdAnalysisRunEnvironment()
-        analysisEnvironment.route = .keyRequired(.noKey)
-        let fixture = try await makeFixture(
-            downloader: ImmediateEpisodeAudioDownloader(contents: Data("downloaded audio".utf8)),
-            analysisEnvironment: analysisEnvironment,
-            modelInstalled: false
-        )
-        let episode = makeEpisode(episodeID: "key-required-auto-consent")
-        var presentedReasons: [AnalysisKeyRequiredReason] = []
-        fixture.coordinator.onKeyRequired = { presentedReasons.append($0) }
-
-        fixture.enqueue(episode, origin: .auto)
-        #expect(await waitUntil { fixture.coordinator.queueState == .awaitingModelConsent })
-        #expect(presentedReasons.isEmpty)
-
-        fixture.coordinator.resumePausedQueue()
-
-        #expect(await waitUntil { fixture.coordinator.queueState == .idle && fixture.coordinator.drainOutcomes.count == 1 })
-        #expect(fixture.coordinator.drainOutcomes.map(\.kind) == [.keyRequired(.noKey)])
-        #expect(presentedReasons == [.noKey])
-    }
-
     @Test("Completed transcript is reused by the default path without re-transcribing or re-analyzing")
     func completedTranscriptIsReusedByDefaultPath() async throws {
         let transcriber = CompletingEpisodeTranscriber()
@@ -1538,7 +1462,7 @@ struct EpisodeAdFreePassCoordinatorTests {
         })
 
         #expect(transcriber.requestCount == 2)
-        #expect(fixture.transcriptions.record(for: episode.episodeID)?.modelIdentifier == OpenCastWhisperModel.largeV3.rawValue)
+        #expect(fixture.transcriptions.record(for: episode.episodeID)?.modelIdentifier == OpenCastWhisperModel.tinyEnglish.rawValue)
     }
 
     @Test("An auto pass after a re-download re-runs only when the new bytes differ from the transcribed ones")
@@ -2434,29 +2358,6 @@ struct EpisodeAdFreePassCoordinatorTests {
         })
     }
 
-    @Test("Removing the last pending item returns a consent-paused queue to idle and clears consent state")
-    func removePendingItemNormalizesPausedQueue() async throws {
-        let fixture = try await makeFixture(
-            downloader: ImmediateEpisodeAudioDownloader(contents: Data("downloaded audio".utf8)),
-            modelInstalled: false
-        )
-        let episode = makeEpisode(episodeID: "remove-pending-consent")
-
-        fixture.enqueue(episode)
-        #expect(await waitUntil {
-            fixture.coordinator.queueState == .awaitingModelConsent
-        })
-
-        fixture.coordinator.removePendingItem(episodeID: episode.episodeID, modelContext: fixture.context)
-
-        #expect(fixture.coordinator.queueItems.isEmpty)
-        #expect(fixture.coordinator.queueState == .idle)
-        #expect(fixture.coordinator.pendingModelConsentEpisodeID == nil)
-        #expect(fixture.coordinator.pendingModelConsentByteCount == nil)
-        let records = try fixture.context.fetch(FetchDescriptor<AdFreePassQueueItemRecord>())
-        #expect(records.isEmpty)
-    }
-
     @Test("removeItems(forPodcastID:) drops the podcast's pending items, records, and finished rows only")
     func removeItemsForPodcastDropsOnlyThatPodcast() async throws {
         let downloader = GatedEpisodeAudioDownloader()
@@ -3069,12 +2970,20 @@ nonisolated private final class GatedEpisodeAudioDownloader: EpisodeAudioDownloa
 
 private final class AdFreePassTranscriptionModelInstaller: TranscriptionModelInstalling, @unchecked Sendable {
     var isInstalled: Bool
-    let summary: OpenCastWhisperModelInstalledSummary
+    /// The bundled Fast model every pass runs on.
+    let summary = OpenCastWhisperModelInstalledSummary(
+        modelIdentifier: OpenCastWhisperModel.tinyEnglish.rawValue,
+        version: OpenCastWhisperModel.tinyEnglish.defaultRemoteVersion,
+        totalByteCount: 49_616_040,
+        treeSHA256: String(repeating: "e", count: 64)
+    )
+    /// The downloadable Accurate model; `isInstalled` covers it.
+    let accurateSummary: OpenCastWhisperModelInstalledSummary
     var installCallCount = 0
 
     init(isInstalled: Bool, byteCount: Int64 = 78_900_000) {
         self.isInstalled = isInstalled
-        summary = OpenCastWhisperModelInstalledSummary(
+        accurateSummary = OpenCastWhisperModelInstalledSummary(
             modelIdentifier: OpenCastWhisperModel.largeV3.rawValue,
             version: OpenCastWhisperModel.largeV3.defaultRemoteVersion,
             totalByteCount: byteCount,
@@ -3083,6 +2992,9 @@ private final class AdFreePassTranscriptionModelInstaller: TranscriptionModelIns
     }
 
     func installedSummary(model: OpenCastWhisperModel, version: String) throws -> OpenCastWhisperModelInstalledSummary {
+        if model.isBundled {
+            return summary
+        }
         guard isInstalled,
               model == .largeV3,
               version == OpenCastWhisperModel.largeV3.defaultRemoteVersion else {
@@ -3091,7 +3003,7 @@ private final class AdFreePassTranscriptionModelInstaller: TranscriptionModelIns
                 version: version
             )
         }
-        return summary
+        return accurateSummary
     }
 
     func fetchManifest() async throws -> RemoteWhisperModelManifest {
@@ -3110,17 +3022,17 @@ private final class AdFreePassTranscriptionModelInstaller: TranscriptionModelIns
     ) async throws -> OpenCastWhisperModelInstalledSummary {
         installCallCount += 1
         progress?(OpenCastWhisperModelInstallProgress(
-            modelIdentifier: summary.modelIdentifier,
-            version: summary.version,
+            modelIdentifier: accurateSummary.modelIdentifier,
+            version: accurateSummary.version,
             completedFileCount: 1,
             totalFileCount: 2,
-            completedByteCount: summary.totalByteCount / 2,
-            totalByteCount: summary.totalByteCount,
+            completedByteCount: accurateSummary.totalByteCount / 2,
+            totalByteCount: accurateSummary.totalByteCount,
             currentFilePath: "model.bin"
         ))
         try await Task.sleep(for: .milliseconds(20))
         isInstalled = true
-        return summary
+        return accurateSummary
     }
 
     func deleteInstalledModel(model: OpenCastWhisperModel, version: String) throws {
@@ -3129,12 +3041,12 @@ private final class AdFreePassTranscriptionModelInstaller: TranscriptionModelIns
 
     private var remoteModel: RemoteWhisperModel {
         RemoteWhisperModel(
-            modelID: summary.modelIdentifier,
-            version: summary.version,
+            modelID: accurateSummary.modelIdentifier,
+            version: accurateSummary.version,
             modelFolder: "model",
             tokenizerFolder: "tokenizer",
-            totalByteCount: summary.totalByteCount,
-            treeSHA256: summary.treeSHA256,
+            totalByteCount: accurateSummary.totalByteCount,
+            treeSHA256: accurateSummary.treeSHA256,
             files: []
         )
     }

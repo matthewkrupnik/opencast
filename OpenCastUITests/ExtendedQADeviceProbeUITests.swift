@@ -259,11 +259,15 @@ final class ExtendedQADeviceProbeUITests: XCTestCase {
     }
 
     /// Settings › Transcription owns both the engine toggle and the Whisper
-    /// model controls.
+    /// model controls. Only Accurate (large-v3) is downloaded, so this picks
+    /// it to reach them.
     @MainActor
     private func openTranscriptionSettings(in app: XCUIApplication) {
         openSettingsScreen("Transcription", in: app)
         sleep(1)
+        if scrollToButton("Accurate", in: app) {
+            app.buttons["Accurate"].tap()
+        }
         XCTAssertTrue(
             scrollToButton("Install Model", in: app) || scrollToButton("Delete Model", in: app)
                 || scrollToButton("Cancel Install", in: app),

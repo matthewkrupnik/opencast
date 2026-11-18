@@ -74,8 +74,7 @@ final class AnalysisRoutingUITests: XCTestCase {
     @MainActor
     func testNoKeyAndNoFreeAnalysesLeftOpensTheKeyScreenAndTheQueueSaysWhy() throws {
         // Each item waits 12 s before it starts, so the second episode joins
-        // the same drain and parks at model consent, which keeps the queue
-        // open after the first item ends.
+        // the same drain before the first item ends.
         let app = makeApp(trialStatus: "exhausted", seedsSecondEpisode: true, launchHoldMilliseconds: 12_000)
         app.launch()
 
@@ -97,7 +96,7 @@ final class AnalysisRoutingUITests: XCTestCase {
         notNow.tap()
         assertDoesNotExist(notNow, named: "key screen after Not now", timeout: 5)
 
-        openAdDetectionOnceParked(in: app)
+        openAdDetection(showing: Self.transcriptEpisodeID, in: app)
         assertExists(app.staticTexts[Self.keyRequiredQueueNotice], named: "key-required banner", timeout: 10)
         let outcome = queueRow(Self.transcriptEpisodeID, in: app)
         assertExists(outcome, named: "key-required outcome row")
@@ -317,13 +316,17 @@ final class AnalysisRoutingUITests: XCTestCase {
         )
     }
 
-    /// Opens Downloads, whose Ad Detection section shows the queue, and waits
-    /// there until the second item has parked at model consent.
+    /// Opens Downloads, whose Ad Detection section shows the queue and keeps
+    /// finished outcomes, and waits there for `episodeID`'s row.
     @MainActor
-    private func openAdDetectionOnceParked(in app: XCUIApplication, file: StaticString = #filePath, line: UInt = #line) {
+    private func openAdDetection(
+        showing episodeID: String,
+        in app: XCUIApplication,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) {
         openSection("Downloads", in: app, file: file, line: line)
-        let consent = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Download Model")).firstMatch
-        assertExists(consent, named: "model consent affordance of the parked item", timeout: 60, file: file, line: line)
+        assertExists(queueRow(episodeID, in: app), named: "queue row", timeout: 60, file: file, line: line)
     }
 
     @MainActor

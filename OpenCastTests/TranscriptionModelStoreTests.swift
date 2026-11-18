@@ -7,13 +7,63 @@ import Testing
 @MainActor
 @Suite("Transcription model store")
 struct TranscriptionModelStoreTests {
-    @Test("Missing model loads as not installed")
-    func missingModelLoadsAsNotInstalled() {
+    @Test("A missing Accurate model loads as not installed while the bundled Fast model is installed")
+    func missingModelLoadsAsNotInstalled() throws {
         let store = TranscriptionModelStore(installer: FakeTranscriptionModelInstaller(isInstalled: false))
 
         store.loadLocalStatus()
 
-        #expect(store.state == .notInstalled)
+        #expect(store.accurateState == .notInstalled)
+        #expect(store.state == .installed(FakeTranscriptionModelInstaller.fastSummary))
+        #expect(try store.installedModelSummary() == FakeTranscriptionModelInstaller.fastSummary)
+    }
+
+    @Test("Fast is the default choice; the choice persists and picks the summary the selected engine runs")
+    func choiceDefaultsToFastPersistsAndPicksTheSummary() throws {
+        let container = try OpenCastModelContainerFactory.make(inMemory: true)
+        let context = ModelContext(container)
+        let installer = FakeTranscriptionModelInstaller(isInstalled: false)
+        let store = TranscriptionModelStore(installer: installer)
+        store.load(modelContext: context)
+
+        #expect(store.selectedChoice == .fastTinyEnglish)
+        #expect(store.installedSummary == FakeTranscriptionModelInstaller.fastSummary)
+
+        #expect(store.setSelectedChoice(.accurateLargeV3, modelContext: context))
+        // Accurate isn't downloaded, so the selected engine has nothing to run.
+        #expect(store.installedSummary == nil)
+
+        installer.isInstalled = true
+        let reloaded = TranscriptionModelStore(installer: installer)
+        reloaded.load(modelContext: context)
+        #expect(reloaded.selectedChoice == .accurateLargeV3)
+        #expect(reloaded.installedSummary == installer.summary)
+        // Automatic runs stay on Fast whatever is picked.
+        #expect(try reloaded.installedModelSummary() == FakeTranscriptionModelInstaller.fastSummary)
+
+        reloaded.resetAfterDataNuke()
+        #expect(reloaded.selectedChoice == .fastTinyEnglish)
+    }
+
+    @Test("The pipeline's install step re-reads the bundled model, downloads nothing and always signals")
+    func pipelineInstallRereadsTheBundledModel() async throws {
+        let installer = FakeTranscriptionModelInstaller(isInstalled: false)
+        let store = TranscriptionModelStore(installer: installer)
+        store.loadLocalStatus()
+        store.fail("Transcription couldn't start.")
+        #expect(store.state == .failed("Transcription couldn't start."))
+
+        let sequence = store.changeSequence
+        #expect(store.installPinnedModel())
+        #expect(store.state == .installed(FakeTranscriptionModelInstaller.fastSummary))
+        #expect(installer.installRequestCount == 0)
+
+        // Even with nothing to change, a waiter is released.
+        let unchanged = store.changeSequence
+        #expect(unchanged > sequence)
+        #expect(store.installPinnedModel())
+        try await store.waitForChange(after: unchanged)
+        #expect(store.accurateState == .notInstalled)
     }
 
     @Test("Active transcription blocks model install with message")
@@ -49,10 +99,10 @@ struct TranscriptionModelStoreTests {
         #expect(await waitUntil { blockingTranscriber.requestCount == 1 })
         #expect(!appModel.installTranscriptionModel())
         #expect(installer.requestedInstallModel == nil)
-        if case .failed(let message) = transcriptionModels.state {
+        if case .failed(let message) = transcriptionModels.accurateState {
             #expect(message == "Finish or cancel the active transcript before installing the speech model.")
         } else {
-            Issue.record("Expected failed model-install state, got \(transcriptionModels.state).")
+            Issue.record("Expected failed model-install state, got \(transcriptionModels.accurateState).")
         }
 
         await transcriptions.unloadRuntime()
@@ -63,17 +113,17 @@ struct TranscriptionModelStoreTests {
         let installer = FakeTranscriptionModelInstaller(isInstalled: false)
         let store = TranscriptionModelStore(installer: installer)
 
-        #expect(store.installPinnedModel())
+        #expect(store.installAccurateModel())
 
         #expect(await waitUntil {
-            if case .installing(let progress) = store.state {
+            if case .installing(let progress) = store.accurateState {
                 progress.totalByteCount == 10
             } else {
                 false
             }
         })
         #expect(await waitUntil {
-            if case .installed(let summary) = store.state {
+            if case .installed(let summary) = store.accurateState {
                 summary.treeSHA256 == installer.summary.treeSHA256
             } else {
                 false
@@ -86,16 +136,16 @@ struct TranscriptionModelStoreTests {
         let installer = FakeTranscriptionModelInstaller(isInstalled: false)
         installer.installDelay = .seconds(60)
         let store = TranscriptionModelStore(installer: installer)
-        #expect(store.installPinnedModel())
+        #expect(store.installAccurateModel())
         #expect(await waitUntil { installer.installRequestCount == 1 })
-        store.cancelInstall()
-        #expect(await waitUntil { store.state == .notInstalled })
+        store.cancelAccurateInstall()
+        #expect(await waitUntil { store.accurateState == .notInstalled })
         #expect(installer.emitLateProgress())
         #expect(await waitUntil { installer.lateProgressDeliveryAcknowledged })
-        #expect(store.state == .notInstalled)
+        #expect(store.accurateState == .notInstalled)
 
         installer.installDelay = .milliseconds(40)
-        #expect(store.installPinnedModel())
+        #expect(store.installAccurateModel())
         #expect(await waitUntil { installer.isInstalled })
         #expect(installer.installRequestCount == 2)
     }
@@ -105,7 +155,7 @@ struct TranscriptionModelStoreTests {
         let installer = FakeTranscriptionModelInstaller(isInstalled: false)
         var store: TranscriptionModelStore? = TranscriptionModelStore(installer: installer)
         weak let releasedStore = store
-        #expect(store?.installPinnedModel() == true)
+        #expect(store?.installAccurateModel() == true)
         store = nil
         #expect(releasedStore != nil)
         #expect(await waitUntil { releasedStore == nil })
@@ -118,11 +168,11 @@ struct TranscriptionModelStoreTests {
         let installer = FakeTranscriptionModelInstaller(isInstalled: false)
         let store = TranscriptionModelStore(installer: installer)
 
-        #expect(store.installPinnedModel())
-        #expect(!store.installPinnedModel())
+        #expect(store.installAccurateModel())
+        #expect(!store.installAccurateModel())
 
         #expect(await waitUntil {
-            if case .installed = store.state {
+            if case .installed = store.accurateState {
                 true
             } else {
                 false
@@ -131,15 +181,15 @@ struct TranscriptionModelStoreTests {
         #expect(installer.installRequestCount == 1)
     }
 
-    @Test("Installing uses the pinned large-v3 release")
+    @Test("Installing Accurate uses the pinned large-v3 release")
     func installingUsesPinnedLargeV3Release() async {
         let installer = FakeTranscriptionModelInstaller(isInstalled: false)
         let store = TranscriptionModelStore(installer: installer)
 
-        #expect(store.installPinnedModel())
+        #expect(store.installAccurateModel())
 
         #expect(await waitUntil {
-            if case .installed(let installedSummary) = store.state {
+            if case .installed(let installedSummary) = store.accurateState {
                 installedSummary.modelIdentifier == OpenCastWhisperModel.largeV3.rawValue
             } else {
                 false
@@ -154,10 +204,10 @@ struct TranscriptionModelStoreTests {
         let installer = FakeTranscriptionModelInstaller(isInstalled: false)
         let store = TranscriptionModelStore(installer: installer)
 
-        #expect(store.installPinnedModel())
+        #expect(store.installAccurateModel())
 
         #expect(await waitUntil {
-            if case .installed = store.state {
+            if case .installed = store.accurateState {
                 true
             } else {
                 false
@@ -165,10 +215,10 @@ struct TranscriptionModelStoreTests {
         })
         #expect(installer.emitLateProgress())
         #expect(await waitUntil { installer.lateProgressDeliveryAcknowledged })
-        if case .installed(let summary) = store.state {
+        if case .installed(let summary) = store.accurateState {
             #expect(summary.treeSHA256 == installer.summary.treeSHA256)
         } else {
-            Issue.record("Expected installed state after late progress, got \(store.state)")
+            Issue.record("Expected installed state after late progress, got \(store.accurateState)")
         }
     }
 
@@ -192,10 +242,10 @@ struct TranscriptionModelStoreTests {
             manifestSummary: remote
         ))
 
-        store.checkRemoteManifest()
+        store.checkAccurateModel()
 
         #expect(await waitUntil {
-            if case .repairAvailable(let summary) = store.state {
+            if case .repairAvailable(let summary) = store.accurateState {
                 summary.treeSHA256 == installed.treeSHA256
             } else {
                 false
@@ -210,10 +260,10 @@ struct TranscriptionModelStoreTests {
         let store = TranscriptionModelStore(installer: installer)
         store.loadLocalStatus()
 
-        store.deleteInstalledModel()
+        store.deleteAccurateModel()
 
         #expect(await waitUntil {
-            if case .failed = store.state {
+            if case .failed = store.accurateState {
                 true
             } else {
                 false
@@ -231,8 +281,8 @@ struct TranscriptionModelStoreTests {
         #expect(throws: CocoaError.self) {
             try store.deleteInstalledModelImmediately()
         }
-        guard case .failed = store.state else {
-            Issue.record("Expected failed state, got \(store.state)")
+        guard case .failed = store.accurateState else {
+            Issue.record("Expected failed state, got \(store.accurateState)")
             return
         }
     }
@@ -298,7 +348,18 @@ private final class FakeTranscriptionModelInstaller: TranscriptionModelInstallin
         self.manifestSummary = manifestSummary ?? summary
     }
 
+    static let fastSummary = OpenCastWhisperModelInstalledSummary(
+        modelIdentifier: OpenCastWhisperModel.tinyEnglish.rawValue,
+        version: OpenCastWhisperModel.tinyEnglish.defaultRemoteVersion,
+        totalByteCount: 49_616_040,
+        treeSHA256: String(repeating: "f", count: 64)
+    )
+
     func installedSummary(model: OpenCastWhisperModel, version: String) throws -> OpenCastWhisperModelInstalledSummary {
+        // The bundled model is always there, as the real install store reads it.
+        if model.isBundled {
+            return Self.fastSummary
+        }
         guard isInstalled,
               summary.modelIdentifier == model.rawValue,
               summary.version == version else {

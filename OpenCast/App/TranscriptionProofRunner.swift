@@ -495,6 +495,8 @@ nonisolated struct TranscriptionProofRunner: Sendable {
             appleSpeechReportFileName
         case .whisper:
             switch model {
+            case .tinyEnglish:
+                "debuggers-almanac-tiny-proof.json"
             case .largeV3:
                 largeV3ReportFileName
             }

@@ -3,16 +3,37 @@ import Observation
 import OpenCastTranscription
 import SwiftData
 
+/// The two Whisper models. Fast (tiny.en) ships inside the app and is the one
+/// every automatic Whisper run uses, so `state` is always about it and never
+/// needs a download. Accurate (large-v3) is an optional download, managed in
+/// Settings through `accurateState`, and runs only when the Whisper engine is
+/// explicitly set to the selected model.
 @Observable
 final class TranscriptionModelStore {
-    /// The one Whisper model the app installs and runs.
-    static let model = OpenCastWhisperModel.largeV3
+    static let modelChoicePreferenceKey = "transcription.model.choice"
+    /// The bundled model automatic Whisper runs use.
+    static let fastModel = OpenCastWhisperModel.tinyEnglish
+    /// The downloadable model.
+    static let accurateModel = OpenCastWhisperModel.largeV3
 
     @ObservationIgnored private let stateChanges = StoreChangeNotifier()
 
+    private(set) var selectedChoice: TranscriptionModelChoice = .defaultChoice
+
+    /// The Fast model's state: installed unless the app bundle is damaged.
     private(set) var state: TranscriptionModelState = .unknown {
         didSet {
             guard oldValue != state else {
+                return
+            }
+            stateChanges.notify()
+        }
+    }
+
+    /// The Accurate model's download state.
+    private(set) var accurateState: TranscriptionModelState = .unknown {
+        didSet {
+            guard oldValue != accurateState else {
                 return
             }
             stateChanges.notify()
@@ -29,23 +50,25 @@ final class TranscriptionModelStore {
         self.installer = installer
     }
 
+    /// The selected model's summary when it is installed.
     var installedSummary: OpenCastWhisperModelInstalledSummary? {
-        switch state {
-        case .installed(let summary), .repairAvailable(let summary):
-            return summary
-        default:
-            return nil
+        switch selectedChoice {
+        case .fastTinyEnglish:
+            Self.summary(of: state)
+        case .accurateLargeV3:
+            Self.summary(of: accurateState)
         }
     }
 
-    /// Reads the install receipt directly rather than the last published
-    /// `state`, so callers can resolve before the store has loaded.
+    /// The Fast model's summary, read from its receipt rather than the last
+    /// published `state`, so callers can resolve before the store has loaded.
     func installedModelSummary() throws -> OpenCastWhisperModelInstalledSummary {
-        try installer.installedSummary(model: selectedModel, version: selectedVersion)
+        try installer.installedSummary(model: Self.fastModel, version: Self.fastModel.defaultRemoteVersion)
     }
 
+    /// Whether an Accurate operation is running.
     var isBusy: Bool {
-        switch state {
+        switch accurateState {
         case .checking, .installing, .deleting:
             true
         case .unknown, .notInstalled, .installed, .repairAvailable, .failed:
@@ -72,74 +95,117 @@ final class TranscriptionModelStore {
 
     // Test seam — no production callers (dead-code audit Low 40).
     func loadLocalStatus() {
-        state = localStatus()
+        state = fastStatus()
+        accurateState = accurateLocalStatus()
     }
 
     func load(modelContext: ModelContext) {
-        state = localStatus()
+        selectedChoice = storedChoice(modelContext: modelContext)
+        state = fastStatus()
+        accurateState = accurateLocalStatus()
     }
 
+    @discardableResult
+    func setSelectedChoice(
+        _ choice: TranscriptionModelChoice,
+        modelContext: ModelContext
+    ) -> Bool {
+        let previousChoice = selectedChoice
+        selectedChoice = choice
+        do {
+            try LocalPreferenceRecord.upsert(
+                key: Self.modelChoicePreferenceKey,
+                value: choice.rawValue,
+                modelContext: modelContext
+            )
+            try modelContext.save()
+            return true
+        } catch {
+            selectedChoice = previousChoice
+            accurateState = .failed("Unable to update transcript model: \(error.localizedDescription)")
+            return false
+        }
+    }
+
+    /// The pipeline's install step. The Fast model ships with the app, so
+    /// there is nothing to download: this reads the bundled copy again and
+    /// always signals a change, so a caller waiting on one never hangs.
     @discardableResult
     func installPinnedModel() -> Bool {
-        startInstall()
+        state = fastStatus()
+        stateChanges.notify()
+        return true
+    }
+
+    /// Records a transcription-start failure against the Fast model, as the
+    /// pipeline reports it; `installPinnedModel` reads the bundle again.
+    func fail(_ message: String) {
+        state = .failed(message)
+    }
+
+    // MARK: Accurate
+
+    @discardableResult
+    func installAccurateModel() -> Bool {
+        startAccurateInstall()
     }
 
     @discardableResult
-    func repairPinnedModel() -> Bool {
-        startInstall()
+    func repairAccurateModel() -> Bool {
+        startAccurateInstall()
     }
 
-    func cancelInstall() {
+    func cancelAccurateInstall() {
         operationTask?.cancel()
     }
 
-    func checkRemoteManifest() {
+    func failAccurate(_ message: String) {
+        accurateState = .failed(message)
+    }
+
+    func checkAccurateModel() {
         guard operationTask == nil else {
             return
         }
 
         operationTask = Task { [self] in
-            state = .checking
+            accurateState = .checking
             do {
                 let manifest = try await installer.fetchManifest()
                 try Task.checkCancellation()
-                state = try checkedState(manifest: manifest)
+                accurateState = try checkedAccurateState(manifest: manifest)
             } catch is CancellationError {
-                state = localStatus()
+                accurateState = accurateLocalStatus()
             } catch {
-                state = .failed(error.localizedDescription)
+                accurateState = .failed(error.localizedDescription)
             }
             operationTask = nil
         }
     }
 
-    func selectedModelRemoteByteCount() async throws -> Int64 {
+    func accurateModelRemoteByteCount() async throws -> Int64 {
         let manifest = try await installer.fetchManifest()
-        let remoteModel = try remoteModel(
-            in: manifest,
-            model: selectedModel,
-            version: selectedVersion
-        )
-        return remoteModel.totalByteCount
+        return try accurateRemoteModel(in: manifest).totalByteCount
     }
 
-    func deleteInstalledModel() {
+    func deleteAccurateModel() {
         guard operationTask == nil else {
             return
         }
 
         operationTask = Task {
-            try? performDeleteInstalledModel()
+            try? performDeleteAccurateModel()
             operationTask = nil
         }
     }
 
+    /// Deletes the downloaded Accurate model; the bundled Fast model stays.
     func deleteInstalledModelImmediately() throws {
         operationTask?.cancel()
         operationTask = nil
         activeInstallOperationID = nil
-        try performDeleteInstalledModel()
-        state = localStatus()
+        try performDeleteAccurateModel()
+        accurateState = accurateLocalStatus()
     }
 
     /// Deliberately synchronous and main-actor: the data-nuke ordering
@@ -147,13 +213,16 @@ final class TranscriptionModelStore {
     /// removal completing before the nuke proceeds. The catch keeps any
     /// throw from stranding `.deleting` — the Settings section renders that
     /// state as a bare spinner with no way out.
-    private func performDeleteInstalledModel() throws {
-        state = .deleting
+    private func performDeleteAccurateModel() throws {
+        accurateState = .deleting
         do {
-            try installer.deleteInstalledModel(model: selectedModel, version: selectedVersion)
-            state = localStatus()
+            try installer.deleteInstalledModel(
+                model: Self.accurateModel,
+                version: Self.accurateModel.defaultRemoteVersion
+            )
+            accurateState = accurateLocalStatus()
         } catch {
-            state = .failed(error.localizedDescription)
+            accurateState = .failed(error.localizedDescription)
             throw error
         }
     }
@@ -162,30 +231,28 @@ final class TranscriptionModelStore {
         operationTask?.cancel()
         operationTask = nil
         activeInstallOperationID = nil
-        state = localStatus()
+        selectedChoice = .defaultChoice
+        state = fastStatus()
+        accurateState = accurateLocalStatus()
     }
 
-    func fail(_ message: String) {
-        state = .failed(message)
-    }
-
-    private func startInstall() -> Bool {
+    private func startAccurateInstall() -> Bool {
         guard operationTask == nil else {
             return false
         }
 
         let operationID = UUID()
-        let model = selectedModel
-        let version = selectedVersion
+        let model = Self.accurateModel
+        let version = model.defaultRemoteVersion
         activeInstallOperationID = operationID
         // Keep the store alive for this finite operation, then clear the task
         // below. The installer's escaping progress callback must stay weak.
         operationTask = Task { [self] in
-            state = .checking
+            accurateState = .checking
             do {
                 let manifest = try await installer.fetchManifest()
-                let remoteModel = try remoteModel(in: manifest, model: model, version: version)
-                state = .installing(OpenCastWhisperModelInstallProgress(
+                let remoteModel = try accurateRemoteModel(in: manifest)
+                accurateState = .installing(OpenCastWhisperModelInstallProgress(
                     modelIdentifier: remoteModel.modelID,
                     version: remoteModel.version,
                     completedFileCount: 0,
@@ -206,13 +273,13 @@ final class TranscriptionModelStore {
                 )
                 try Task.checkCancellation()
                 activeInstallOperationID = nil
-                state = .installed(summary)
+                accurateState = .installed(summary)
             } catch is CancellationError {
                 activeInstallOperationID = nil
-                state = localStatus()
+                accurateState = accurateLocalStatus()
             } catch {
                 activeInstallOperationID = nil
-                state = .failed(error.localizedDescription)
+                accurateState = .failed(error.localizedDescription)
             }
             operationTask = nil
         }
@@ -224,20 +291,23 @@ final class TranscriptionModelStore {
         operationID: UUID
     ) {
         guard activeInstallOperationID == operationID,
-              case .installing(let currentProgress) = state,
+              case .installing(let currentProgress) = accurateState,
               currentProgress.modelIdentifier == progress.modelIdentifier,
               currentProgress.version == progress.version
         else {
             return
         }
 
-        state = .installing(progress)
+        accurateState = .installing(progress)
     }
 
-    private func checkedState(manifest: RemoteWhisperModelManifest) throws -> TranscriptionModelState {
-        let remoteModel = try remoteModel(in: manifest, model: selectedModel, version: selectedVersion)
+    private func checkedAccurateState(manifest: RemoteWhisperModelManifest) throws -> TranscriptionModelState {
+        let remoteModel = try accurateRemoteModel(in: manifest)
         do {
-            let summary = try installer.installedSummary(model: selectedModel, version: selectedVersion)
+            let summary = try installer.installedSummary(
+                model: Self.accurateModel,
+                version: Self.accurateModel.defaultRemoteVersion
+            )
             if summary.treeSHA256.lowercased() == remoteModel.treeSHA256.lowercased() {
                 return .installed(summary)
             }
@@ -250,9 +320,17 @@ final class TranscriptionModelStore {
         }
     }
 
-    private func localStatus() -> TranscriptionModelState {
+    private func fastStatus() -> TranscriptionModelState {
+        localStatus(model: Self.fastModel)
+    }
+
+    private func accurateLocalStatus() -> TranscriptionModelState {
+        localStatus(model: Self.accurateModel)
+    }
+
+    private func localStatus(model: OpenCastWhisperModel) -> TranscriptionModelState {
         do {
-            return .installed(try installer.installedSummary(model: selectedModel, version: selectedVersion))
+            return .installed(try installer.installedSummary(model: model, version: model.defaultRemoteVersion))
         } catch let error as OpenCastTranscriptionError {
             guard case .modelNotInstalled = error else {
                 return .failed(error.localizedDescription)
@@ -263,23 +341,29 @@ final class TranscriptionModelStore {
         }
     }
 
-    private var selectedModel: OpenCastWhisperModel {
-        Self.model
+    private func storedChoice(modelContext: ModelContext) -> TranscriptionModelChoice {
+        guard let rawValue = try? LocalPreferenceRecord.preference(
+            forKey: Self.modelChoicePreferenceKey,
+            modelContext: modelContext
+        )?.value else {
+            return .defaultChoice
+        }
+        return TranscriptionModelChoice(rawValue: rawValue) ?? .defaultChoice
     }
 
-    private var selectedVersion: String {
-        Self.model.defaultRemoteVersion
+    private static func summary(of state: TranscriptionModelState) -> OpenCastWhisperModelInstalledSummary? {
+        switch state {
+        case .installed(let summary), .repairAvailable(let summary):
+            summary
+        default:
+            nil
+        }
     }
 
-    private func remoteModel(
-        in manifest: RemoteWhisperModelManifest,
-        model: OpenCastWhisperModel,
-        version: String
-    ) throws -> RemoteWhisperModel {
-        guard let remoteModel = manifest.model(
-            modelIdentifier: model.rawValue,
-            version: version
-        ) else {
+    private func accurateRemoteModel(in manifest: RemoteWhisperModelManifest) throws -> RemoteWhisperModel {
+        let model = Self.accurateModel
+        let version = model.defaultRemoteVersion
+        guard let remoteModel = manifest.model(modelIdentifier: model.rawValue, version: version) else {
             throw OpenCastTranscriptionError.remoteManifestMissingModel(
                 modelIdentifier: model.rawValue,
                 version: version
