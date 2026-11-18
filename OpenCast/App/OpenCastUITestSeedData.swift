@@ -33,6 +33,7 @@ enum OpenCastUITestSeedData {
     static let smartPlaylistID = "ui-test-playlist-smart-unplayed"
     static let smartPlaylistName = "Seeded Unplayed"
     static let allPlaylistID = "ui-test-playlist-all"
+    private static let detachedAdAnalysisEnvironmentKey = "OPENCAST_SEED_DETACHED_AD_ANALYSIS"
     private static let liveAdAnalysisTranscriptPathEnvironmentKey = "OPENCAST_SEED_LIVE_AD_ANALYSIS_TRANSCRIPT_PATH"
     private static let liveAdAnalysisResponsePathEnvironmentKey = "OPENCAST_SEED_LIVE_AD_ANALYSIS_RESPONSE_PATH"
     /// A v3 transcript fixture (`segments` of id/start/end/text) that replaces
@@ -365,6 +366,11 @@ enum OpenCastUITestSeedData {
         ] == "1"
         let shouldSeedAdAnalysisSpanAtStart = includesAdAnalysisSpanAtStart
             || ProcessInfo.processInfo.environment["OPENCAST_SEED_AD_ANALYSIS_SPAN_AT_START"] == "1"
+        // The analysed episode without the download its transcript was made
+        // from, as after Remove Played: the analysis is current but detached.
+        let shouldSeedDetachedAdAnalysis = ProcessInfo.processInfo.environment[
+            detachedAdAnalysisEnvironmentKey
+        ] == "1"
         let shouldSeedCompletedAdAnalysis = includesCompletedAdAnalysis
             || OpenCastUITestWordBoundaryFixture.isEnabled
             || ProcessInfo.processInfo.environment["OPENCAST_SEED_COMPLETED_AD_ANALYSIS"] == "1"
@@ -372,7 +378,9 @@ enum OpenCastUITestSeedData {
             || shouldSeedOutdatedPolicyAdAnalysis
             || shouldSeedLowConfidenceAdAnalysis
             || shouldSeedAdAnalysisSpanAtStart
-        let shouldSeedCompletedDownload = includesCompletedDownload || shouldSeedCompletedAdAnalysis
+            || shouldSeedDetachedAdAnalysis
+        let shouldSeedCompletedDownload = !shouldSeedDetachedAdAnalysis
+            && (includesCompletedDownload || shouldSeedCompletedAdAnalysis)
 
         if shouldSeedCompletedDownload {
             let fileStore = EpisodeDownloadFileStore()

@@ -23,6 +23,7 @@ struct PodcastEpisodeListModel {
     ) -> PodcastEpisodeListModel {
         // Download records are observed state; only Downloaded reads them.
         let downloadedEpisodeIDs = filter == .downloaded ? downloadRecords().completedEpisodeIDs : []
+        let archivedEpisodeIDs = library.archivedEpisodeIDs
 
         var visibleEpisodes: [EpisodeListItemSnapshot] = []
         var unplayedEpisodeCount = 0
@@ -41,6 +42,7 @@ struct PodcastEpisodeListModel {
             }
 
             if progress.hasVisibleProgress,
+               !archivedEpisodeIDs.contains(episode.episodeID),
                let record = library.progressRecord(for: episode.episodeID),
                resumeUpdatedAt.map({ record.updatedAt > $0 }) ?? true {
                 resumeEpisode = episode

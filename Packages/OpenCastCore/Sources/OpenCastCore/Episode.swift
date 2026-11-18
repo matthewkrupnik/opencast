@@ -12,9 +12,11 @@ public struct Episode: Codable, Hashable, Identifiable, Sendable {
     public var audioURL: URL?
     public var artworkURL: URL?
     public var guid: String?
-    /// Feed-declared chapters: the `podcast:chapters` document URL, or inline
-    /// Podlove chapters as an `InlineChaptersDocument` data URL. Creator
-    /// chapters suppress generated ones.
+    /// Feed-declared `podcast:chapters` document URL. The app fetches the document,
+    /// decodes it with `PublisherChaptersDocumentDecoder` and renders the publisher's
+    /// chapters. A declared URL also keeps opencast from generating chapters, unless the
+    /// device has read the document and found nothing usable in it
+    /// (`PublisherChaptersStore.isDocumentKnownEmpty` in the app).
     public var chaptersURL: URL?
 
     public init(

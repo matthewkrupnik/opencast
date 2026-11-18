@@ -77,7 +77,7 @@ struct PlaybackChapterListTests {
                 EpisodeChapter(id: 1, title: "Art", startTime: 30, endTime: 45, imageURL: b, isHidden: true),
                 EpisodeChapter(id: 2, title: "Talk", startTime: 60),
             ],
-            source: .feed
+            source: .publisher
         )
 
         #expect(list.chapters.map(\.title) == ["Open", "Talk"])

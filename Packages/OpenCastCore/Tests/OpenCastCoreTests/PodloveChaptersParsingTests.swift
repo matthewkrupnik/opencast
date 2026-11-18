@@ -26,7 +26,7 @@ struct PodloveChaptersParsingTests {
     private func chapters(of episode: Episode) throws -> [EpisodeChapter] {
         let url = try #require(episode.chaptersURL)
         let data = try #require(InlineChaptersDocument.data(from: url))
-        return try PodcastChaptersDocument.chapters(from: data, documentURL: url)
+        return try PublisherChaptersDocumentDecoder.decode(data, documentURL: url)
     }
 
     @Test("Inline chapters become a chapters document with times, links and art")

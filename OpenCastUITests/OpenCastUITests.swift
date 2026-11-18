@@ -38,6 +38,12 @@ final class OpenCastUITests: XCTestCase {
     private static let liveAdAnalysisResponsePathEnvironmentKey = "OPENCAST_SEED_LIVE_AD_ANALYSIS_RESPONSE_PATH"
     private static let adFreePassPresentationOverrideEnvironmentKey = "OPENCAST_UI_TEST_AD_FREE_PASS_STAGE"
     private static let seedAdAnalysisSpanAtStartEnvironmentKey = "OPENCAST_SEED_AD_ANALYSIS_SPAN_AT_START"
+    private static let seedDetachedAdAnalysisEnvironmentKey = "OPENCAST_SEED_DETACHED_AD_ANALYSIS"
+    private static let detachedAdAnalysisCaption = "Ad skips unavailable for this audio. Detect Ads Again to restore them."
+    private static let scannedEpisodesRemovalSentence =
+        "Removing a scanned episode’s audio turns off its automatic ad skips until it is scanned again."
+    private static let soundLabLaunchHoldEnvironmentKey =
+        "OPENCAST_UI_TEST_SOUND_LAB_LAUNCH_HOLD_MILLISECONDS"
     private static let perEpisodeVoiceBoostModeValue = "perEpisode"
     private static let playEpisodeTraceArmingSecondsEnvironmentKey = "OPENCAST_PLAY_EPISODE_TRACE_ARMING_SECONDS"
     private static let nowPlayingDismissTraceArmingSecondsEnvironmentKey = "OPENCAST_NOW_PLAYING_DISMISS_TRACE_ARMING_SECONDS"
@@ -2849,7 +2855,75 @@ final class OpenCastUITests: XCTestCase {
     }
 
     @MainActor
-    func testSeededStaleAdAnalysisSkipsNothing() throws {
+    func testSeededSkipSoundFollowsAutoSkipAndKeepsItsChoice() throws {
+        let app = makeSeededApp(forcesDarkMode: false, forcesLightMode: true)
+        app.launch()
+
+        openSettingsScreen("Ad Skipping", in: app)
+        let autoSkipToggle = autoSkipSettingsToggle(in: app)
+        let skipSoundRow = app.buttons["ad-skipping-skip-sound-row"]
+        let skipSoundFooter = app.staticTexts.matching(
+            NSPredicate(format: "label CONTAINS %@", "Plays when an ad is skipped while you are listening.")
+        ).firstMatch
+        assertHittable(skipSoundRow, named: "Skip Sound row")
+        assertToggle(autoSkipToggle, isOn: true)
+        XCTAssertTrue(waitForEnabled(skipSoundRow, true), "Skip Sound should be available with Auto-Skip on")
+        XCTAssertTrue(settingsRow(skipSoundRow, showsValue: "None"), "Skip Sound should read None by default")
+        assertDoesNotExist(skipSoundFooter, named: "Skip Sound footer sentence with None")
+
+        tapToggle(autoSkipToggle, to: false)
+        XCTAssertTrue(waitForEnabled(skipSoundRow, false), "Skip Sound should be disabled with Auto-Skip off")
+        tapToggle(autoSkipToggle, to: true)
+        XCTAssertTrue(waitForEnabled(skipSoundRow, true), "Skip Sound should come back with Auto-Skip on")
+
+        skipSoundRow.tap()
+        assertScreen("Skip Sound", named: "Skip Sound picker", in: app)
+        let noneOption = app.buttons["skip-sound-option-none"]
+        let vinylScratchOption = app.buttons["skip-sound-option-vinyl-scratch"]
+        assertHittable(vinylScratchOption, named: "Vinyl Scratch option")
+        for id in ["rewind", "cassette", "guitar-riff"] {
+            assertExists(app.buttons["skip-sound-option-\(id)"], named: "\(id) option")
+        }
+        // The system file importer is not driven here; CustomSkipSoundTests
+        // covers the import itself.
+        let importRow = app.buttons["skip-sound-import"]
+        assertExists(importRow, named: "Add Sound row")
+        XCTAssertEqual(importRow.label, "Add Sound…", "With no sound of your own the import row should read Add Sound…")
+        assertDoesNotExist(app.buttons["skip-sound-option-custom"], named: "custom sound row with none imported")
+        assertDoesNotExist(
+            app.staticTexts["Your own sound plays at the volume it was recorded at."],
+            named: "custom sound footer with none imported"
+        )
+        XCTAssertTrue(waitForSelection(of: noneOption), "None should start selected")
+        vinylScratchOption.tap()
+        XCTAssertTrue(waitForSelection(of: vinylScratchOption), "Vinyl Scratch should be selected after tapping it")
+        XCTAssertFalse(noneOption.isSelected, "None should no longer be selected")
+        attachSmokeScreenshot(named: "settings_skip_sound_picker")
+
+        tapBackButton(in: app)
+        assertScreen("Ad Skipping", named: "Ad Skipping screen after choosing a sound", in: app)
+        XCTAssertTrue(settingsRow(skipSoundRow, showsValue: "Vinyl Scratch"), "Skip Sound should read Vinyl Scratch")
+        assertExists(skipSoundFooter, named: "Skip Sound footer sentence with a sound chosen")
+        attachSmokeScreenshot(named: "settings_ad_skipping_skip_sound_chosen")
+
+        tapToggle(autoSkipToggle, to: false)
+        XCTAssertTrue(waitForEnabled(skipSoundRow, false), "Skip Sound should be disabled with Auto-Skip off")
+        XCTAssertTrue(settingsRow(skipSoundRow, showsValue: "Vinyl Scratch"), "Auto-Skip off should keep the choice")
+        tapToggle(autoSkipToggle, to: true)
+        XCTAssertTrue(waitForEnabled(skipSoundRow, true), "Skip Sound should come back with Auto-Skip on")
+
+        // UI-test launches keep their store in memory, so a relaunch reseeds
+        // it; reopening the screen is the round trip here, and
+        // PlaybackSettingsStoreTests reloads the choice from a saved store.
+        openSettingsScreen("Ad Skipping", in: app)
+        XCTAssertTrue(settingsRow(skipSoundRow, showsValue: "Vinyl Scratch"), "The choice should survive reopening the screen")
+        skipSoundRow.tap()
+        assertScreen("Skip Sound", named: "Skip Sound picker reopened", in: app)
+        XCTAssertTrue(waitForSelection(of: vinylScratchOption), "Vinyl Scratch should still be selected")
+    }
+
+    @MainActor
+    func testSeededStaleAdAnalysisSkipsNothingAndOffersRerun() throws {
         let app = makeSeededApp(
             seedsCompletedTranscript: true,
             seedsStaleAdAnalysis: true
@@ -3423,6 +3497,39 @@ final class OpenCastUITests: XCTestCase {
         assertDoesNotExist(section, named: "show section after turning grouping off", timeout: 5)
     }
 
+    /// The Downloads empty state is a List row: taps on its blank space and
+    /// its text stay on Downloads, and its Download Settings button opens the
+    /// settings.
+    @MainActor
+    func testSeededDownloadsEmptyStateOpensSettingsOnlyFromItsButton() throws {
+        let app = makeSeededApp()
+        app.launch()
+
+        openSection("Downloads", in: app)
+        assertScreen("Downloads", named: "Downloads navigation bar", in: app)
+        let card = app.cells.containing(NSPredicate(format: "label == %@", "No Downloads")).firstMatch
+        assertExists(card, named: "Downloads empty state")
+        let settingsButton = card.buttons["Download Settings"]
+        assertHittable(settingsButton, named: "empty state's Download Settings button")
+
+        card.coordinate(withNormalizedOffset: CGVector(dx: 0.04, dy: 0.5)).tap()
+        XCTAssertFalse(
+            waitForScreen("Download Settings", in: app, timeout: 3),
+            "A tap on the empty state's blank space should not open Download Settings"
+        )
+        app.staticTexts["No Downloads"].tap()
+        XCTAssertFalse(
+            waitForScreen("Download Settings", in: app, timeout: 3),
+            "A tap on the empty state's title should not open Download Settings"
+        )
+
+        settingsButton.tap()
+        assertScreen("Download Settings", named: "Download Settings from the empty state", in: app)
+        tapBackButton(in: app)
+        assertScreen("Downloads", named: "Downloads after Download Settings", in: app)
+        assertExists(card, named: "Downloads empty state after Download Settings")
+    }
+
     @MainActor
     func testSeededTranscriptAndSpeechModelSmoke() throws {
         let app = makeSeededApp(
@@ -3591,10 +3698,12 @@ final class OpenCastUITests: XCTestCase {
         openAllPlaylist(in: app)
         let liveEpisode = liveAdAnalysisEpisodeRow(in: app)
         scrollUntilExists(liveEpisode, in: app, maxSwipes: 3)
+        // The artifact seed saves a current analysis but no download.
         openEpisodeDetailFromContextMenu(
             liveEpisode,
             in: app,
-            named: "live Worker ad-analysis episode"
+            named: "live Worker ad-analysis episode",
+            detectAdsTitle: "Detect Ads Again"
         )
 
         let viewTranscriptButton = app.buttons["Read Transcript"]
@@ -3614,6 +3723,79 @@ final class OpenCastUITests: XCTestCase {
         scrollUntilVisible(cancerResearchRow, in: app, maxSwipes: 12)
         assertExists(cancerResearchRow, named: "live Worker transcript ad row with promo/ad span")
         attachSmokeScreenshot(named: "episode_transcript_live_worker_ad_analysis")
+    }
+
+    /// The analysis seed without its download, as after Remove Played: the
+    /// analysis is current, but nothing it marks can skip the audio that
+    /// plays.
+    @MainActor
+    func testSeededDetachedAdAnalysisOffersDetectAdsAgainScreenshots() throws {
+        let app = makeSeededApp(seedsCompletedAdAnalysis: true)
+        app.launchEnvironment[Self.seedDetachedAdAnalysisEnvironmentKey] = "1"
+        app.launch()
+
+        openSeededNowPlaying(in: app)
+        openCurrentEpisodeDetailFromNowPlaying(in: app)
+        let makeAdFree = app.buttons["Make Ad-Free"]
+        assertExists(makeAdFree, named: "Make Ad-Free")
+        assertValue(of: makeAdFree, becomes: "Ad skips unavailable", named: "Make Ad-Free", timeout: 10)
+        XCTAssertTrue(makeAdFree.isEnabled, "Make Ad-Free should stay enabled for a detached analysis")
+        assertExists(
+            elementContaining(label: Self.detachedAdAnalysisCaption, in: app),
+            named: "detached analysis caption",
+            timeout: 10
+        )
+        attachSmokeScreenshot(named: "detached_episode_page_caption")
+
+        let actions = app.buttons["Episode Actions"].firstMatch
+        assertHittable(actions, named: "Episode Actions menu")
+        actions.tap()
+        let detectAgain = app.buttons.matching(NSPredicate(
+            format: "label == %@ AND identifier != %@",
+            "Detect Ads Again",
+            "Skip Promos & Ads"
+        )).firstMatch
+        assertHittable(detectAgain, named: "Detect Ads Again in Episode Actions")
+        let detectOnly = app.buttons["Detect Ads Only"].firstMatch
+        assertExists(detectOnly, named: "Detect Ads Only in Episode Actions")
+        XCTAssertFalse(detectOnly.isEnabled, "Detect Ads Only should stay disabled over a current analysis")
+        attachSmokeScreenshot(named: "detached_episode_actions_detect_again")
+        dismissContextualMenu(in: app)
+    }
+
+    @MainActor
+    func testSeededRemovePlayedConfirmationSaysScannedEpisodesLoseSkips() throws {
+        let app = makeSeededApp(seedsCompletedDownload: true)
+        app.launch()
+
+        openSection("Downloads", in: app)
+        assertScreen("Downloads", named: "Downloads navigation bar", in: app)
+        let downloadedRow = app.buttons.matching(identifier: Self.seededEpisodeRowIdentifier).firstMatch
+        scrollUntilHittable(downloadedRow, in: app)
+        downloadedRow.press(forDuration: 1.2)
+        let markPlayed = app.buttons["Mark Played"].firstMatch
+        assertHittable(markPlayed, named: "Mark Played context action")
+        markPlayed.tap()
+
+        let editButton = toolbarButton("Edit", in: "Downloads", of: app)
+        assertHittable(editButton, named: "Downloads Edit button")
+        editButton.tap()
+        let removePlayed = app.buttons["Remove Played"].firstMatch
+        assertHittable(removePlayed, named: "Remove Played edit action")
+        XCTAssertTrue(removePlayed.isEnabled, "Remove Played should be enabled once the download is played")
+        removePlayed.tap()
+
+        let confirmation = app.alerts["Remove played downloads?"]
+        assertExists(confirmation, named: "Remove Played confirmation")
+        assertExists(
+            confirmation.staticTexts.matching(NSPredicate(
+                format: "label CONTAINS %@",
+                Self.scannedEpisodesRemovalSentence
+            )).firstMatch,
+            named: "Remove Played confirmation's scanned-episode sentence"
+        )
+        attachSmokeScreenshot(named: "remove_played_confirmation_scanned_sentence")
+        confirmation.buttons["Cancel"].tap()
     }
 
     @MainActor
@@ -3667,9 +3849,9 @@ final class OpenCastUITests: XCTestCase {
         scrollUntilExists(episode, in: app, maxSwipes: 3)
         assertExists(episode, named: "saved word-boundary episode")
         episode.press(forDuration: 1.2)
-        // A current saved analysis correctly replaces the generic helper's
-        // "Detect Ads" action with the disabled "Ads Detected" status.
-        assertExists(app.buttons["Ads Detected"], named: "accepted saved v3 analysis")
+        // The artifact seed saves a current analysis but no download, so the
+        // analysis is detached: the menu offers Detect Ads Again.
+        assertExists(app.buttons["Detect Ads Again"], named: "accepted saved v3 analysis without its download")
         let details = app.buttons["View Episode Details"]
         assertExists(details, named: "saved word-boundary episode details action")
         details.tap()
@@ -4773,6 +4955,15 @@ final class OpenCastUITests: XCTestCase {
             }
             _ = springboard.alerts.firstMatch.existsOrWait(timeout: 0.5)
         } while Date.now < deadline
+    }
+
+    @MainActor
+    private func waitForEnabled(_ element: XCUIElement, _ isEnabled: Bool, timeout: TimeInterval = 5) -> Bool {
+        let expectation = XCTNSPredicateExpectation(
+            predicate: NSPredicate(format: "enabled == %@", NSNumber(value: isEnabled)),
+            object: element
+        )
+        return XCTWaiter.wait(for: [expectation], timeout: timeout) == .completed
     }
 
     /// Rows disable while a change is in flight, so waiting for `enabled`
@@ -6572,6 +6763,7 @@ final class OpenCastUITests: XCTestCase {
         in app: XCUIApplication,
         named name: String,
         expectsGoToShow: Bool = true,
+        detectAdsTitle: String = "Detect Ads",
         file: StaticString = #filePath,
         line: UInt = #line
     ) {
@@ -6604,8 +6796,8 @@ final class OpenCastUITests: XCTestCase {
             line: line
         )
         assertExists(
-            app.buttons["Detect Ads"].firstMatch,
-            named: "\(name) Detect Ads context action",
+            app.buttons[detectAdsTitle].firstMatch,
+            named: "\(name) \(detectAdsTitle) context action",
             file: file,
             line: line
         )

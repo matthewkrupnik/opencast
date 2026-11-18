@@ -1,32 +1,41 @@
 /// Decision-11 qualification for play-triggered auto ad detection: playing
 /// an episode of an auto-detect-enabled show enqueues an `.auto` pass iff
-/// the episode has no current completed analysis and is not already in the
-/// queue. Pure so the table is unit-testable.
+/// the episode has no current completed analysis attached to its trusted
+/// download and is not already in the queue. Pure so the table is
+/// unit-testable.
 struct AdAutoDetectPlayPolicy {
     let isAutoDetectEnabled: Bool
     let hasCurrentCompletedAnalysis: Bool
+    let isAnalysisAttached: Bool
     let queueStatus: AdFreePassQueueEpisodeStatus
 
     var isReplaySuppressed = false
-    /// The completed transcript describes other audio than the current
-    /// download (an enclosure re-downloaded with other ads stitched in), so
-    /// its analysis is no use and a pass finished earlier this session
-    /// doesn't count.
-    var isTranscriptStaleForDownload = false
+
+    /// The statuses a play reaches the policy with. A pass that failed this
+    /// session is not retried on play, whatever waiting might cure: the
+    /// listener retries it by hand.
+    static func admitsPlay(with queueStatus: AdFreePassQueueEpisodeStatus) -> Bool {
+        switch queueStatus {
+        case .notQueued, .completed:
+            true
+        case .queued, .running, .failed, .keyRequired:
+            false
+        }
+    }
 
     var shouldEnqueue: Bool {
         guard isAutoDetectEnabled,
-              isTranscriptStaleForDownload || !hasCurrentCompletedAnalysis,
+              !(hasCurrentCompletedAnalysis && isAnalysisAttached),
               !isReplaySuppressed
         else {
             return false
         }
 
         switch queueStatus {
-        case .notQueued, .failed:
+        case .notQueued, .completed, .failed:
+            // A retained outcome is history: a completed pass whose download
+            // has since gone is a never-scanned episode again.
             return true
-        case .completed:
-            return isTranscriptStaleForDownload
         case .queued, .running:
             return false
         case .keyRequired:

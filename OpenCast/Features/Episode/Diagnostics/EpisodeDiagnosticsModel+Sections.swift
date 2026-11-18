@@ -404,12 +404,28 @@ extension EpisodeDiagnosticsModel {
         return description
     }
 
-    func chaptersSummarySection(appModel: OpenCastAppModel) -> EpisodeDiagnosticsSection {
+    /// The publisher and show-notes rows lead, ahead of the record guard,
+    /// because most chaptered episodes were never transcribed and so have
+    /// no record.
+    func chaptersSummarySection(
+        appModel: OpenCastAppModel,
+        publisherEntry: PublisherChaptersCacheEntry?,
+        showNotesChapterCount: Int
+    ) -> EpisodeDiagnosticsSection {
+        let publisherRow = ("Publisher Chapters", publisherEntry.map { entry in
+            "\(entry.chapters.count) chapters from \(entry.sourceURL), fetched \(EpisodeDiagnosticsFormatting.date(entry.fetchedAt))"
+        } ?? "None cached.")
+        let showNotesRow = (
+            "Show-Notes Chapters",
+            showNotesChapterCount > 0 ? "\(showNotesChapterCount) chapters" : "None found."
+        )
         guard let record = appModel.transcriptAnalyses.record(for: episodeID) else {
-            return EpisodeDiagnosticsSection(rows: [("Status", "No chapters/summary record.")])
+            return EpisodeDiagnosticsSection(rows: [publisherRow, showNotesRow, ("Status", "No chapters/summary record.")])
         }
         let fileURL = appModel.transcriptAnalyses.diagnosticsDocumentFileURL(for: episodeID)
         var rows: [(String, String)] = [
+            publisherRow,
+            showNotesRow,
             ("State", record.state.rawValue),
             ("Model", EpisodeDiagnosticsFormatting.value(record.model)),
             ("Policy", EpisodeDiagnosticsFormatting.value(record.policy)),

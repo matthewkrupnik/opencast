@@ -2,12 +2,12 @@ import Foundation
 import OpenCastCore
 import Testing
 
-@Suite("Podcasting 2.0 JSON chapters")
-struct PodcastChaptersDocumentTests {
+@Suite("Publisher chapters: art, links and hidden entries")
+struct PublisherChaptersArtAndLinksTests {
     private let documentURL = URL(string: "https://cdn.example.com/shows/42/chapters.json")!
 
     private func chapters(_ json: String) throws -> [EpisodeChapter] {
-        try PodcastChaptersDocument.chapters(from: Data(json.utf8), documentURL: documentURL)
+        try PublisherChaptersDocumentDecoder.decode(Data(json.utf8), documentURL: documentURL)
     }
 
     @Test("Decodes titles, times and chapter art, sorted by start")
@@ -36,7 +36,7 @@ struct PodcastChaptersDocumentTests {
         ])
     }
 
-    @Test("Keeps toc:false entries as hidden art and skips malformed ones")
+    @Test("Keeps toc:false entries as hidden art and skips malformed and untitled ones")
     func filtersEntries() throws {
         let result = try chapters("""
         {"chapters":[
@@ -49,10 +49,10 @@ struct PodcastChaptersDocumentTests {
         ]}
         """)
 
-        #expect(result.map(\.title) == ["Kept", "Art only", "String start", "Chapter 3"])
-        #expect(result.map(\.isHidden) == [false, true, false, false])
-        #expect(result.map(\.startTime) == [0, 10, 20.5, 30])
-        #expect(result.map(\.id) == [0, 1, 2, 3])
+        #expect(result.map(\.title) == ["Kept", "Art only", "String start"])
+        #expect(result.map(\.isHidden) == [false, true, false])
+        #expect(result.map(\.startTime) == [0, 10, 20.5])
+        #expect(result.map(\.id) == [0, 1, 2])
     }
 
     @Test("Resolves chapter links like art and drops non-web ones")
@@ -87,10 +87,10 @@ struct PodcastChaptersDocumentTests {
 
     @Test("Rejects a document that is not a chapters object")
     func rejectsInvalidDocument() {
-        #expect(throws: PodcastChaptersDocument.InvalidDocumentError.self) {
+        #expect(throws: PublisherChaptersDocumentError.self) {
             try chapters("<html>not json</html>")
         }
-        #expect(throws: PodcastChaptersDocument.InvalidDocumentError.self) {
+        #expect(throws: PublisherChaptersDocumentError.self) {
             try chapters(#"{"version":"1.2.0"}"#)
         }
     }

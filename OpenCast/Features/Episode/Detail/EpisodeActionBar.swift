@@ -51,7 +51,7 @@ struct EpisodeActionBar: View {
         .overlay(alignment: .topTrailing) {
             if detectAdsState == .detected {
                 Image(systemName: "checkmark")
-                    .font(.caption.bold())
+                    .font(.system(size: completionBadgeGlyphSize, weight: .bold))
                     .foregroundStyle(.white)
                     .frame(width: resolvedCompletionBadgeSize, height: resolvedCompletionBadgeSize)
                     .background(.green, in: .circle)
@@ -115,7 +115,7 @@ struct EpisodeActionBar: View {
         .glassEffectID("episodeActions.makeAdFree", in: glassNamespace)
         .disabled(!detectAdsState.isEnabled)
         .accessibilityLabel("Make Ad-Free")
-        .accessibilityValue(makeAdFreeAccessibilityValue)
+        .accessibilityValue(Self.makeAdFreeAccessibilityValue(for: detectAdsState))
     }
 
     /// Sits just below its circle; the bar's bottom padding reserves the
@@ -143,8 +143,8 @@ struct EpisodeActionBar: View {
         }
     }
 
-    private var makeAdFreeAccessibilityValue: String {
-        switch detectAdsState {
+    static func makeAdFreeAccessibilityValue(for state: EpisodeDetectAdsMenuState) -> String {
+        switch state {
         case .detect:
             ""
         case .detecting:
@@ -153,6 +153,8 @@ struct EpisodeActionBar: View {
             "Queued"
         case .detected:
             "Ads detected"
+        case .detectAgain:
+            "Ad skips unavailable"
         }
     }
 
@@ -174,6 +176,13 @@ struct EpisodeActionBar: View {
 
     private var resolvedCompletionBadgeSize: CGFloat {
         completionBadgeSize.clamped(to: 18...(dynamicTypeSize.isAccessibilitySize ? 22 : 20))
+    }
+
+    /// Follows the clamped disc, not Dynamic Type, so the check stays inside
+    /// it at accessibility sizes; 0.6 is caption's 12 pt on the 20 pt disc
+    /// at the default size.
+    private var completionBadgeGlyphSize: CGFloat {
+        resolvedCompletionBadgeSize * 0.6
     }
 
     private var completionBadgeTopInset: CGFloat {
@@ -222,6 +231,18 @@ struct EpisodeActionBar: View {
     EpisodeActionBar(
         downloadRecord: nil,
         detectAdsState: .detect,
+        showsPauseButton: false,
+        onTogglePlayback: {}, onDownload: {}, onResumeDownload: {},
+        onCancelDownload: {}, onDeleteDownload: {}, onMakeAdFree: {}
+    )
+    .padding()
+    .dynamicTypeSize(.accessibility5)
+}
+
+#Preview("AX5 Ads Detected") {
+    EpisodeActionBar(
+        downloadRecord: nil,
+        detectAdsState: .detected,
         showsPauseButton: false,
         onTogglePlayback: {}, onDownload: {}, onResumeDownload: {},
         onCancelDownload: {}, onDeleteDownload: {}, onMakeAdFree: {}

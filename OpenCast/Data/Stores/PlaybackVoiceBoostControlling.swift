@@ -12,6 +12,8 @@ protocol PlaybackSettingsControlling: PlaybackVoiceBoostControlling {
     func setSkipIntervals(backward: TimeInterval, forward: TimeInterval)
     func setSmartSpeedEnabled(_ isEnabled: Bool)
     func setAutoSkipEnabled(_ isEnabled: Bool)
+    func setAutoSkipCue(_ url: URL?)
+    func previewAutoSkipCue(_ url: URL)
 }
 
 extension AVFoundationPlaybackController: PlaybackSettingsControlling {}

@@ -54,7 +54,7 @@ struct DownloadsOptionsMenu: View {
             Button("Remove Played", role: .destructive, action: onRemovePlayed)
             Button("Cancel", role: .cancel) {}
         } message: {
-            Text("Played downloads that aren’t currently in use will be removed from this device.")
+            Text("Played downloads that aren’t currently in use will be removed from this device. \(DownloadSettingsCopy.scannedEpisodesSentence)")
         }
     }
 

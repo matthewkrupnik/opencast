@@ -755,7 +755,7 @@
 				INFOPLIST_FILE = OpenCastWidgets/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = OpenCast;
 				IPHONEOS_DEPLOYMENT_TARGET = 27.1;
-				MARKETING_VERSION = 2026.11.2;
+				MARKETING_VERSION = 2026.11.3;
 				PRODUCT_BUNDLE_IDENTIFIER = mk.lan.opencast.widgets;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = iphoneos;
@@ -781,7 +781,7 @@
 				INFOPLIST_FILE = OpenCastWidgets/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = OpenCast;
 				IPHONEOS_DEPLOYMENT_TARGET = 27.1;
-				MARKETING_VERSION = 2026.11.2;
+				MARKETING_VERSION = 2026.11.3;
 				PRODUCT_BUNDLE_IDENTIFIER = mk.lan.opencast.widgets;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = iphoneos;
@@ -937,7 +937,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 2026.11.2;
+				MARKETING_VERSION = 2026.11.3;
 				OPENCAST_APP_STORE_SCREENSHOT_FIXTURE_OUTPUT_DIR = "$(DERIVED_FILE_DIR)/AppStoreScreenshotFixturesDisabled";
 				OPENCAST_INCLUDE_APP_STORE_SCREENSHOT_FIXTURES = NO;
 				PRODUCT_BUNDLE_IDENTIFIER = mk.lan.opencast;
@@ -969,7 +969,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 2026.11.2;
+				MARKETING_VERSION = 2026.11.3;
 				OPENCAST_APP_STORE_SCREENSHOT_FIXTURE_OUTPUT_DIR = "$(DERIVED_FILE_DIR)/AppStoreScreenshotFixturesDisabled";
 				OPENCAST_INCLUDE_APP_STORE_SCREENSHOT_FIXTURES = NO;
 				PRODUCT_BUNDLE_IDENTIFIER = mk.lan.opencast;
@@ -995,7 +995,7 @@
 					"@executable_path/Frameworks",
 					"@loader_path/Frameworks",
 				);
-				MARKETING_VERSION = 2026.11.2;
+				MARKETING_VERSION = 2026.11.3;
 				PRODUCT_BUNDLE_IDENTIFIER = mk.lan.opencast.tests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_STRICT_CONCURRENCY = complete;
@@ -1017,7 +1017,7 @@
 					"@executable_path/Frameworks",
 					"@loader_path/Frameworks",
 				);
-				MARKETING_VERSION = 2026.11.2;
+				MARKETING_VERSION = 2026.11.3;
 				PRODUCT_BUNDLE_IDENTIFIER = mk.lan.opencast.tests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_STRICT_CONCURRENCY = complete;
@@ -1039,7 +1039,7 @@
 					"@executable_path/Frameworks",
 					"@loader_path/Frameworks",
 				);
-				MARKETING_VERSION = 2026.11.2;
+				MARKETING_VERSION = 2026.11.3;
 				PRODUCT_BUNDLE_IDENTIFIER = mk.lan.opencast.uitests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_STRICT_CONCURRENCY = complete;
@@ -1060,7 +1060,7 @@
 					"@executable_path/Frameworks",
 					"@loader_path/Frameworks",
 				);
-				MARKETING_VERSION = 2026.11.2;
+				MARKETING_VERSION = 2026.11.3;
 				PRODUCT_BUNDLE_IDENTIFIER = mk.lan.opencast.uitests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_STRICT_CONCURRENCY = complete;
@@ -1149,7 +1149,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 2026.11.2;
+				MARKETING_VERSION = 2026.11.3;
 				OPENCAST_APP_STORE_SCREENSHOT_FIXTURE_OUTPUT_DIR = "$(DERIVED_FILE_DIR)/AppStoreScreenshotFixturesDisabled";
 				OPENCAST_INCLUDE_APP_STORE_SCREENSHOT_FIXTURES = NO;
 				PRODUCT_BUNDLE_IDENTIFIER = mk.lan.opencast;
@@ -1176,7 +1176,7 @@
 					"@executable_path/Frameworks",
 					"@loader_path/Frameworks",
 				);
-				MARKETING_VERSION = 2026.11.2;
+				MARKETING_VERSION = 2026.11.3;
 				PRODUCT_BUNDLE_IDENTIFIER = mk.lan.opencast.tests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "$(inherited)";
@@ -1198,7 +1198,7 @@
 					"@executable_path/Frameworks",
 					"@loader_path/Frameworks",
 				);
-				MARKETING_VERSION = 2026.11.2;
+				MARKETING_VERSION = 2026.11.3;
 				PRODUCT_BUNDLE_IDENTIFIER = mk.lan.opencast.uitests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "$(inherited)";
@@ -1223,7 +1223,7 @@
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
-				MARKETING_VERSION = 2026.11.2;
+				MARKETING_VERSION = 2026.11.3;
 				PRODUCT_BUNDLE_IDENTIFIER = mk.lan.opencast.NotificationService;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SKIP_INSTALL = YES;
@@ -1250,7 +1250,7 @@
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
-				MARKETING_VERSION = 2026.11.2;
+				MARKETING_VERSION = 2026.11.3;
 				PRODUCT_BUNDLE_IDENTIFIER = mk.lan.opencast.NotificationService;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SKIP_INSTALL = YES;
@@ -1276,7 +1276,7 @@
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
-				MARKETING_VERSION = 2026.11.2;
+				MARKETING_VERSION = 2026.11.3;
 				PRODUCT_BUNDLE_IDENTIFIER = mk.lan.opencast.NotificationService;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SKIP_INSTALL = YES;
@@ -1301,7 +1301,7 @@
 					"@executable_path/Frameworks",
 					"@loader_path/Frameworks",
 				);
-				MARKETING_VERSION = 2026.11.2;
+				MARKETING_VERSION = 2026.11.3;
 				PRODUCT_BUNDLE_IDENTIFIER = mk.lan.opencast.notificationservicetests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_STRICT_CONCURRENCY = complete;
@@ -1321,7 +1321,7 @@
 					"@executable_path/Frameworks",
 					"@loader_path/Frameworks",
 				);
-				MARKETING_VERSION = 2026.11.2;
+				MARKETING_VERSION = 2026.11.3;
 				PRODUCT_BUNDLE_IDENTIFIER = mk.lan.opencast.notificationservicetests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_STRICT_CONCURRENCY = complete;
@@ -1341,7 +1341,7 @@
 					"@executable_path/Frameworks",
 					"@loader_path/Frameworks",
 				);
-				MARKETING_VERSION = 2026.11.2;
+				MARKETING_VERSION = 2026.11.3;
 				PRODUCT_BUNDLE_IDENTIFIER = mk.lan.opencast.notificationservicetests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "$(inherited)";
@@ -1363,7 +1363,7 @@
 				INFOPLIST_FILE = OpenCastWidgets/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = OpenCast;
 				IPHONEOS_DEPLOYMENT_TARGET = 27.1;
-				MARKETING_VERSION = 2026.11.2;
+				MARKETING_VERSION = 2026.11.3;
 				PRODUCT_BUNDLE_IDENTIFIER = mk.lan.opencast.widgets;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = iphoneos;
@@ -1392,7 +1392,7 @@
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
-				MARKETING_VERSION = 2026.11.2;
+				MARKETING_VERSION = 2026.11.3;
 				PRODUCT_BUNDLE_IDENTIFIER = mk.lan.opencast.NotificationContent;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SKIP_INSTALL = YES;
@@ -1420,7 +1420,7 @@
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
-				MARKETING_VERSION = 2026.11.2;
+				MARKETING_VERSION = 2026.11.3;
 				PRODUCT_BUNDLE_IDENTIFIER = mk.lan.opencast.NotificationContent;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SKIP_INSTALL = YES;
@@ -1447,7 +1447,7 @@
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
-				MARKETING_VERSION = 2026.11.2;
+				MARKETING_VERSION = 2026.11.3;
 				PRODUCT_BUNDLE_IDENTIFIER = mk.lan.opencast.NotificationContent;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SKIP_INSTALL = YES;

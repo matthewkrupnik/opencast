@@ -34,8 +34,7 @@ final class OpenCastAppModel {
     @ObservationIgnored private let adFreePassEnqueueContext: AdFreePassEnqueueContext
     let adAnalyses: EpisodeAdAnalysisStore
     let transcriptAnalyses: EpisodeTranscriptAnalysisStore
-    /// Feed-declared `podcast:chapters` documents, shared by playback and detail.
-    let feedChapters: PodcastChaptersLoader
+    let publisherChapters: PublisherChaptersStore
     /// Which episodes' Private Notes changed, for the views that fetch them.
     let episodeNotes = EpisodeNotesChangeTracker()
     let transcriptIntelligence: TranscriptIntelligenceStore
@@ -294,7 +293,6 @@ final class OpenCastAppModel {
         self.appAttestSuspension = appAttestSuspension
         self.cacheController = cacheController
         self.httpClient = resolvedHTTPClient
-        feedChapters = PodcastChaptersLoader(httpClient: resolvedHTTPClient)
         self.helpContent = helpContent ?? HelpContentStore()
         // Remote help copies were cached here before help became bundled-only.
         try? FileManager.default.removeItem(
@@ -307,6 +305,11 @@ final class OpenCastAppModel {
             )
         )
         self.library = resolvedLibrary
+        let publisherChapters = PublisherChaptersStore(
+            httpClient: resolvedHTTPClient,
+            localCache: resolvedLibrary.localCache
+        )
+        self.publisherChapters = publisherChapters
         self.downloads = downloads
         self.downloadSettings = downloadSettings
         self.transcriptionModels = transcriptionModels
@@ -372,7 +375,8 @@ final class OpenCastAppModel {
         transcriptAnalysisQueue = TranscriptAnalysisQueue(
             transcriptAnalyses: transcriptAnalyses,
             transcriptions: transcriptions,
-            library: resolvedLibrary
+            library: resolvedLibrary,
+            publisherChapters: publisherChapters
         )
         // Unowned: the library holds this store among its sidecar migrators,
         // so a strong capture is a cycle; the app model keeps both alive.
@@ -423,7 +427,7 @@ final class OpenCastAppModel {
             library: resolvedLibrary,
             transcriptions: transcriptions,
             transcriptAnalyses: transcriptAnalyses,
-            feedChapters: feedChapters
+            publisherChapters: publisherChapters
         )
         downloadCleanup = DownloadCleanupCoordinator(
             downloads: downloads,
@@ -473,6 +477,7 @@ final class OpenCastAppModel {
             transcriptionModels: transcriptionModels,
             cacheController: cacheController,
             siriMediaDiscovery: siriMediaDiscovery,
+            customSkipSoundFiles: playbackSettings.customSkipSoundFiles,
             appAttestSuspension: appAttestSuspension
         )
         self.unsubscribeSidecarCleanupOverride = unsubscribeSidecarCleanupOverride
@@ -2183,7 +2188,8 @@ final class OpenCastAppModel {
                 for: episode.episodeID,
                 transcriptions: transcriptions,
                 adAnalyses: adAnalyses
-            )
+            ),
+            isAnalysisAttached: isAdAnalysisAttached(for: episode.episodeID)
         )
     }
 
@@ -2742,6 +2748,74 @@ final class OpenCastAppModel {
         return didSave
     }
 
+    /// Archives the episode out of the Inbox and takes it out of Up Next.
+    /// Archiving is Inbox membership, not a listen: the current episode is
+    /// archived like any other and keeps playing, and nothing here unloads
+    /// playback, touches the restore preference or sweeps downloads. Returns
+    /// false when nothing was archived.
+    @discardableResult
+    func archiveEpisode(
+        _ episode: EpisodeListItemSnapshot,
+        modelContext: ModelContext
+    ) -> Bool {
+        guard library.archive(episode, modelContext: modelContext) else {
+            return false
+        }
+        _ = upNextQueue.remove(episodeID: episode.episodeID, modelContext: modelContext)
+        return true
+    }
+
+    @discardableResult
+    func unarchiveEpisode(
+        _ episode: EpisodeListItemSnapshot,
+        modelContext: ModelContext
+    ) -> Bool {
+        library.unarchive(episode, modelContext: modelContext)
+    }
+
+    /// What Archive All would archive of these rows: those not already
+    /// archived, the current episode included.
+    func archivableEpisodes(_ episodes: [EpisodeListItemSnapshot]) -> [EpisodeListItemSnapshot] {
+        let archivedEpisodeIDs = library.archivedEpisodeIDs
+        return episodes.filter { !archivedEpisodeIDs.contains($0.episodeID) }
+    }
+
+    /// What Unarchive All would return to the Inbox of these rows: the
+    /// archived ones.
+    func unarchivableEpisodes(_ episodes: [EpisodeListItemSnapshot]) -> [EpisodeListItemSnapshot] {
+        let archivedEpisodeIDs = library.archivedEpisodeIDs
+        return episodes.filter { archivedEpisodeIDs.contains($0.episodeID) }
+    }
+
+    /// Archive All: archives `archivableEpisodes(episodes)` in one save and
+    /// takes them out of Up Next. Returns false when nothing was archived.
+    @discardableResult
+    func archiveEpisodes(
+        _ episodes: [EpisodeListItemSnapshot],
+        modelContext: ModelContext
+    ) -> Bool {
+        let archivable = archivableEpisodes(episodes)
+        guard !archivable.isEmpty,
+              library.archive(archivable, modelContext: modelContext)
+        else {
+            return false
+        }
+        _ = upNextQueue.remove(episodeIDs: Set(archivable.map(\.episodeID)), modelContext: modelContext)
+        return true
+    }
+
+    /// Unarchive All: returns `unarchivableEpisodes(episodes)` to the Inbox
+    /// in one save. Up Next is left alone, as a single Unarchive leaves it.
+    /// Returns false when nothing was unarchived.
+    @discardableResult
+    func unarchiveEpisodes(
+        _ episodes: [EpisodeListItemSnapshot],
+        modelContext: ModelContext
+    ) -> Bool {
+        let unarchivable = unarchivableEpisodes(episodes)
+        return !unarchivable.isEmpty && library.unarchive(unarchivable, modelContext: modelContext)
+    }
+
     /// Reapplies the playback settings to the loaded episode, its show's own
     /// speed included.
     func refreshCurrentPlaybackSettings(modelContext: ModelContext) {
@@ -2927,6 +3001,39 @@ final class OpenCastAppModel {
     }
 
     @discardableResult
+    func setAutoSkipSound(
+        _ sound: SkipSound?,
+        modelContext: ModelContext
+    ) -> Bool {
+        playbackSettings.setAutoSkipSound(
+            sound,
+            modelContext: modelContext,
+            playback: playback
+        )
+    }
+
+    func loadCustomSkipSound(modelContext: ModelContext) {
+        playbackSettings.loadCustomSkipSound(modelContext: modelContext)
+    }
+
+    @discardableResult
+    func importCustomSkipSound(
+        from url: URL,
+        modelContext: ModelContext
+    ) async throws(CustomSkipSoundImportError) -> Bool {
+        try await playbackSettings.importCustomSkipSound(
+            from: url,
+            modelContext: modelContext,
+            playback: playback
+        )
+    }
+
+    @discardableResult
+    func removeCustomSkipSound(modelContext: ModelContext) -> Bool {
+        playbackSettings.removeCustomSkipSound(modelContext: modelContext, playback: playback)
+    }
+
+    @discardableResult
     func setTapToPlayEnabled(
         _ isEnabled: Bool,
         modelContext: ModelContext
@@ -3003,6 +3110,10 @@ final class OpenCastAppModel {
         // the wipe deleted (DataNukeRunner.run names the same invariant).
         dismissNowPlayingAndDiscardFinishedPlayback()
         playback.unload()
+        // Also before the first suspension: a custom skip sound import that
+        // resumes after the row wipe must find this reset already counted,
+        // or it would save its preferences into the wiped store.
+        playbackSettings.resetAfterDataNuke()
         coreStoresHydrated = false
         libraryEpisodesLoaded = false
         downloadRecordsLoaded = false
@@ -3153,7 +3264,7 @@ final class OpenCastAppModel {
     ) {
         let isEnabled = library.isAdAutoDetectEnabled(forPodcastID: episode.podcastID)
         let queueStatus = adFreePass.queueStatus(for: episode.episodeID)
-        guard isEnabled, queueStatus == .notQueued else {
+        guard isEnabled, AdAutoDetectPlayPolicy.admitsPlay(with: queueStatus) else {
             if isEnabled {
                 AutoDetectAdsLog.record("play skipped episodeID=\(episode.episodeID) queueStatus=\(queueStatus)")
             }
@@ -3240,29 +3351,26 @@ final class OpenCastAppModel {
             transcriptions: transcriptions,
             adAnalyses: adAnalyses
         )
-        let isTranscriptStale = adFreePass.transcriptIsStaleForDownload(
-            episodeID: episode.episodeID,
-            transcriptions: transcriptions,
-            downloads: downloads
-        )
+        // A detached transcript is not the one the pass will analyse: it
+        // transcribes the download again and checks the retained replay
+        // failure over that new transcript instead.
         var isReplaySuppressed = false
-        // Suppression is keyed to this transcript; a stale one is about to be
-        // replaced.
-        if !isTranscriptStale, let transcript = try? await transcriptions.loadDocument(for: episode.episodeID) {
+        if isAdAnalysisAttached(for: episode.episodeID),
+           let transcript = try? await transcriptions.loadDocument(for: episode.episodeID) {
             do { isReplaySuppressed = try await adAnalyses.automaticReplayError(for: transcript) != nil }
             catch { isReplaySuppressed = true }
         }
         let policy = AdAutoDetectPlayPolicy(
             isAutoDetectEnabled: library.isAdAutoDetectEnabled(forPodcastID: episode.podcastID),
             hasCurrentCompletedAnalysis: hasCurrentCompletedAnalysis,
+            isAnalysisAttached: isAdAnalysisAttached(for: episode.episodeID),
             queueStatus: adFreePass.queueStatus(for: episode.episodeID),
-            isReplaySuppressed: isReplaySuppressed,
-            isTranscriptStaleForDownload: isTranscriptStale
+            isReplaySuppressed: isReplaySuppressed
         )
         AutoDetectAdsLog.record(
             "\(trigger) qualification episodeID=\(episode.episodeID) enqueue=\(policy.shouldEnqueue) "
                 + "autoDetect=\(policy.isAutoDetectEnabled) currentAnalysis=\(hasCurrentCompletedAnalysis) "
-                + "transcriptStale=\(isTranscriptStale) replaySuppressed=\(isReplaySuppressed) "
+                + "attached=\(policy.isAnalysisAttached) replaySuppressed=\(isReplaySuppressed) "
                 + "queueStatus=\(policy.queueStatus) queueState=\(adFreePass.queueState)"
         )
         guard policy.shouldEnqueue else {

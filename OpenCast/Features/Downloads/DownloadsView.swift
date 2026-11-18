@@ -141,7 +141,7 @@ struct DownloadsView: View {
                     }
                 }
             } else if appModel.downloads.records.isEmpty {
-                DownloadsEmptyStateView()
+                DownloadsEmptyStateView(onOpenDownloadSettings: onOpenDownloadSettings)
             } else if showsUnplayedOnly && model.downloading.isEmpty && model.failed.isEmpty {
                 ContentUnavailableView(
                     "No Unplayed Downloads",

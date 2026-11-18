@@ -243,8 +243,15 @@ struct PodcastDetailView: View {
                             } description: {
                                 Text(filter.emptyStateDescription)
                             } actions: {
-                                Button("Show All Episodes", action: showAllEpisodes)
+                                Button(action: showAllEpisodes) {
+                                    Text("Show All Episodes")
+                                        .frame(minHeight: 44)
+                                        .contentShape(.rect)
+                                }
                             }
+                            // A List row fires a default-style button on a tap anywhere in it;
+                            // a borderless one takes only its label's 44 pt target.
+                            .buttonStyle(.borderless)
                         } else {
                             ForEach(model.episodes.prefix(visibleEpisodeCount)) { episode in
                                 EpisodeRowButton(

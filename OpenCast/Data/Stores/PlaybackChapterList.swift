@@ -4,9 +4,11 @@ import OpenCastCore
 nonisolated struct PlaybackChapterList: Equatable, Sendable {
     enum Source: Equatable, Sendable {
         case embedded
-        /// The feed's `podcast:chapters` JSON document.
-        case feed
+        /// The feed's `podcast:chapters` document.
+        case publisher
         case generated(transcriptSourceSHA256: String)
+        /// A timestamp list in the episode's show notes.
+        case showNotes
     }
 
     static let restartThreshold: TimeInterval = 3

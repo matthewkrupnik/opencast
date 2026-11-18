@@ -288,7 +288,12 @@ final class EpisodeAdFreePassCoordinator {
             ) else {
                 return .checkingAnalysis
             }
-            return isCurrent ? .completed(zoneCount: currentZoneCount) : .outdated
+            guard isCurrent else {
+                return .outdated
+            }
+            return isAnalysisAttached(for: episodeID, transcriptions: transcriptions, downloads: downloads)
+                ? .completed(zoneCount: currentZoneCount)
+                : .detached
         case .failed:
             guard analysisRecord.transcriptState == .completed,
                   analysisRecord.transcriptUpdatedAt.truncatedToWholeSeconds
@@ -775,15 +780,15 @@ final class EpisodeAdFreePassCoordinator {
         }
 
         if item.origin == .auto,
-           !transcriptIsStaleForDownload(
-               episodeID: item.episodeID,
-               transcriptions: dependencies.transcriptions,
-               downloads: dependencies.downloads
-           ),
            await currentCompletedAnalysisVerdict(
                for: item.episodeID,
                transcriptions: dependencies.transcriptions,
                adAnalyses: dependencies.adAnalyses
+           ),
+           isAnalysisAttached(
+               for: item.episodeID,
+               transcriptions: dependencies.transcriptions,
+               downloads: dependencies.downloads
            ) {
             AutoDetectAdsLog.record("launch skipped episodeID=\(item.episodeID) reason=currentAnalysis")
             return .skip
@@ -994,26 +999,21 @@ final class EpisodeAdFreePassCoordinator {
         }
 
         do {
-            let downloadRecord = try await completedDownload(
+            try await ensureTrustedDownload(
                 for: episode,
                 downloads: deps.downloads,
                 modelContext: deps.modelContext
             )
 
-            // A completed transcript counts as done for the
-            // default path regardless of engine — skip engine resolution and
-            // resource setup entirely — unless it describes other audio than
-            // this download, whose zones it could never line up with.
+            // A completed transcript of this download's bytes
+            // counts as done for the default path regardless of engine — skip
+            // engine resolution and resource setup entirely.
             let transcriptDocument: EpisodeTranscriptDocument
             if !deps.transcriptionEngine.isExplicitOverride,
-               !transcriptIsStaleForDownload(
-                   episodeID: episode.episodeID,
-                   transcriptions: deps.transcriptions,
-                   downloads: deps.downloads
-               ),
                let reusableDocument = await reusableCompletedTranscriptDocument(
                    for: episode.episodeID,
-                   transcriptions: deps.transcriptions
+                   transcriptions: deps.transcriptions,
+                   downloads: deps.downloads
                ) {
                 AdFreePassBackgroundRunLog.record(
                     "transcript reuse episodeID=\(episode.episodeID) model=\(reusableDocument.modelIdentifier) version=\(reusableDocument.modelVersion)"
@@ -1032,7 +1032,6 @@ final class EpisodeAdFreePassCoordinator {
                 activeTranscriptionModelIdentity = transcriptionPlan.modelIdentity
                 transcriptDocument = try await completedTranscript(
                     for: episode,
-                    downloadRecord: downloadRecord,
                     downloads: deps.downloads,
                     transcriptionModels: deps.transcriptionModels,
                     transcriptions: deps.transcriptions,
@@ -1059,12 +1058,18 @@ final class EpisodeAdFreePassCoordinator {
         } catch PassStop.interrupted {
             setStage(.interrupted)
             return .interrupted(
-                environmental: deps.transcriptions.hasEnvironmentalInterruptionPending(for: episode.episodeID)
+                environmental: consumeEnvironmentalInterruption(
+                    for: episode.episodeID,
+                    transcriptions: deps.transcriptions
+                )
             )
         } catch is CancellationError {
             setStage(.interrupted)
             return .interrupted(
-                environmental: deps.transcriptions.hasEnvironmentalInterruptionPending(for: episode.episodeID)
+                environmental: consumeEnvironmentalInterruption(
+                    for: episode.episodeID,
+                    transcriptions: deps.transcriptions
+                )
             )
         } catch {
             recordFailure(error.localizedDescription, episodeID: episode.episodeID)
@@ -1193,23 +1198,6 @@ final class EpisodeAdFreePassCoordinator {
         return isCurrent
     }
 
-    /// Whether the completed transcript describes other audio than the
-    /// completed download, as when a dynamic enclosure was downloaded again
-    /// with other ads stitched in; its analysis then no longer applies.
-    func transcriptIsStaleForDownload(
-        episodeID: String,
-        transcriptions: EpisodeTranscriptionStore,
-        downloads: DownloadStore
-    ) -> Bool {
-        guard let record = transcriptions.record(for: episodeID), record.state == .completed else {
-            return false
-        }
-        return TranscriptSourceAlignment.transcriptIsStale(
-            trustedDownloadSHA256: downloads.completedSourceIdentity(for: episodeID)?.sha256,
-            documentSHA256: record.sourceFileSHA256
-        )
-    }
-
     private struct CompletedAnalysisVerdict {
         let transcriptRecordUpdatedAt: Date
         let analysisRecordUpdatedAt: Date
@@ -1286,12 +1274,19 @@ final class EpisodeAdFreePassCoordinator {
 
     // MARK: - Pass steps
 
+    /// A completed transcript is reused only while it is attached to the
+    /// trusted download: one made from other bytes could never align with
+    /// the download's playback, so its analysis would be wasted (D1). The
+    /// download can be removed or replaced while the document loads, so the
+    /// loaded document is held to it again.
     private func reusableCompletedTranscriptDocument(
         for episodeID: String,
-        transcriptions: EpisodeTranscriptionStore
+        transcriptions: EpisodeTranscriptionStore,
+        downloads: DownloadStore
     ) async -> EpisodeTranscriptDocument? {
         guard let record = transcriptions.record(for: episodeID),
-              record.state == .completed
+              record.state == .completed,
+              isTranscriptAttached(sourceFileSHA256: record.sourceFileSHA256, episodeID: episodeID, downloads: downloads)
         else {
             return nil
         }
@@ -1304,19 +1299,50 @@ final class EpisodeAdFreePassCoordinator {
             "transcript-document-load-end",
             episodeID: episodeID
         )
+        guard let document,
+              isTranscriptAttached(sourceFileSHA256: document.sourceFileSHA256, episodeID: episodeID, downloads: downloads)
+        else {
+            return nil
+        }
         return document
     }
 
-    private func completedDownload(
+    /// Whether a transcript of the bytes `sourceFileSHA256` names is
+    /// attached to the episode's trusted download as it is now. A detached
+    /// one is logged.
+    private func isTranscriptAttached(
+        sourceFileSHA256: String,
+        episodeID: String,
+        downloads: DownloadStore
+    ) -> Bool {
+        let trustedDownloadSHA256 = downloads.completedSourceIdentity(for: episodeID)?.sha256
+        let attachment = EpisodeAdAnalysisAttachment.resolve(
+            transcriptSourceSHA256: sourceFileSHA256,
+            trustedDownloadSHA256: trustedDownloadSHA256
+        )
+        guard attachment == .attached else {
+            AdFreePassBackgroundRunLog.record(
+                "transcript detached episodeID=\(episodeID) transcriptSHA=\(sourceFileSHA256) downloadSHA=\(trustedDownloadSHA256 ?? "none")"
+            )
+            return false
+        }
+        return true
+    }
+
+    /// Makes the episode's completed download trusted before the pass
+    /// decides anything. Each decision after it reads the download store
+    /// afresh: the download can change at every suspension.
+    private func ensureTrustedDownload(
         for episode: EpisodeListItemSnapshot,
         downloads: DownloadStore,
         modelContext: ModelContext
-    ) async throws -> EpisodeDownloadRecord {
+    ) async throws {
         setStage(.downloadingEpisode)
 
         do {
-            return try await downloads.ensureCompletedDownload(
+            _ = try await TrustedCompletedDownload.ensure(
                 for: episode,
+                downloads: downloads,
                 modelContext: modelContext,
                 onWaitStarted: { try Task.checkCancellation() }
             )
@@ -1425,7 +1451,6 @@ final class EpisodeAdFreePassCoordinator {
 
     private func completedTranscript(
         for episode: EpisodeListItemSnapshot,
-        downloadRecord: EpisodeDownloadRecord,
         downloads: DownloadStore,
         transcriptionModels: TranscriptionModelStore,
         transcriptions: EpisodeTranscriptionStore,
@@ -1440,32 +1465,21 @@ final class EpisodeAdFreePassCoordinator {
 
             let modelChangeSequence = transcriptionModels.changeSequence
             let transcriptionChangeSequence = transcriptions.changeSequence
+            // Re-read every turn: the download can be removed or replaced
+            // while the pass waits, and only a transcript of the bytes it
+            // now holds counts.
+            let downloadRecord = downloads.record(for: episode.episodeID)
             let state = transcriptions.jobState(
                 for: episode.episodeID,
                 downloadRecord: downloadRecord,
                 modelState: transcriptionModels.state,
                 modelIdentity: transcriptionPlan.isEngineStrict ? transcriptionPlan.modelIdentity : nil,
-                requiresInstalledWhisperModel: transcriptionPlan.requiresInstalledWhisperModel
+                requiresInstalledWhisperModel: transcriptionPlan.requiresInstalledWhisperModel,
+                sourceMatch: .trusted(sha256: downloads.completedSourceIdentity(for: episode.episodeID)?.sha256)
             )
             switch state {
-            case .completed where !didStartTranscription && transcriptIsStaleForDownload(
-                episodeID: episode.episodeID,
-                transcriptions: transcriptions,
-                downloads: downloads
-            ):
-                try await startTranscriptionOrThrowOnSecondAttempt(
-                    secondPassError: PassFailure(FailureMessage.transcriptUnavailable),
-                    didStartTranscription: &didStartTranscription,
-                    episode: episode,
-                    downloadRecord: downloadRecord,
-                    downloads: downloads,
-                    transcriptionModels: transcriptionModels,
-                    transcriptions: transcriptions,
-                    transcriptionPlan: transcriptionPlan,
-                    localReservation: localReservation,
-                    modelContext: modelContext
-                )
-            case .completed:
+            case .completed(let record):
+                let admittedSourceSHA256 = record.sourceFileSHA256
                 SoundLabResponsivenessDiagnostics.mark(
                     "transcript-document-load-begin",
                     episodeID: episode.episodeID
@@ -1479,7 +1493,22 @@ final class EpisodeAdFreePassCoordinator {
                     "transcript-document-load-end",
                     episodeID: episode.episodeID
                 )
-                return document
+                if isTranscriptAttached(
+                    sourceFileSHA256: document.sourceFileSHA256,
+                    episodeID: episode.episodeID,
+                    downloads: downloads
+                ) {
+                    return document
+                }
+                // Go round again only when the download moved during the
+                // load: the next turn no longer admits this record, and only
+                // the pass's own single transcription can make one it
+                // admits. A download that held still means the document is
+                // not the transcript its record describes.
+                guard downloads.completedSourceIdentity(for: episode.episodeID)?.sha256 != admittedSourceSHA256 else {
+                    throw EpisodeTranscriptionError.transcriptDocumentMissing
+                }
+                continue
             case .running(let progress):
                 setStage(.transcribing(progress))
                 break
@@ -1498,7 +1527,11 @@ final class EpisodeAdFreePassCoordinator {
                 )
             case .ready, .failed, .cancelled:
                 try await startTranscriptionOrThrowOnSecondAttempt(
-                    secondPassError: PassFailure(transcriptionFailureMessage(state)),
+                    secondPassError: secondAttemptError(
+                        for: state,
+                        episodeID: episode.episodeID,
+                        transcriptions: transcriptions
+                    ),
                     didStartTranscription: &didStartTranscription,
                     episode: episode,
                     downloadRecord: downloadRecord,
@@ -1737,10 +1770,10 @@ final class EpisodeAdFreePassCoordinator {
     }
 
     private func startTranscriptionOrThrowOnSecondAttempt(
-        secondPassError: any Error,
+        secondPassError: @autoclosure () -> any Error,
         didStartTranscription: inout Bool,
         episode: EpisodeListItemSnapshot,
-        downloadRecord: EpisodeDownloadRecord,
+        downloadRecord: EpisodeDownloadRecord?,
         downloads: DownloadStore,
         transcriptionModels: TranscriptionModelStore,
         transcriptions: EpisodeTranscriptionStore,
@@ -1749,7 +1782,7 @@ final class EpisodeAdFreePassCoordinator {
         modelContext: ModelContext
     ) async throws {
         guard !didStartTranscription else {
-            throw secondPassError
+            throw secondPassError()
         }
 
         try await startTranscription(
@@ -1767,7 +1800,7 @@ final class EpisodeAdFreePassCoordinator {
 
     private func startTranscription(
         _ episode: EpisodeListItemSnapshot,
-        downloadRecord: EpisodeDownloadRecord,
+        downloadRecord: EpisodeDownloadRecord?,
         downloads: DownloadStore,
         transcriptionModels: TranscriptionModelStore,
         transcriptions: EpisodeTranscriptionStore,
@@ -1775,6 +1808,9 @@ final class EpisodeAdFreePassCoordinator {
         localReservation: EpisodeTranscriptionWorkCoordinator.LocalReservation,
         modelContext: ModelContext
     ) async throws {
+        guard let downloadRecord else {
+            throw EpisodeTranscriptionError.missingDownloadedFile
+        }
         guard let localFileURL = downloads.localFileURL(for: downloadRecord),
               downloads.downloadedFileExists(for: downloadRecord)
         else {
@@ -1789,6 +1825,10 @@ final class EpisodeAdFreePassCoordinator {
                 ? (stickyComputeProfile ?? .backgroundSafe)
                 : .backgroundSafe
 
+        // A replacement keeps the prior transcript until it completes: a
+        // cancel or failure restores it, and an interruption restores it and
+        // keeps the partial to resume from (R5).
+        let replacesCompletedTranscript = transcriptions.record(for: episode.episodeID)?.state == .completed
         transcriptions.startTranscription(
             episode,
             downloadRecord: downloadRecord,
@@ -1798,9 +1838,60 @@ final class EpisodeAdFreePassCoordinator {
             languageCode: transcriptionPlan.languageCode,
             runLanguageCode: transcriptionPlan.runLanguageCode,
             initialComputeProfile: initialComputeProfile,
+            priorCompletedTranscript: replacesCompletedTranscript ? .preserveKeepingInterruptedPartial : .discard,
             localReservation: localReservation,
             modelContext: modelContext
         )
+    }
+
+    /// What the pass reports when its own transcription left the episode
+    /// still to transcribe. A replacement that stopped restored the prior
+    /// transcript, which reads `.ready` against the download: the store's
+    /// note says whether that stop was an interruption or a cancel, which
+    /// reads as a first transcription's cancel does, and otherwise the
+    /// failure it recorded says why. Built only when it is thrown, so the
+    /// cancel note is read once.
+    private func secondAttemptError(
+        for state: EpisodeTranscriptionJobState,
+        episodeID: String,
+        transcriptions: EpisodeTranscriptionStore
+    ) -> any Error {
+        guard case .ready = state else {
+            return PassFailure(transcriptionFailureMessage(state))
+        }
+        if transcriptions.interruptedReplacement(for: episodeID) != nil {
+            return PassStop.interrupted
+        }
+        if transcriptions.consumeCancelledReplacement(for: episodeID) {
+            return PassFailure(FailureMessage.transcriptCancelled)
+        }
+        return PassFailure(transcriptions.lastErrorMessage(for: episodeID) ?? FailureMessage.transcriptFailed)
+    }
+
+    /// Whether the stopped pass should hold its item for the environmental
+    /// auto-resume. An interrupted replacement restored the prior transcript
+    /// onto the record, so only the store's note can say; the pass reads it
+    /// once.
+    private func consumeEnvironmentalInterruption(
+        for episodeID: String,
+        transcriptions: EpisodeTranscriptionStore
+    ) -> Bool {
+        if let interruption = transcriptions.consumeInterruptedReplacement(for: episodeID) {
+            return interruption.isEnvironmental
+        }
+        return transcriptions.hasEnvironmentalInterruptionPending(for: episodeID)
+    }
+
+    /// The trusted form of attachment, through the pass's own stores.
+    func isAnalysisAttached(
+        for episodeID: String,
+        transcriptions: EpisodeTranscriptionStore,
+        downloads: DownloadStore
+    ) -> Bool {
+        EpisodeAdAnalysisAttachment.resolve(
+            transcriptSourceSHA256: transcriptions.record(for: episodeID)?.sourceFileSHA256 ?? "",
+            trustedDownloadSHA256: downloads.completedSourceIdentity(for: episodeID)?.sha256
+        ) == .attached
     }
 
     private func presentationRequiresWhisperModel(

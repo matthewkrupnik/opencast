@@ -21,12 +21,14 @@ struct PodcastEpisodeSwipeActionsModifier: ViewModifier {
                 )
                 .tint(isPlayed ? .blue : .green)
             }
+            // A swipe action draws a disabled button exactly like an enabled
+            // one, so an action that cannot run is left out, never disabled:
+            // the row's context menu keeps the greyed item.
             .swipeActions(edge: .trailing, allowsFullSwipe: false) {
                 let downloadState = appModel.downloadMenuState(for: episode)
                 if downloadState.showsDownloadAction {
                     Button("Download", systemImage: "arrow.down.circle", action: download)
                         .tint(.blue)
-                        .disabled(!downloadState.isDownloadActionEnabled)
                 }
             }
     }

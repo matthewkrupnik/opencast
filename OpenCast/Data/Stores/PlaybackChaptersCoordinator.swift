@@ -14,7 +14,7 @@ final class PlaybackChaptersCoordinator {
     @ObservationIgnored private let library: LibraryStore
     @ObservationIgnored private let transcriptions: EpisodeTranscriptionStore
     @ObservationIgnored private let transcriptAnalyses: EpisodeTranscriptAnalysisStore
-    @ObservationIgnored private let feedChapters: PodcastChaptersLoader
+    @ObservationIgnored private let publisherChapters: PublisherChaptersStore
     /// UI-test seam: served for every episode in place of any real lookup.
     @ObservationIgnored var uiTestOverride: PlaybackChapterList?
     @ObservationIgnored private var refreshTask: Task<Void, Never>?
@@ -28,13 +28,13 @@ final class PlaybackChaptersCoordinator {
         library: LibraryStore,
         transcriptions: EpisodeTranscriptionStore,
         transcriptAnalyses: EpisodeTranscriptAnalysisStore,
-        feedChapters: PodcastChaptersLoader
+        publisherChapters: PublisherChaptersStore
     ) {
         self.playback = playback
         self.library = library
         self.transcriptions = transcriptions
         self.transcriptAnalyses = transcriptAnalyses
-        self.feedChapters = feedChapters
+        self.publisherChapters = publisherChapters
         startItemObservation()
         startArtworkObservation()
     }
@@ -141,23 +141,66 @@ final class PlaybackChaptersCoordinator {
             return .empty
         }
 
-        // Creator-declared chapters win over generated ones even when the
-        // document can't be fetched; same rule the detail cards follow.
-        if let declared = await library.episodeDetail(for: episodeID)?.chaptersURL {
-            guard let url = URL(string: declared) else {
+        // The feed's chapters document comes next. One that could not be
+        // read still keeps generated chapters out; one read fine with
+        // nothing usable in it does not. Same rule the detail cards follow.
+        let detail = await library.episodeDetail(for: episodeID)
+        guard !Task.isCancelled else {
+            return .empty
+        }
+        var allowsGeneratedChapters = true
+        if let documentURL = detail?.chaptersURL {
+            switch await publisherChapters.resolve(episodeID: episodeID, documentURL: documentURL) {
+            case .chapters(let chapters):
+                // A feed refresh that moved the declaration mid-fetch leaves
+                // these to the next refresh, which reads the new one.
+                guard await library.episodeDetail(for: episodeID)?.chaptersURL == documentURL else {
+                    return .empty
+                }
+                return PlaybackChapterList(chapters: chapters, source: .publisher)
+            case .unavailable:
+                allowsGeneratedChapters = false
+            case .documentEmpty:
+                break
+            }
+            guard !Task.isCancelled else {
                 return .empty
             }
-            let chapters = await feedChapters.chapters(at: url)
-            return chapters.isEmpty ? .empty : PlaybackChapterList(chapters: chapters, source: .feed)
         }
 
+        if allowsGeneratedChapters, let generated = await currentGeneratedChapters(episodeID: episodeID) {
+            return generated
+        }
+        guard !Task.isCancelled else {
+            return .empty
+        }
+
+        // Show notes rank last. A document that could not be read keeps
+        // generated chapters out, but not these. The cached feed duration
+        // bounds them, as on the episode screen, so both show one list; the
+        // player's measured duration lands at no fixed point relative to
+        // this read. Without a cached row the playing episode's own text
+        // stands in, the same text the Now Playing notes pane shows.
+        let playing = playback.currentEpisode?.id.rawValue == episodeID ? playback.currentEpisode : nil
+        let showNotesChapters = await EpisodeShowNotesContent.resolvingChapters(
+            summaryHTML: detail?.listItem.summary ?? playing?.summary,
+            showNotesHTML: detail?.showNotesHTML ?? playing?.showNotesHTML,
+            duration: detail?.listItem.duration ?? playing?.duration
+        )
+        guard !Task.isCancelled, !showNotesChapters.isEmpty else {
+            return .empty
+        }
+        return PlaybackChapterList(chapters: showNotesChapters, source: .showNotes)
+    }
+
+    private func currentGeneratedChapters(episodeID: String) async -> PlaybackChapterList? {
         guard transcriptAnalyses.record(for: episodeID)?.state == .completed,
               let transcriptDocument = try? await transcriptions.loadDocument(for: episodeID),
               let analysisDocument = try? await transcriptAnalyses.loadDocument(for: episodeID),
               !analysisDocument.chapters.isEmpty,
               await transcriptAnalyses.isCurrentAnalysisDocumentOffCaller(analysisDocument, for: transcriptDocument)
         else {
-            return .empty
+            return nil
         }
 
         return PlaybackChapterList(
