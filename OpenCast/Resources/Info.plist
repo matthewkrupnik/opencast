@@ -9,6 +9,7 @@
 		<string>mk.lan.opencast.ad-free-pass</string>
 		<string>mk.lan.opencast.transcript-generation</string>
 		<string>mk.lan.opencast.chapters-summary</string>
+		<string>mk.lan.opencast.charging-catch-up</string>
 	</array>
 	<key>CFBundleDevelopmentRegion</key>
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
@@ -116,6 +117,7 @@
 	<key>UIBackgroundModes</key>
 	<array>
 		<string>audio</string>
+		<string>processing</string>
 		<string>remote-notification</string>
 	</array>
 	<key>UILaunchScreen</key>

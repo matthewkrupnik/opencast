@@ -61,6 +61,7 @@ struct OpenCastRootLifecycleModifier: ViewModifier {
             scenePhase: newPhase,
             isProtectingBackgroundExecution: appModel.adFreePassBackgroundSession.isProtectingBackgroundExecution
                 || appModel.transcriptGenerationBackgroundSession.isProtectingBackgroundExecution
+                || appModel.chargingCatchUp.isRunning
         ).decision
 
         switch newPhase {

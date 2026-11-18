@@ -67,6 +67,7 @@ final class OpenCastAppModel {
     let playlistDisplaySettings: PlaylistDisplaySettingsStore
     let adFreePassBackgroundSession: EpisodeAdFreePassBackgroundSession
     let transcriptGenerationBackgroundSession: EpisodeTranscriptGenerationBackgroundSession
+    let chargingCatchUp = AdFreePassChargingCatchUp()
     let transcriptImprovement: EpisodeTranscriptImprovementCoordinator
     let playback: AVFoundationPlaybackController
     let appearanceSettings: AppearanceSettingsStore
@@ -568,10 +569,24 @@ final class OpenCastAppModel {
                 return
             }
             self.adFreePassBackgroundSession.noteQueueTerminal(outcome)
+            self.chargingCatchUp.noteQueueTerminal(outcome)
             self.scheduleAdFreePassCompletionNotificationIfNeeded(terminal: outcome)
         }
         self.adFreePass.isBackgroundProtected = { [weak self] in
-            self?.adFreePassBackgroundSession.isProtectingBackgroundExecution ?? false
+            guard let self else {
+                return false
+            }
+            return self.adFreePassBackgroundSession.isProtectingBackgroundExecution
+                || self.chargingCatchUp.isRunning
+        }
+        chargingCatchUp.hasPendingWork = { [weak self] in
+            guard let self else {
+                return false
+            }
+            return self.adFreePass.activeItem != nil || !self.adFreePass.queueItems.isEmpty
+        }
+        chargingCatchUp.isQueueRunning = { [weak self] in
+            self?.adFreePass.queueState == .running
         }
         self.adFreePass.onKeyRequired = { [weak self] reason in
             self?.presentAnalysisKeyRequired(feature: .adDetection, reason: reason)
@@ -2311,6 +2326,26 @@ final class OpenCastAppModel {
         transcriptionRequests.prepareForLifecycleExit(modelContext: modelContext)
     }
 
+    /// Called from `didFinishLaunching`: background launches never build a
+    /// scene, so the charging task cannot wait for the root view.
+    func registerChargingCatchUp(modelContext: ModelContext) {
+        chargingCatchUp.startWork = { [weak self] in
+            guard let self else {
+                return
+            }
+            // Restores the persisted queue and starts its drain when idle.
+            await self.ensurePlaybackSurfaceHydrated(modelContext: modelContext)
+            if self.adFreePass.isQueuePausedForEnvironmentalInterrupt {
+                self.adFreePass.resumeQueueForEnvironmentalAutoResume()
+            }
+        }
+        chargingCatchUp.onExpiration = { [weak self] in
+            self?.adFreePass.cancelActiveAnalysisRun(reason: .expiration)
+            self?.interruptActiveTranscriptionForLifecycleExit(modelContext: modelContext)
+        }
+        chargingCatchUp.register()
+    }
+
     func configureBackgroundSessionExpirations(modelContext: ModelContext) {
         adFreePassBackgroundSession.onExpiration = { [weak self] in
             // The run stays resumable with the replies it kept.
@@ -3246,6 +3281,9 @@ final class OpenCastAppModel {
                 await self?.skipZones.zoneCountAfterPass(for: episode) ?? 0
             }
         )
+        // A pass queued while the app is in the background (a push wake's
+        // auto-download) is suspended with the app; finish it on power.
+        chargingCatchUp.scheduleIfNeeded()
     }
 
     private func applyPlaybackSettings(for episode: Episode, modelContext: ModelContext) {

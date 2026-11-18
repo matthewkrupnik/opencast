@@ -19,8 +19,19 @@ final class OpenCastAppDelegate: NSObject, UIApplicationDelegate, UNUserNotifica
         registerNotificationCategories()
         UNUserNotificationCenter.current().delegate = self
         connectBackgroundDownloads()
+        registerChargingCatchUp()
 
         return true
+    }
+
+    /// iOS delivers a background task only to handlers registered before
+    /// launch finishes.
+    private func registerChargingCatchUp() {
+        let runtime = OpenCastAppRuntime.shared
+        guard !runtime.launchConfiguration.usesInMemoryStore else {
+            return
+        }
+        runtime.appModel.registerChargingCatchUp(modelContext: runtime.modelContainer.mainContext)
     }
 
     /// The background download session reconnects at launch so iOS can hand
