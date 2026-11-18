@@ -347,7 +347,6 @@ enum SyncDuplicateRepairer {
             setIfChanged(keep, \.position, mergedPosition)
             setIfChanged(keep, \.duration, mergedDuration)
             setIfChanged(keep, \.isPlayed, best.isPlayed)
-            setIfChanged(keep, \.archivedAt, best.archivedAt)
             setIfChanged(keep, \.updatedAt, best.updatedAt)
 
             for record in records where record !== keep {
@@ -361,7 +360,6 @@ enum SyncDuplicateRepairer {
                     position: mergedPosition,
                     duration: mergedDuration,
                     isPlayed: best.isPlayed,
-                    archivedAt: best.archivedAt,
                     updatedAt: best.updatedAt
                 )
             )
@@ -472,11 +470,7 @@ enum SyncDuplicateRepairer {
             return candidateDuration > currentDuration
         }
 
-        if candidate.position != current.position {
-            return candidate.position > current.position
-        }
-
-        return EpisodeProgressIndex.winsFinalTie(candidate, over: current)
+        return candidate.position > current.position
     }
 
     private static func metadataScore(for record: SubscriptionRecord) -> Int {
