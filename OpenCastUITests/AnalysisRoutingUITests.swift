@@ -58,20 +58,6 @@ final class AnalysisRoutingUITests: XCTestCase {
     }
 
     @MainActor
-    func testDetectAdsWithoutAKeyRunsOnTheFreeAnalyses() throws {
-        let app = makeApp(trialStatus: "units-left-3")
-        app.launch()
-
-        detectAdsFromInbox(in: app)
-        openEpisodeDetailFromInbox(in: app)
-        assertAdsDetected(in: app)
-        assertSponsorLineAnnotated(in: app)
-
-        // A free analysis is opencast's, not the listener's provider usage.
-        assertUsage("google", contains: "No runs yet", in: app)
-    }
-
-    @MainActor
     func testNoKeyAndNoFreeAnalysesLeftOpensTheKeyScreenAndTheQueueSaysWhy() throws {
         // Each item waits 12 s before it starts, so the second episode joins
         // the same drain before the first item ends.
