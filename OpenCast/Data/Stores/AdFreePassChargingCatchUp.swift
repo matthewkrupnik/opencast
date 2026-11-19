@@ -159,14 +159,28 @@ struct BGTaskSchedulerChargingCatchUpScheduler: ChargingCatchUpScheduling {
         identifier: String,
         onLaunch: @escaping @MainActor @Sendable (any ChargingCatchUpTaskHandle) -> Void
     ) -> Bool {
-        BGTaskScheduler.shared.register(forTaskWithIdentifier: identifier, using: nil) { task in
-            guard let processingTask = task as? BGProcessingTask else {
-                task.setTaskCompleted(success: false)
-                return
-            }
-            Task { @MainActor in
-                onLaunch(BGProcessingTaskHandleAdapter(task: processingTask))
-            }
+        // iOS calls the launch handler on its own queue. An inline closure
+        // here would inherit main-actor isolation and trap that check.
+        let launchHandler: @Sendable (BGTask) -> Void = { task in
+            Self.handle(task, onLaunch: onLaunch)
+        }
+        return BGTaskScheduler.shared.register(
+            forTaskWithIdentifier: identifier,
+            using: nil,
+            launchHandler: launchHandler
+        )
+    }
+
+    private nonisolated static func handle(
+        _ task: BGTask,
+        onLaunch: @escaping @MainActor @Sendable (any ChargingCatchUpTaskHandle) -> Void
+    ) {
+        guard let processingTask = task as? BGProcessingTask else {
+            task.setTaskCompleted(success: false)
+            return
+        }
+        Task { @MainActor in
+            onLaunch(BGProcessingTaskHandleAdapter(task: processingTask))
         }
     }
 
