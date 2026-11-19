@@ -12,7 +12,7 @@ struct OpenCastTransportPolicyTests {
         #expect(transportSecurity["NSAllowsArbitraryLoads"] as? Bool == true)
     }
 
-    @Test("Permits only the static continued processing task identifiers")
+    @Test("Permits only the static task identifiers, with processing for the charging catch-up")
     func permitsAdFreeContinuedProcessingTaskIdentifier() throws {
         let permittedIdentifiers = try #require(
             Bundle.main.object(forInfoDictionaryKey: "BGTaskSchedulerPermittedIdentifiers") as? [String]
@@ -25,7 +25,9 @@ struct OpenCastTransportPolicyTests {
             "mk.lan.opencast.ad-free-pass",
             "mk.lan.opencast.transcript-generation",
             "mk.lan.opencast.chapters-summary",
+            "mk.lan.opencast.charging-catch-up",
         ])
-        #expect(!backgroundModes.contains("processing"))
+        // The overnight charging catch-up is a BGProcessingTask.
+        #expect(backgroundModes.contains("processing"))
     }
 }

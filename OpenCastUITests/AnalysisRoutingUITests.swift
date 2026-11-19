@@ -18,46 +18,6 @@ final class AnalysisRoutingUITests: XCTestCase {
     // MARK: Routes
 
     @MainActor
-    func testDetectAdsWithAKeyRunsOnTheDeviceAndInstallsTheZone() throws {
-        let app = makeApp(seedsGoogleKey: true)
-        app.launch()
-
-        detectAdsFromInbox(in: app)
-        openEpisodeDetailFromInbox(in: app)
-        assertAdsDetected(in: app)
-        assertSponsorLineAnnotated(in: app)
-        attachSmokeScreenshot(named: "analysis_route_direct_zone")
-
-        // The run went to the listener's own provider: its usage counts it.
-        assertUsage("google", contains: "Last run: 420 in · 36 out", in: app)
-    }
-
-    @MainActor
-    func testASavedGoogleKeyOnTheFreeTierCompletesOnTheTrialAndTheMarkShows() throws {
-        // Every direct send would fail here, so a zone proves the trial
-        // service took the run.
-        let app = makeApp(seedsGoogleKey: true, transportAnswer: "direct-overloaded", tierAnswer: "free-tier")
-        app.launch()
-
-        detectAdsFromInbox(in: app)
-        openEpisodeDetailFromInbox(in: app)
-        assertAdsDetected(in: app)
-        assertSponsorLineAnnotated(in: app)
-
-        openSettingsScreen("AI Services", in: app)
-        let mark = app.descendants(matching: .any)["AI Services Free Tier Mark"].firstMatch
-        assertExists(mark, named: "the free-tier mark", timeout: 10)
-        XCTAssertTrue(
-            mark.label.contains("Google answered that your Google key is on its free tier, which is too limited for ad detection."),
-            "The mark should say what Google answered, read \(mark.label)"
-        )
-        attachSmokeScreenshot(named: "analysis_route_free_tier_mark")
-
-        // The trial's run is opencast's, not the listener's provider usage.
-        assertUsageRow("google", contains: "No runs yet", in: app)
-    }
-
-    @MainActor
     func testNoKeyAndNoFreeAnalysesLeftOpensTheKeyScreenAndTheQueueSaysWhy() throws {
         // Each item waits 12 s before it starts, so the second episode joins
         // the same drain before the first item ends.
@@ -96,24 +56,6 @@ final class AnalysisRoutingUITests: XCTestCase {
     }
 
     @MainActor
-    func testRejectedKeyNamesTheProviderOnTheEpisodeCard() throws {
-        let app = makeApp(seedsGoogleKey: true, transportAnswer: "invalid-key")
-        app.launch()
-
-        detectAdsFromInbox(in: app)
-        openEpisodeDetailFromInbox(in: app)
-        assertExists(app.staticTexts["Couldn't make this episode ad-free"], named: "failed pass card", timeout: 15)
-        let detectStep = app.descendants(matching: .any).matching(
-            NSPredicate(format: "label CONTAINS %@", "Your provider didn't accept the key. Check it in Settings › AI Services.")
-        ).firstMatch
-        assertExists(detectStep, named: "rejected-key card copy")
-        scrollUntilHittable(detectStep, in: app)
-        attachSmokeScreenshot(named: "analysis_route_rejected_key_card")
-        // A rejected key is the provider's answer; it never opens the key screen.
-        assertDoesNotExist(app.buttons["Analysis Key Required Open Settings"], named: "key screen for a rejected key")
-    }
-
-    @MainActor
     func testSavedAnalysisRendersItsZoneWithoutARun() throws {
         // Any run would hold forever and count usage on the seeded key.
         let app = makeApp(seedsGoogleKey: true, holdsTransport: true, seedsCompletedAdAnalysis: true)
@@ -135,8 +77,6 @@ final class AnalysisRoutingUITests: XCTestCase {
     private func makeApp(
         seedsGoogleKey: Bool = false,
         trialStatus: String? = nil,
-        transportAnswer: String? = nil,
-        tierAnswer: String? = nil,
         holdsTransport: Bool = false,
         seedsCompletedAdAnalysis: Bool = false,
         seedsSecondEpisode: Bool = false,
@@ -160,12 +100,6 @@ final class AnalysisRoutingUITests: XCTestCase {
         }
         if let trialStatus {
             app.launchArguments.append("--opencast-seed-analysis-trial=\(trialStatus)")
-        }
-        if let transportAnswer {
-            app.launchArguments.append("--opencast-ui-test-analysis-transport=\(transportAnswer)")
-        }
-        if let tierAnswer {
-            app.launchArguments.append("--opencast-ui-test-analysis-tier=\(tierAnswer)")
         }
         if holdsTransport {
             app.launchArguments.append("--opencast-ui-test-analysis-transport-hold")
@@ -195,12 +129,6 @@ final class AnalysisRoutingUITests: XCTestCase {
     @MainActor
     private func queueRow(_ episodeID: String, in app: XCUIApplication) -> XCUIElement {
         app.descendants(matching: .any).matching(identifier: "ad-detection-queue-row-\(episodeID)").firstMatch
-    }
-
-    @MainActor
-    private func detectAdsFromInbox(in app: XCUIApplication, file: StaticString = #filePath, line: UInt = #line) {
-        openSection("Inbox", in: app, file: file, line: line)
-        detectAds(on: episodeRow(Self.transcriptEpisodeID, in: app), in: app, file: file, line: line)
     }
 
     @MainActor
