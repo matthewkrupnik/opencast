@@ -102,15 +102,26 @@ struct NowPlayingView: View {
     /// The player never scrolls. The paged area takes the height the other
     /// rows leave and steps aside when that is too little; past that the
     /// title shrinks. Text stops growing at the first accessibility size.
-    /// The toolbar stays on the bottom edge. In compact height the paged
-    /// area moves beside the controls instead.
+    /// The toolbar stays on the bottom edge.
     private func player(for episode: Episode) -> some View {
-        Group {
-            if verticalSizeClass == .compact {
-                sideBySidePlayer(for: episode)
-            } else {
-                stackedPlayer(for: episode)
-            }
+        VStack(spacing: 0) {
+            stack(for: episode)
+                .contentFrame(width: contentWidth)
+                .frame(maxHeight: .infinity)
+
+            toolbar
+                .contentFrame(width: contentWidth)
+                .padding(.top, 38)
+        }
+        .padding(contentInsets)
+        .dynamicTypeSize(...DynamicTypeSize.accessibility1)
+        .overlay(alignment: .top) {
+            toast
+                .padding(.top, contentInsets.top)
+        }
+        .overlay(alignment: .top) {
+            autoSkipFeedback
+                .padding(.top, contentInsets.top)
         }
         .onChange(of: currentEpisodeID) { _, _ in
             page = .artwork
@@ -126,74 +137,6 @@ struct NowPlayingView: View {
             accessibilityReduceMotion ? nil : .easeOut(duration: 0.2),
             value: isPlaybackFailed
         )
-    }
-
-    private func stackedPlayer(for episode: Episode) -> some View {
-        statusOverlays(
-            on: VStack(spacing: 0) {
-                stack(for: episode)
-                    .contentFrame(width: contentWidth)
-                    .frame(maxHeight: .infinity)
-
-                toolbar
-                    .contentFrame(width: contentWidth)
-                    .padding(.top, 38)
-            }
-            .padding(contentInsets)
-            .dynamicTypeSize(...DynamicTypeSize.accessibility1),
-            topPadding: contentInsets.top
-        )
-    }
-
-    /// Compact height: the paged area leads, and the controls column holds
-    /// everything the portrait stack does, toolbar included.
-    private func sideBySidePlayer(for episode: Episode) -> some View {
-        HStack(spacing: 32) {
-            pagedArea(for: episode)
-                // Room for the page indicator, which hangs below the area.
-                .padding(.bottom, 24)
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .dynamicTypeSize(...DynamicTypeSize.accessibility1)
-
-            statusOverlays(
-                on: VStack(spacing: 0) {
-                    statusSlot
-
-                    titleBlock(for: episode)
-                        .padding(.top, 4)
-
-                    Spacer(minLength: 8)
-
-                    NowPlayingProgressSection(episodeID: episode.id.rawValue, onShowChapters: showChapters)
-
-                    failureBlock
-
-                    transport
-                        .padding(.top, 12)
-
-                    Spacer(minLength: 8)
-
-                    toolbar
-                }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .dynamicTypeSize(...DynamicTypeSize.accessibility1),
-                topPadding: 0
-            )
-        }
-        .padding(contentInsets)
-    }
-
-    /// A toast and the auto-skip pill start at the status slot's top.
-    private func statusOverlays(on content: some View, topPadding: CGFloat) -> some View {
-        content
-            .overlay(alignment: .top) {
-                toast
-                    .padding(.top, topPadding)
-            }
-            .overlay(alignment: .top) {
-                autoSkipFeedback
-                    .padding(.top, topPadding)
-            }
     }
 
     /// The paged area, laid out last, is the square the other rows leave;
@@ -315,8 +258,7 @@ struct NowPlayingView: View {
                 Text(episode.title)
                     .font(isAccessibilitySize ? .headline : .title2)
                     .multilineTextAlignment(.center)
-                    // Compact height shares the column with every control.
-                    .lineLimit(isAccessibilitySize ? 3 : verticalSizeClass == .compact ? 1 : 2)
+                    .lineLimit(isAccessibilitySize ? 3 : 2)
                     .minimumScaleFactor(0.5)
             }
             .buttonStyle(.plain)
@@ -362,13 +304,11 @@ struct NowPlayingView: View {
     }
 
     private var transport: some View {
-        let diameter = NowPlayingTransportControls.resolvedPlayButtonDiameter(
-            scaled: playButtonScaledDiameter,
-            isAccessibilitySize: dynamicTypeSize.isAccessibilitySize
-        )
-        return NowPlayingTransportControls(
-            // Compact height has no room for the full-size button.
-            playButtonDiameter: verticalSizeClass == .compact ? min(diameter, 64) : diameter,
+        NowPlayingTransportControls(
+            playButtonDiameter: NowPlayingTransportControls.resolvedPlayButtonDiameter(
+                scaled: playButtonScaledDiameter,
+                isAccessibilitySize: dynamicTypeSize.isAccessibilitySize
+            ),
             skipBackwardInterval: appModel.playbackSettings.skipBackwardOption.seconds,
             skipForwardInterval: appModel.playbackSettings.skipForwardOption.seconds,
             showsPauseButton: appModel.playback.state.showsPauseButton,
@@ -525,8 +465,7 @@ struct NowPlayingView: View {
     /// Chapters and the transcript turn the paged area to their page when
     /// it is on screen; otherwise they open in their sheets.
     private func canShowPage(_ page: NowPlayingPage) -> Bool {
-        let isPagedAreaOnScreen = verticalSizeClass == .compact || !isPagedAreaSteppedAside
-        return isPagedAreaOnScreen && pages.contains(page)
+        !isPagedAreaSteppedAside && pages.contains(page)
     }
 
     private var isPlaybackFailed: Bool {
