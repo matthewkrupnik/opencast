@@ -13,7 +13,7 @@ struct NowPlayingSkipZoneRail: View {
     /// centre travels from half its width in from each end, and the fill
     /// ends at that centre.
     private static let trackHeight: CGFloat = 6
-    private static let thumbSize = CGSize(width: 38, height: 26)
+    private nonisolated static let thumbSize = CGSize(width: 38, height: 26)
 
     let duration: TimeInterval
     let zones: [PlaybackSkipZone]
@@ -134,16 +134,17 @@ struct NowPlayingSkipZoneRail: View {
 
     private func xPosition(for time: TimeInterval, width: CGFloat) -> CGFloat {
         let clampedTime = time.clamped(to: 0...duration)
-        return thumbCenterX(atFraction: clampedTime / duration, width: width)
+        return Self.thumbCenterX(atFraction: clampedTime / duration, width: width)
     }
 
-    private func thumbCenterX(atFraction fraction: Double, width: CGFloat) -> CGFloat {
+    /// Also places the scrub preview bubble, so it stays centred on the thumb.
+    nonisolated static func thumbCenterX(atFraction fraction: Double, width: CGFloat) -> CGFloat {
         let inset = min(Self.thumbSize.width / 2, width / 2)
         return inset + CGFloat(fraction.clamped(to: 0...1)) * (width - inset * 2)
     }
 
     private func thumbClearance(in size: CGSize) -> CGRect {
-        let centerX = thumbCenterX(atFraction: thumbFraction, width: size.width)
+        let centerX = Self.thumbCenterX(atFraction: thumbFraction, width: size.width)
         return CGRect(
             x: centerX - Self.thumbSize.width / 2,
             y: (size.height - Self.thumbSize.height) / 2,

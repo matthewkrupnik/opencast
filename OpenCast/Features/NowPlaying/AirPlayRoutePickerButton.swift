@@ -1,65 +1,27 @@
-import AVFoundation
 import SwiftUI
 
 struct AirPlayRoutePickerButton: View {
-    @State private var routeName = "Route"
-    @State private var isExternalRoute = false
+    @State private var routeObserver = AudioRouteObserver()
 
     var body: some View {
+        let route = routeObserver.route
+
         Label(
             "AirPlay",
-            systemImage: isExternalRoute ? "airplayaudio.circle.fill" : "airplayaudio"
+            systemImage: route.isExternal ? "airplayaudio.circle.fill" : "airplayaudio"
         )
             .labelStyle(.iconOnly)
             .allowsHitTesting(false)
             .accessibilityHidden(true)
             .contentTransition(.symbolEffect(.replace))
-            .foregroundStyle(isExternalRoute ? AnyShapeStyle(.tint) : AnyShapeStyle(.primary))
+            .foregroundStyle(route.isExternal ? AnyShapeStyle(.tint) : AnyShapeStyle(.primary))
             .nowPlayingToolbarHitTarget()
             .overlay {
-                AirPlayRoutePickerUIView(routeName: routeName)
+                AirPlayRoutePickerUIView(routeName: route.name)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
             .task {
-                await refreshRouteName(disablesAnimations: true)
-                for await _ in NotificationCenter.default.notifications(named: AVAudioSession.routeChangeNotification) {
-                    await refreshRouteName()
-                }
+                await routeObserver.observe()
             }
-    }
-
-    private func refreshRouteName(disablesAnimations: Bool = false) async {
-        let route = await Self.currentRoute()
-        guard !Task.isCancelled else {
-            return
-        }
-
-        if disablesAnimations {
-            withTransaction(\.disablesAnimations, true) {
-                updateRoute(route)
-            }
-        } else {
-            updateRoute(route)
-        }
-    }
-
-    private func updateRoute(_ route: (name: String, isExternal: Bool)) {
-        if routeName != route.name {
-            routeName = route.name
-        }
-        if isExternalRoute != route.isExternal {
-            isExternalRoute = route.isExternal
-        }
-    }
-
-    @concurrent
-    private static func currentRoute() async -> (name: String, isExternal: Bool) {
-        let outputs = AVAudioSession.sharedInstance().currentRoute.outputs
-        let name = outputs
-            .map(\.portName)
-            .compactMap(\.trimmedNonEmpty)
-            .first ?? "Route"
-        let builtInPorts: Set<AVAudioSession.Port> = [.builtInReceiver, .builtInSpeaker]
-        return (name, outputs.contains { !builtInPorts.contains($0.portType) })
     }
 }

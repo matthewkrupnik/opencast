@@ -2687,11 +2687,13 @@ final class OpenCastUITests: XCTestCase {
         assertHittable(showTranscript, named: "Show Transcript More item")
         showTranscript.tap()
 
-        assertExists(app.staticTexts["Transcript"], named: "transcript sheet title")
+        assertNowPlayingPage("Transcript", in: app)
         assertExists(
             app.buttons["Welcome to a deterministic transcript."],
             named: "seeded transcript line"
         )
+        // The page keeps the scrubber in reach, unlike the old sheet.
+        assertHittable(playbackProgress(in: app), named: "playback progress beside the transcript page")
     }
 
     @MainActor
@@ -3513,10 +3515,9 @@ final class OpenCastUITests: XCTestCase {
         let showTranscriptItem = app.buttons["Show Transcript"]
         assertExists(showTranscriptItem, named: "Show Transcript action")
         showTranscriptItem.tap()
-        assertExists(app.staticTexts["Transcript"], named: "transcript sheet title")
-        assertExists(app.buttons["Welcome to a deterministic transcript."], named: "transcript sheet line")
-        attachSmokeScreenshot(named: "now_playing_transcript_sheet")
-        dismissTranscriptSheetAndWaitForNowPlaying(in: app)
+        assertNowPlayingPage("Transcript", in: app)
+        assertExists(app.buttons["Welcome to a deterministic transcript."], named: "transcript page line")
+        attachSmokeScreenshot(named: "now_playing_transcript_page")
 
         openCurrentEpisodeDetailFromNowPlaying(in: app)
 
@@ -3559,7 +3560,7 @@ final class OpenCastUITests: XCTestCase {
     }
 
     @MainActor
-    func testSeededNowPlayingMoreMenuOpensTranscriptSheet() throws {
+    func testSeededNowPlayingMoreMenuOpensTranscriptPage() throws {
         let app = makeSeededApp(
             seedsTranscriptionModel: true,
             seedsCompletedTranscript: true,
@@ -3580,10 +3581,9 @@ final class OpenCastUITests: XCTestCase {
         assertExists(showTranscriptItem, named: "Show Transcript action")
         showTranscriptItem.tap()
 
-        assertExists(app.staticTexts["Transcript"], named: "transcript sheet title")
-        assertExists(app.buttons["Welcome to a deterministic transcript."], named: "transcript sheet line")
-        attachSmokeScreenshot(named: "now_playing_transcript_sheet_standalone")
-        dismissTranscriptSheetAndWaitForNowPlaying(in: app)
+        assertNowPlayingPage("Transcript", in: app)
+        assertExists(app.buttons["Welcome to a deterministic transcript."], named: "transcript page line")
+        attachSmokeScreenshot(named: "now_playing_transcript_page_standalone")
     }
 
     @MainActor
@@ -4531,7 +4531,7 @@ final class OpenCastUITests: XCTestCase {
     private static let seededChapterTitles = ["Cold Open", "Main Topic", "Wrap-Up"]
 
     @MainActor
-    func testSeededChaptersSheetListsAndSeeksChapters() throws {
+    func testSeededChaptersPageListsAndSeeksChapters() throws {
         let app = makeSeededApp(seedsChapters: true)
         app.launch()
 
@@ -4541,17 +4541,13 @@ final class OpenCastUITests: XCTestCase {
         assertExists(currentChapter, named: "chapter bar")
         currentChapter.tap()
 
-        assertScreen("Chapters", named: "Chapters sheet", in: app)
+        assertNowPlayingPage("Chapters", in: app)
         for title in Self.seededChapterTitles {
             assertExists(app.staticTexts[title].firstMatch, named: "chapter row \(title)")
         }
-        attachSmokeScreenshot(named: "now_playing_chapters_sheet")
+        attachSmokeScreenshot(named: "now_playing_chapters_page")
 
         app.staticTexts[Self.seededChapterTitles[2]].firstMatch.tap()
-        XCTAssertTrue(
-            app.navigationBars["Chapters"].waitForNonExistence(timeout: 5),
-            "Tapping a chapter should close the sheet"
-        )
 
         assertCurrentChapter(Self.seededChapterTitles[2], in: app)
         let elapsed = try XCTUnwrap(
@@ -4598,13 +4594,22 @@ final class OpenCastUITests: XCTestCase {
         XCTAssertEqual(elapsed, 60, accuracy: 1.5, "Previous should restart Main Topic at 1:00")
 
         app.descendants(matching: .any)["Now Playing Current Chapter"].firstMatch.tap()
-        assertScreen("Chapters", named: "Chapters sheet from the chapter bar", in: app)
+        assertNowPlayingPage("Chapters", in: app)
         app.staticTexts[Self.seededChapterTitles[2]].firstMatch.tap()
-        XCTAssertTrue(
-            app.navigationBars["Chapters"].waitForNonExistence(timeout: 5),
-            "Tapping a chapter should close the sheet"
-        )
         assertCurrentChapter(Self.seededChapterTitles[2], in: app)
+        assertNowPlayingPage("Chapters", in: app)
+    }
+
+    /// With chapters the artwork sits in the pager; dragging down from it
+    /// must still close the card.
+    @MainActor
+    func testSeededNowPlayingWithChaptersDismissesFromArtwork() throws {
+        let app = makeSeededApp(seedsChapters: true)
+        app.launch()
+
+        openSeededNowPlaying(in: app)
+        assertNowPlayingPage("Artwork", in: app)
+        dismissNowPlayingOverlay(in: app)
     }
 
     @MainActor
@@ -6611,31 +6616,21 @@ final class OpenCastUITests: XCTestCase {
         }
     }
 
+    /// Waits for Now Playing's pager to show `title` ("Artwork", "Chapters",
+    /// "Transcript"); the indicator's value reads e.g. "Transcript, 3 of 3".
     @MainActor
-    private func dismissTranscriptSheetAndWaitForNowPlaying(
+    private func assertNowPlayingPage(
+        _ title: String,
         in app: XCUIApplication,
         file: StaticString = #filePath,
         line: UInt = #line
     ) {
-        let transcriptNavigationBar = app.navigationBars["Transcript"]
-        assertScreen("Transcript", named: "transcript sheet navigation bar", in: app, file: file, line: line)
-        let dismissalStart = app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.07))
-        let dismissalEnd = app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.78))
-        dismissalStart.press(forDuration: 0.05, thenDragTo: dismissalEnd)
-        assertDoesNotExist(
-            transcriptNavigationBar,
-            named: "transcript sheet after dismissal",
-            timeout: 10,
-            file: file,
-            line: line
-        )
-        assertNowPlayingOverlay(in: app)
-
-        let titleButton = nowPlayingOverlay(in: app).buttons["Now Playing Episode Title"].firstMatch
-        assertHittable(
-            titleButton,
-            named: "Now Playing episode title after transcript sheet dismissal",
-            timeout: 10,
+        let indicator = app.descendants(matching: .any)["Now Playing Page Indicator"].firstMatch
+        let onPage = NSPredicate(format: "value BEGINSWITH %@", "\(title),")
+        XCTAssertEqual(
+            XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: onPage, object: indicator)], timeout: 10),
+            .completed,
+            "Now Playing should show the \(title) page; indicator value: \(String(describing: indicator.value))",
             file: file,
             line: line
         )

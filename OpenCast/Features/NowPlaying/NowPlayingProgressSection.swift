@@ -35,6 +35,7 @@ struct NowPlayingProgressSection: View {
                 displayOnlyZones: appModel.displayOnlySkipZones,
                 chapterBoundaries: chapters.timelineMarkers,
                 noteTimestamps: noteTimestamps,
+                scrubPreview: scrubPreview(chapters: chapters),
                 scrubPosition: $scrubPosition,
                 onEditingChanged: updateScrubbing
             )
@@ -101,6 +102,19 @@ struct NowPlayingProgressSection: View {
             return scrubPosition
         }
         return pendingSeekPosition ?? observedPosition ?? scrubPosition
+    }
+
+    private func scrubPreview(chapters: PlaybackChapterList) -> NowPlayingScrubPreview? {
+        guard isScrubbing else {
+            return nil
+        }
+        return NowPlayingScrubPreview(
+            time: scrubPosition,
+            duration: appModel.playback.duration,
+            chapters: chapters,
+            zones: appModel.playback.skipZones,
+            displayOnlyZones: appModel.displayOnlySkipZones
+        )
     }
 
     private var observedPosition: TimeInterval? {

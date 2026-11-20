@@ -1,62 +1,16 @@
-import OpenCastCore
-import SwiftData
 import SwiftUI
 
 struct NowPlayingChaptersView: View {
     @Environment(OpenCastAppModel.self) private var appModel
-    @Environment(\.modelContext) private var modelContext
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
-        let chapters = appModel.currentEpisodeChapters
-        let current = chapters.chapter(at: appModel.playback.position)
-
         NavigationStack {
             Group {
-                if chapters.isEmpty {
+                if appModel.currentEpisodeChapters.isEmpty {
                     ContentUnavailableView("No Chapters", systemImage: "list.bullet")
                 } else {
-                    List(chapters.chapters) { chapter in
-                        HStack(spacing: 4) {
-                            Button {
-                                select(chapter, in: chapters)
-                            } label: {
-                                HStack(spacing: 12) {
-                                    if chapters.hasChapterArt {
-                                        ChapterArtworkThumbnail(url: chapter.imageURL)
-                                    }
-                                    HStack(alignment: .firstTextBaseline, spacing: 12) {
-                                        Text(EpisodeChaptersCard.startTimeText(chapter.startTime))
-                                            .font(.subheadline)
-                                            .monospacedDigit()
-                                            .foregroundStyle(.tint)
-                                        Text(chapter.title)
-                                            .font(.body)
-                                            .fontWeight(chapter == current ? .semibold : .regular)
-                                            .foregroundStyle(.primary)
-                                        Spacer(minLength: 0)
-                                        if chapter == current {
-                                            Image(systemName: "speaker.wave.2.fill")
-                                                .foregroundStyle(.tint)
-                                                .accessibilityHidden(true)
-                                        }
-                                    }
-                                }
-                                .contentShape(.rect)
-                            }
-                            // Two tap targets share the row only with non-list button styles.
-                            .buttonStyle(.plain)
-                            .accessibilityLabel(
-                                "Chapter, \(chapter.title), starts at \(EpisodeChaptersCard.startTimeText(chapter.startTime))"
-                            )
-                            .accessibilityValue(chapter == current ? "Now playing" : "")
-
-                            if let linkURL = chapter.linkURL {
-                                ChapterLinkButton(url: linkURL, chapterTitle: chapter.title)
-                            }
-                        }
-                    }
-                    .listStyle(.plain)
+                    NowPlayingChapterList(onSelect: { dismiss() })
                 }
             }
             .navigationTitle("Chapters")
@@ -70,10 +24,5 @@ struct NowPlayingChaptersView: View {
             }
         }
         .accessibilityIdentifier("Now Playing Chapters")
-    }
-
-    private func select(_ chapter: EpisodeChapter, in chapters: PlaybackChapterList) {
-        appModel.seekCurrentEpisode(toChapter: chapter, in: chapters, modelContext: modelContext)
-        dismiss()
     }
 }

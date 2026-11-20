@@ -11,8 +11,12 @@ struct NowPlayingProgressView: View {
     /// into a discrete slider that snaps to its ticks, which breaks scrubbing.
     var chapterBoundaries: [TimeInterval] = []
     var noteTimestamps: [TimeInterval] = []
+    /// Set only while the thumb is being dragged; drives the bubble above it.
+    var scrubPreview: NowPlayingScrubPreview?
     @Binding var scrubPosition: TimeInterval
     let onEditingChanged: (Bool) -> Void
+
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         VStack(spacing: 6) {
@@ -37,6 +41,16 @@ struct NowPlayingProgressView: View {
                         thumbFraction: scrubPosition / sliderUpperBound
                     )
                 }
+            }
+            .overlay {
+                NowPlayingScrubPreviewPlacement(thumbFraction: scrubPosition / sliderUpperBound) {
+                    if let scrubPreview {
+                        NowPlayingScrubPreviewBubble(preview: scrubPreview)
+                            .transition(reduceMotion ? .opacity : .opacity.combined(with: .scale(scale: 0.9, anchor: .bottom)))
+                    }
+                }
+                .allowsHitTesting(false)
+                .animation(.easeOut(duration: 0.15), value: scrubPreview != nil)
             }
 
             HStack {
