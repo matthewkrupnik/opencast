@@ -1510,23 +1510,30 @@ final class OpenCastUITests: XCTestCase {
 
         openSeededNowPlaying(in: app)
 
-        let sleepTimerButton = app.buttons["Sleep Timer"]
-        assertHittable(sleepTimerButton, named: "Sleep Timer control")
-        sleepTimerButton.tap()
+        let audioButton = app.buttons["Audio"]
+        assertHittable(audioButton, named: "Audio control")
+        audioButton.tap()
+        let sleepTimerRow = app.buttons["audio-sleep-timer-row"]
+        assertHittable(sleepTimerRow, named: "Sleep Timer row in the Audio sheet")
+        sleepTimerRow.tap()
 
         let fifteenMinutes = app.buttons["15 Minutes"]
         assertHittable(fifteenMinutes, named: "15 Minutes sleep option")
         XCTAssertFalse(fifteenMinutes.isSelected, "No preset should be marked while the timer is off.")
         assertDoesNotExist(app.buttons["Add 15 Minutes"], named: "extend action while the timer is off")
+        assertExists(app.buttons["Stop After This Episode"], named: "Stop After This Episode sleep option")
         fifteenMinutes.tap()
-        assertElementValueNotEqual(sleepTimerButton, "Off", named: "armed Sleep Timer control")
+        assertElementValueNotEqual(sleepTimerRow, "Off", named: "armed Sleep Timer row")
+        toolbarButton("Done", in: "Audio", of: app).tap()
 
         dismissNowPlayingOverlay(in: app)
         app.buttons["Open Now Playing"].tap()
         assertNowPlayingOverlay(in: app)
-        assertElementValueNotEqual(sleepTimerButton, "Off", named: "Sleep Timer after reopening the player")
+        assertValue(of: audioButton, contains: "sleep timer", named: "Audio control after reopening the player")
 
-        sleepTimerButton.tap()
+        audioButton.tap()
+        assertElementValueNotEqual(sleepTimerRow, "Off", named: "Sleep Timer row after reopening the player")
+        sleepTimerRow.tap()
         assertExists(fifteenMinutes, named: "15 Minutes sleep option after reopening the sheet")
         XCTAssertTrue(fifteenMinutes.isSelected, "The armed preset should be marked as selected.")
         let addFifteenMinutes = app.buttons["Add 15 Minutes"]
@@ -1560,9 +1567,10 @@ final class OpenCastUITests: XCTestCase {
         twentyMinutesChoice.tap()
 
         openSeededNowPlaying(in: app)
-        let sleepTimerButton = app.buttons["Sleep Timer"]
-        assertHittable(sleepTimerButton, named: "Sleep Timer control")
-        sleepTimerButton.tap()
+        app.buttons["Audio"].tap()
+        let sleepTimerRow = app.buttons["audio-sleep-timer-row"]
+        assertHittable(sleepTimerRow, named: "Sleep Timer row in the Audio sheet")
+        sleepTimerRow.tap()
         let twentyMinutes = app.buttons["20 Minutes"]
         assertHittable(twentyMinutes, named: "edited 20 Minutes sleep option")
         assertDoesNotExist(app.buttons["5 Minutes"], named: "replaced 5 Minutes sleep option")
@@ -1575,7 +1583,7 @@ final class OpenCastUITests: XCTestCase {
 
         assertHittable(twentyMinutes, named: "20 Minutes sleep option after editing")
         twentyMinutes.tap()
-        assertElementValueNotEqual(sleepTimerButton, "Off", named: "armed Sleep Timer control")
+        assertElementValueNotEqual(sleepTimerRow, "Off", named: "armed Sleep Timer row")
     }
 
     @MainActor
@@ -4276,13 +4284,15 @@ final class OpenCastUITests: XCTestCase {
             timeout: 30
         )
 
-        let sleepTimerButton = app.buttons["Sleep Timer"]
-        assertExists(sleepTimerButton, named: "Sleep Timer control")
-        sleepTimerButton.tap()
+        audioButton.tap()
+        let sleepTimerRow = app.buttons["audio-sleep-timer-row"]
+        assertExists(sleepTimerRow, named: "Sleep Timer row in the Audio sheet")
+        sleepTimerRow.tap()
         let fifteenMinuteSleepButton = app.buttons["15 Minutes"]
         assertExists(fifteenMinuteSleepButton, named: "15 Minutes sleep timer option")
         fifteenMinuteSleepButton.tap()
-        assertElementValueNotEqual(sleepTimerButton, "Off", named: "armed Sleep Timer control")
+        assertElementValueNotEqual(sleepTimerRow, "Off", named: "armed Sleep Timer row")
+        toolbarButton("Done", in: "Audio", of: app).tap()
         processedFrames = waitForVoiceBoostProcessedFrames(
             in: app,
             minProcessedFrames: processedFrames + 1,
@@ -4712,7 +4722,6 @@ final class OpenCastUITests: XCTestCase {
 
         assertNowPlayingControlIsReachable(app.buttons["Audio"], named: "Audio control", in: app)
         assertNowPlayingControlIsReachable(app.buttons["AirPlay"], named: "AirPlay control", in: app)
-        assertNowPlayingControlIsReachable(app.buttons["Sleep Timer"], named: "Sleep Timer control", in: app)
         assertPlayerUtilityControlHeightsAreBalanced(in: app)
         attachSmokeScreenshot(named: "now_playing_expanded_accessibility_xxxl")
 
@@ -5638,8 +5647,8 @@ final class OpenCastUITests: XCTestCase {
         miniPlayer.tap()
         assertNowPlayingOverlay(in: app)
         assertExists(
-            nowPlayingOverlay(in: app).buttons["Sleep Timer"].firstMatch,
-            named: "Now Playing Sleep Timer control at Accessibility XXXL"
+            nowPlayingOverlay(in: app).buttons["Audio"].firstMatch,
+            named: "Now Playing Audio control at Accessibility XXXL"
         )
         assertDoesNotExist(
             nowPlayingSourcePill(in: app),
@@ -6775,7 +6784,12 @@ final class OpenCastUITests: XCTestCase {
         assertExists(airPlayControl, named: "AirPlay control", file: file, line: line)
         let airPlayButtonCount = app.buttons.matching(NSPredicate(format: "label == %@", "AirPlay")).count
         XCTAssertEqual(airPlayButtonCount, 1, "AirPlay should expose one accessible control", file: file, line: line)
-        assertExists(app.buttons["Sleep Timer"], named: "Sleep Timer control")
+        assertDoesNotExist(
+            nowPlayingOverlay(in: app).buttons["Sleep Timer"].firstMatch,
+            named: "Sleep Timer toolbar control (it lives in the Audio sheet)",
+            file: file,
+            line: line
+        )
         assertDoesNotExist(
             nowPlayingOverlay(in: app).buttons["Up Next"].firstMatch,
             named: "Up Next control",
@@ -6803,8 +6817,7 @@ final class OpenCastUITests: XCTestCase {
         let overlay = nowPlayingOverlay(in: app)
         let controls = [
             (name: "Audio", element: overlay.buttons["Audio"].firstMatch),
-            (name: "AirPlay", element: overlay.buttons["AirPlay"].firstMatch),
-            (name: "Sleep Timer", element: overlay.buttons["Sleep Timer"].firstMatch)
+            (name: "AirPlay", element: overlay.buttons["AirPlay"].firstMatch)
         ]
 
         for (name, control) in controls {

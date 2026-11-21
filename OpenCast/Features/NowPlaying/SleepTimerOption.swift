@@ -2,7 +2,7 @@ import Foundation
 import OpenCastPlayback
 
 struct SleepTimerOption: Identifiable {
-    /// The sleep choices offered from Now Playing: Off, End of Episode,
+    /// The sleep choices offered from Now Playing: Off, Stop After This Episode,
     /// then the listener's presets shortest first.
     static func options(presets: [SleepTimerPresetDuration]) -> [SleepTimerOption] {
         let presetOptions = Set(presets).sorted().map { preset in
@@ -10,7 +10,7 @@ struct SleepTimerOption: Identifiable {
         }
         return [
             SleepTimerOption(title: "Off", mode: .off),
-            SleepTimerOption(title: "End of Episode", mode: .endOfEpisode)
+            SleepTimerOption(title: "Stop After This Episode", mode: .endOfEpisode)
         ] + presetOptions
     }
 

@@ -324,8 +324,7 @@ struct NowPlayingView: View {
         NowPlayingUtilityControls(
             rate: appModel.playback.rate,
             onClose: onDismiss,
-            onShowAudio: { utilitySheet = .audio },
-            onShowSleepTimer: { utilitySheet = .sleep }
+            onShowAudio: { utilitySheet = .audio }
         ) {
             NowPlayingMoreMenu(
                 episode: presentedEpisodeSnapshot,
@@ -394,12 +393,6 @@ struct NowPlayingView: View {
             .modelContext(modelContext)
             .presentationDetents([.medium, .large])
             .presentationDragIndicator(.visible)
-        case .sleep:
-            SleepTimerView()
-                .environment(appModel)
-                .modelContext(modelContext)
-                .presentationDetents([.medium, .large])
-                .presentationDragIndicator(.visible)
         case .chapters:
             NowPlayingChaptersView()
                 .environment(appModel)

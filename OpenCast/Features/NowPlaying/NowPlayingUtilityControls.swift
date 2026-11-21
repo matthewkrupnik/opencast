@@ -1,7 +1,7 @@
 import SwiftUI
 
 /// The toolbar along the card's bottom edge: Close at the leading edge, More
-/// at the trailing edge, and Audio, Sleep and AirPlay grouped in the middle.
+/// at the trailing edge, and Audio and AirPlay grouped in the middle.
 struct NowPlayingUtilityControls<MoreMenu: View>: View {
     /// The row's fixed height; the player keeps this much room clear at the
     /// end of its content so nothing scrolls to rest under the toolbar.
@@ -9,11 +9,11 @@ struct NowPlayingUtilityControls<MoreMenu: View>: View {
 
     @Environment(OpenCastAppModel.self) private var appModel
     @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     let rate: Float
     let onClose: () -> Void
     let onShowAudio: () -> Void
-    let onShowSleepTimer: () -> Void
     @ViewBuilder let moreMenu: () -> MoreMenu
 
     var body: some View {
@@ -33,7 +33,6 @@ struct NowPlayingUtilityControls<MoreMenu: View>: View {
 
                 HStack(spacing: 12) {
                     audioButton
-                    sleepTimerButton
                     AirPlayRoutePickerButton()
                 }
                 .padding(.horizontal, 10)
@@ -62,40 +61,47 @@ struct NowPlayingUtilityControls<MoreMenu: View>: View {
         .buttonStyle(.plain)
     }
 
-    /// The speed shows beside the waveform whenever it is not 1x.
+    /// The waveform takes the tint when the speed is not 1x (the Audio sheet
+    /// shows the number). While the sleep timer runs, a tinted moon follows
+    /// with the time left; at accessibility sizes the moon stands alone.
     private var audioButton: some View {
-        Button(action: onShowAudio) {
-            HStack(spacing: 3) {
-                Image(systemName: "waveform")
-                if rate != 1 {
-                    Text(rate.formattedSpeed)
-                        .font(.footnote.bold().monospacedDigit())
-                }
-            }
-            .foregroundStyle(rate == 1 ? AnyShapeStyle(.primary) : AnyShapeStyle(.tint))
-            .nowPlayingToolbarHitTarget()
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel("Audio")
-        .accessibilityValue(rate.formattedSpeed)
-        .accessibilityInputLabels(["Audio", "Speed", "Playback Speed"])
-    }
-
-    private var sleepTimerButton: some View {
-        TimelineView(.animation(
+        let mode = appModel.playback.sleepTimerMode
+        // Ticks only while a timer runs on the visible player.
+        return TimelineView(.animation(
             minimumInterval: 1,
-            paused: !appModel.isNowPlayingPresented || scenePhase != .active || appModel.playback.sleepTimerMode == .off
+            paused: mode == .off || !appModel.isNowPlayingPresented || scenePhase != .active
         )) { context in
-            let isActive = appModel.playback.sleepTimerMode != .off
-            Button(action: onShowSleepTimer) {
-                Image(systemName: isActive ? "moon.zzz.fill" : "moon.zzz")
-                    .contentTransition(.symbolEffect(.replace))
-                    .foregroundStyle(isActive ? AnyShapeStyle(.tint) : AnyShapeStyle(.primary))
-                    .nowPlayingToolbarHitTarget()
+            let remaining = appModel.playback.sleepTimerRemaining(at: context.date)
+            let countdown = dynamicTypeSize.isAccessibilitySize
+                ? nil
+                : SleepTimerRemainingText.toolbarText(mode: mode, remaining: remaining)
+            let spoken = SleepTimerRemainingText.spokenText(mode: mode, remaining: remaining)
+            Button(action: onShowAudio) {
+                HStack(spacing: 4) {
+                    Image(systemName: "waveform")
+                        .foregroundStyle(rate == 1 ? AnyShapeStyle(.primary) : AnyShapeStyle(.tint))
+                    if mode != .off {
+                        HStack(spacing: 2) {
+                            Image(systemName: "moon.zzz.fill")
+                            if let countdown {
+                                Text(countdown)
+                                    .monospacedDigit()
+                                    .contentTransition(.numericText(countsDown: true))
+                            }
+                        }
+                        .font(.footnote.bold())
+                        .foregroundStyle(.tint)
+                        .transition(.opacity)
+                    }
+                }
+                .nowPlayingToolbarHitTarget()
             }
             .buttonStyle(.plain)
-            .accessibilityLabel("Sleep Timer")
-            .accessibilityValue(SleepTimerRemainingText.text(for: appModel.playback, at: context.date))
+            .animation(.snappy, value: mode)
+            .animation(.snappy, value: countdown)
+            .accessibilityLabel("Audio")
+            .accessibilityValue(spoken.map { "\(rate.formattedSpeed), \($0)" } ?? rate.formattedSpeed)
+            .accessibilityInputLabels(["Audio", "Speed", "Playback Speed", "Sleep Timer"])
         }
     }
 }

@@ -2,8 +2,9 @@ import OpenCastPlayback
 import SwiftData
 import SwiftUI
 
-/// Speed, Smart Speed and Voice Boost for the playing episode. Each choice
-/// here belongs to this episode only; Settings holds the defaults.
+/// Speed, Smart Speed and Voice Boost for the playing episode, and the sleep
+/// timer. The audio choices belong to this episode only; Settings holds the
+/// defaults.
 struct NowPlayingAudioSheet: View {
     @Environment(OpenCastAppModel.self) private var appModel
     @Environment(\.dismiss) private var dismiss
@@ -49,13 +50,30 @@ struct NowPlayingAudioSheet: View {
                         .disabled(!voiceBoostControlEnabled)
                         .accessibilityIdentifier("audio-voice-boost-toggle")
                 } footer: {
-                    if !voiceBoostControlEnabled {
+                    if voiceBoostControlEnabled {
+                        Text("Speed, Smart Speed, and Voice Boost apply to this episode only.")
+                    } else {
                         Text("Voice Boost follows Settings › Playback. Choose Per Episode there to set it here.")
+                    }
+                }
+
+                Section {
+                    TimelineView(.periodic(from: .now, by: 1)) { context in
+                        let state = SleepTimerRemainingText.text(for: appModel.playback, at: context.date)
+                        NavigationLink {
+                            SleepTimerView()
+                        } label: {
+                            LabeledContent("Sleep Timer", value: state)
+                        }
+                        .accessibilityElement(children: .ignore)
+                        .accessibilityLabel("Sleep Timer")
+                        .accessibilityValue(state)
+                        .accessibilityAddTraits(.isButton)
+                        .accessibilityIdentifier("audio-sleep-timer-row")
                     }
                 }
             }
             .navigationTitle("Audio")
-            .navigationSubtitle("This Episode Only")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {

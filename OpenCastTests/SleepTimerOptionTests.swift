@@ -10,7 +10,7 @@ struct SleepTimerOptionTests {
         let options = SleepTimerOption.options(presets: SleepTimerPresetDuration.defaults)
         let expectedTitles = [
             "Off",
-            "End of Episode",
+            "Stop After This Episode",
             "5 Minutes",
             "10 Minutes",
             "15 Minutes",
@@ -39,7 +39,7 @@ struct SleepTimerOptionTests {
 
         #expect(options.map(\.title) == [
             "Off",
-            "End of Episode",
+            "Stop After This Episode",
             "5 Minutes",
             "20 Minutes",
             "1 Hour 30 Minutes",
