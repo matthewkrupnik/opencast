@@ -3,9 +3,9 @@ import Observation
 import SwiftData
 import os
 
-/// Device-local listening history: each play-to-pause stretch and each Mark
-/// Played, newest first, so a mistaken skip, a night of playing on, or a
-/// finished-and-swept episode can be put back. Keeps a week, and never fewer
+/// Device-local listening history: each play-to-pause stretch, each jump, and
+/// each Mark Played, newest first, so a mistaken skip or scrub, a night of
+/// playing on, or a finished-and-swept episode can be put back. Keeps a week, and never fewer
 /// than the newest `minimumRetainedCount` entries however old.
 @Observable
 final class ListeningHistoryStore {
@@ -140,6 +140,66 @@ final class ListeningHistoryStore {
             Self.logger.error("Unable to record a finished episode: \(error.localizedDescription)")
         }
     }
+
+    /// Records a jump between `from` and `to`. A session open for the episode
+    /// ends at `from`, and listening picks up in a new session at `to`, so the
+    /// jump sits between the stretches it separates.
+    func recordSeek(
+        episodeID: String,
+        podcastID: String,
+        from: TimeInterval,
+        to: TimeInterval,
+        duration: TimeInterval?,
+        hadDownload: Bool,
+        modelContext: ModelContext,
+        now: Date = .now
+    ) {
+        do {
+            var continuesListening = false
+            for record in try fetchRecords(modelContext: modelContext) where record.isOpen {
+                if record.episodeID == episodeID {
+                    record.endPosition = from
+                    record.endedAt = now
+                    continuesListening = true
+                }
+                record.isOpen = false
+            }
+            modelContext.insert(ListeningHistoryRecord(
+                kind: .seek,
+                episodeID: episodeID,
+                podcastID: podcastID,
+                startPosition: from,
+                endPosition: to,
+                duration: duration,
+                startedAt: now,
+                endedAt: now,
+                hadDownload: hadDownload,
+                isOpen: false
+            ))
+            if continuesListening {
+                // Just after the jump, so the newest-first order keeps it on top.
+                let resumedAt = now.addingTimeInterval(Self.resumedSessionOffset)
+                modelContext.insert(ListeningHistoryRecord(
+                    kind: .session,
+                    episodeID: episodeID,
+                    podcastID: podcastID,
+                    startPosition: to,
+                    endPosition: to,
+                    duration: duration,
+                    startedAt: resumedAt,
+                    endedAt: resumedAt,
+                    hadDownload: hadDownload,
+                    isOpen: true
+                ))
+            }
+            try prune(modelContext: modelContext, now: now)
+            try save(modelContext)
+        } catch {
+            Self.logger.error("Unable to record a jump: \(error.localizedDescription)")
+        }
+    }
+
+    private static let resumedSessionOffset: TimeInterval = 0.001
 
     func recordMarkedPlayed(
         episodeID: String,

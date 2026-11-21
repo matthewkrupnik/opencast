@@ -15,7 +15,7 @@ struct ListeningHistoryView: View {
                 ContentUnavailableView(
                     "No Listening History",
                     systemImage: "clock.arrow.circlepath",
-                    description: Text("Episodes you play or mark played on this device show up here for a week.")
+                    description: Text("Episodes you play, jump around in, or mark played on this device show up here for a week.")
                 )
             } else {
                 List(appModel.listeningHistory.entries) { entry in
@@ -67,6 +67,8 @@ struct ListeningHistoryView: View {
         switch entry.kind {
         case .markedPlayed:
             "Marked played at \(timeText(entry.startPosition))"
+        case .seek:
+            "Jumped \(timeText(entry.startPosition)) → \(timeText(entry.endPosition))"
         case .session:
             "\(timeText(entry.startPosition)) → \(entry.didFinish ? "end" : timeText(entry.endPosition))"
         }

@@ -41,6 +41,35 @@ struct AVFoundationPlaybackControllerTests {
         #expect((controller.playbackIntentRevision > revision) == supersedes)
     }
 
+    @Test(
+        "Scrubs and chapter jumps are reported for history; skips, the ad skipper, and restores are not",
+        arguments: zip(
+            [PlaybackSeekIntent.scrub, .skipButton, .chapter, .autoSkip, .restore],
+            [true, false, true, false, false]
+        )
+    )
+    func seekRecordedHandlerReportsListenerJumps(intent: PlaybackSeekIntent, records: Bool) throws {
+        let controller = AVFoundationPlaybackController()
+        defer { controller.unload() }
+        var jumps: [[TimeInterval]] = []
+        controller.setSeekRecordedHandler { _, from, to in jumps.append([from, to]) }
+        try controller.load(episode(duration: 240), startPosition: 30)
+        controller.seek(to: 120, intent: intent)
+        #expect(jumps == (records ? [[30, 120]] : []))
+    }
+
+    @Test("A scrub released within a second of where it started is not reported")
+    func seekRecordedHandlerIgnoresTinyScrubs() throws {
+        let controller = AVFoundationPlaybackController()
+        defer { controller.unload() }
+        var jumps: [[TimeInterval]] = []
+        controller.setSeekRecordedHandler { _, from, to in jumps.append([from, to]) }
+        try controller.load(episode(duration: 240), startPosition: 30)
+        controller.seek(to: 30.5, intent: .scrub)
+        controller.seek(to: 120, intent: .scrub)
+        #expect(jumps == [[30.5, 120]])
+    }
+
     @Test("A skip invalidates temporary pause ownership")
     func playbackIntentRevisionFollowsSkips() throws {
         let controller = AVFoundationPlaybackController()

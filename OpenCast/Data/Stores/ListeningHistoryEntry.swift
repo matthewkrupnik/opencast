@@ -5,6 +5,9 @@ struct ListeningHistoryEntry: Identifiable, Equatable {
     enum Kind: String {
         case session
         case markedPlayed
+        /// A listener's jump: `startPosition` is where it left,
+        /// `endPosition` where it landed.
+        case seek
     }
 
     let id: String

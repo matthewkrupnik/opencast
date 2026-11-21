@@ -18,6 +18,19 @@ public nonisolated enum PlaybackSeekIntent: Sendable, Equatable {
         }
     }
 
+    /// Whether the seek is a listener's jump that listening history keeps for
+    /// undoing: scrubs (the scrubber, lock screen, transcript, notes and
+    /// citations) and chapter jumps. Skip buttons move only a few seconds, and
+    /// the ad skipper and position restore are the player's own moves.
+    public var recordsSeekHistory: Bool {
+        switch self {
+        case .scrub, .chapter:
+            true
+        case .skipButton, .autoSkip, .restore:
+            false
+        }
+    }
+
     /// Whether the seek is a listener's command, which takes over from a
     /// temporary pause (the note editor's) so dismissing the editor does not
     /// resume at the new position. The ad skipper (`autoSkip`) and the

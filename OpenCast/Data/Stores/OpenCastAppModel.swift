@@ -656,6 +656,21 @@ final class OpenCastAppModel {
                 modelContext: modelContext
             )
         }
+        playback.setSeekRecordedHandler { [weak self, weak modelContext] episode, from, to in
+            guard let self, let modelContext else {
+                return
+            }
+            let episodeID = episode.id.rawValue
+            listeningHistory.recordSeek(
+                episodeID: episodeID,
+                podcastID: episode.podcastID.rawValue,
+                from: from,
+                to: to,
+                duration: sanitizedDuration(playback.duration ?? episode.duration),
+                hadDownload: downloads.record(for: episodeID)?.state == .completed,
+                modelContext: modelContext
+            )
+        }
         if let coreStoresLoadTask {
             await coreStoresLoadTask.value
             return

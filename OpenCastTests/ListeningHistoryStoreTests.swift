@@ -72,6 +72,41 @@ struct ListeningHistoryStoreTests {
         #expect(entry.hadDownload)
     }
 
+    @Test("A jump while listening ends the session where it left and resumes in a new one where it landed")
+    func seekSplitsOpenSession() throws {
+        let (store, context) = try makeStore()
+
+        store.beginSession(episodeID: "e1", podcastID: "p1", position: 100, duration: 3600, hadDownload: false, modelContext: context, now: start)
+        store.recordSeek(episodeID: "e1", podcastID: "p1", from: 400, to: 1800, duration: 3600, hadDownload: false, modelContext: context, now: start + 300)
+
+        #expect(store.entries.map(\.kind) == [.session, .seek, .session])
+        let resumed = store.entries[0], jump = store.entries[1], earlier = store.entries[2]
+        #expect(resumed.isOpen)
+        #expect(resumed.startPosition == 1800)
+        #expect(jump.startPosition == 400)
+        #expect(jump.endPosition == 1800)
+        #expect(!jump.isOpen)
+        #expect(earlier.endPosition == 400)
+        #expect(!earlier.isOpen)
+
+        store.updateSession(episodeID: "e1", position: 1900, duration: 3600, modelContext: context, now: start + 400)
+        #expect(store.entries.first?.endPosition == 1900)
+        #expect(store.entries[2].endPosition == 400)
+    }
+
+    @Test("A jump while paused adds only the jump")
+    func seekWhilePaused() throws {
+        let (store, context) = try makeStore()
+
+        store.recordSeek(episodeID: "e1", podcastID: "p1", from: 400, to: 60, duration: 3600, hadDownload: true, modelContext: context, now: start)
+
+        let entry = try #require(store.entries.first)
+        #expect(store.entries.count == 1)
+        #expect(entry.kind == .seek)
+        #expect(entry.startPosition == 400)
+        #expect(entry.hadDownload)
+    }
+
     @Test("Retention keeps a week, and never fewer than the ten newest entries")
     func retention() throws {
         let (store, context) = try makeStore()

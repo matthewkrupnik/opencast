@@ -58,6 +58,27 @@ struct ListeningHistoryRestoreTests {
         #expect(fixture.appModel.downloads.record(for: episode.episodeID) == nil)
     }
 
+    @Test("A scrub in the current episode is kept in history, and restoring it jumps back")
+    func scrubIsRestorable() async throws {
+        let fixture = try await makeFixture()
+        let episode = try #require(fixture.appModel.episodeSnapshot(for: "first"))
+        try fixture.appModel.playEpisode(episode, at: 300, presentsNowPlaying: false, modelContext: fixture.context)
+        defer { fixture.appModel.playback.unload() }
+
+        fixture.appModel.playback.seek(to: 2400, intent: .scrub)
+        fixture.appModel.playback.skip(by: 15)
+
+        let jump = try #require(fixture.appModel.listeningHistory.entries.first { $0.kind == .seek })
+        #expect(fixture.appModel.listeningHistory.entries.filter { $0.kind == .seek }.count == 1)
+        #expect(jump.startPosition == 300)
+        #expect(jump.endPosition == 2400)
+
+        #expect(fixture.appModel.restoreListeningHistoryEntry(jump, modelContext: fixture.context))
+        #expect(fixture.appModel.playback.position == 300)
+        // Going back is a jump too, so it can be undone in turn.
+        #expect(fixture.appModel.listeningHistory.entries.filter { $0.kind == .seek }.count == 2)
+    }
+
     private func makeFixture() async throws -> (appModel: OpenCastAppModel, context: ModelContext) {
         let container = try OpenCastModelContainerFactory.make(inMemory: true)
         let context = ModelContext(container)

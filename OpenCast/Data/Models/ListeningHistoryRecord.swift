@@ -1,8 +1,8 @@
 import Foundation
 import SwiftData
 
-/// One stretch of listening, or one Mark Played, kept on this device so it can
-/// be put back. `startPosition` is the restore point: where playback stood
+/// One stretch of listening, one jump, or one Mark Played, kept on this device
+/// so it can be put back. `startPosition` is the restore point: where playback stood
 /// before the entry changed anything.
 @Model
 final class ListeningHistoryRecord {

@@ -12,6 +12,9 @@ typealias VoiceBoostAudioTapFactory = (
 
 public typealias PlaybackRateChangeRequestHandler = @MainActor (Float) -> Void
 public typealias PlaybackEpisodeFinishedHandler = @MainActor (Episode, PlaybackCompletionPolicy) -> Void
+/// Called for a listener's jump (`PlaybackSeekIntent.recordsSeekHistory`)
+/// with where playback stood and where it went, so history can undo it.
+public typealias PlaybackSeekRecordedHandler = @MainActor (_ episode: Episode, _ from: TimeInterval, _ to: TimeInterval) -> Void
 
 @Observable
 public final class AVFoundationPlaybackController {
@@ -111,6 +114,7 @@ public final class AVFoundationPlaybackController {
     @ObservationIgnored private var sleepTimerRearmDeadline: Date?
     @ObservationIgnored private var remotePlaybackRateChangeHandler: PlaybackRateChangeRequestHandler?
     @ObservationIgnored private var episodeFinishedHandler: PlaybackEpisodeFinishedHandler?
+    @ObservationIgnored private var seekRecordedHandler: PlaybackSeekRecordedHandler?
     @ObservationIgnored private var playbackPositionProtection = PlaybackPositionProtection()
     @ObservationIgnored private var playbackAdSkipPolicy = PlaybackAdSkipPolicy()
     @ObservationIgnored private var playbackFailureRecoveryPolicy = PlaybackFailureRecoveryPolicy()
@@ -804,6 +808,7 @@ public final class AVFoundationPlaybackController {
             playbackIntentRevision &+= 1
         }
         let clamped = clampedPosition(position)
+        let from = snapshot.position
         currentVoiceBoostTap?.reset()
         seekPlayer(to: clamped, mode: .userInitiated(intent))
         snapshot.position = clamped
@@ -811,7 +816,15 @@ public final class AVFoundationPlaybackController {
         markProgressBoundary()
         recordDiagnosticsEvent("seek requested position=\(diagnosticsTime(clamped)) intent=\(intent)")
         publishPlaybackState()
+        if intent.recordsSeekHistory,
+           abs(clamped - from) >= Self.minimumRecordedSeekDistance,
+           let episode = snapshot.currentEpisode {
+            seekRecordedHandler?(episode, from, clamped)
+        }
     }
+
+    /// A scrub released about where it started is not a jump worth undoing.
+    nonisolated static let minimumRecordedSeekDistance: TimeInterval = 1
 
     public func skip(by interval: TimeInterval) {
         seek(to: snapshot.position + interval, intent: .skipButton)
@@ -833,6 +846,10 @@ public final class AVFoundationPlaybackController {
 
     public func setEpisodeFinishedHandler(_ handler: PlaybackEpisodeFinishedHandler?) {
         episodeFinishedHandler = handler
+    }
+
+    public func setSeekRecordedHandler(_ handler: PlaybackSeekRecordedHandler?) {
+        seekRecordedHandler = handler
     }
 
     public func sleepTimerRemaining(at date: Date = .now) -> TimeInterval? {
